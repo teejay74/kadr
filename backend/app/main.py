@@ -4,12 +4,20 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.database import engine
+from app.schemas.system import ErrorResponse
+from app.services.metadata.exceptions import (
+    MetadataNotConfiguredError,
+    MetadataNotFoundError,
+    MetadataUnavailableError,
+)
 
 settings = get_settings()
 logging.basicConfig(
@@ -20,9 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     logger.info("KADR API starting")
-    yield
+    async with httpx.AsyncClient(
+        base_url=settings.tmdb_base_url,
+        timeout=settings.tmdb_timeout_seconds,
+        headers={"Accept": "application/json"},
+    ) as http_client:
+        application.state.http_client = http_client
+        yield
     await engine.dispose()
     logger.info("KADR API stopped")
 
@@ -43,6 +57,25 @@ def create_app() -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
         )
     application.include_router(api_router, prefix="/api/v1")
+
+    @application.exception_handler(MetadataNotConfiguredError)
+    async def metadata_not_configured(_: Request, exc: MetadataNotConfiguredError) -> JSONResponse:
+        error = ErrorResponse(code="metadata_not_configured", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=error.model_dump(),
+        )
+
+    @application.exception_handler(MetadataUnavailableError)
+    async def metadata_unavailable(_: Request, exc: MetadataUnavailableError) -> JSONResponse:
+        error = ErrorResponse(code="metadata_unavailable", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content=error.model_dump())
+
+    @application.exception_handler(MetadataNotFoundError)
+    async def metadata_not_found(_: Request, exc: MetadataNotFoundError) -> JSONResponse:
+        error = ErrorResponse(code="media_not_found", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=error.model_dump())
+
     return application
 
 

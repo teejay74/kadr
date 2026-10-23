@@ -1,20 +1,23 @@
 # Deployment
 
-## Local Stage 1
+## Local Stage 2
 
 1. Copy `.env.example` to `.env` and select an unused `KADR_HTTP_PORT`.
-2. Ensure `data/database` is writable by `KADR_UID:KADR_GID`.
-3. Run `docker compose config --quiet`.
-4. Run `docker compose up --build -d`.
-5. Wait for `docker compose ps` to report both core services healthy.
-6. Check `curl http://localhost:8180/api/v1/system/health` and load the UI.
+2. Create a TMDB API Read Access Token and set `KADR_TMDB_ACCESS_TOKEN` in
+   `.env`. Do not commit or paste the token into frontend configuration.
+3. Ensure `data/database` is writable by `KADR_UID:KADR_GID`.
+4. Run `docker compose config --quiet`.
+5. Run `docker compose up --build -d`.
+6. Wait for `docker compose ps` to report both core services healthy.
+7. Check `curl http://localhost:8180/api/v1/system/health`, then load the UI and
+   verify one catalogue and detail request.
 
 `docker compose down` stops only this Compose project. Never use `down -v` in a
 normal update.
 
 ## Mandatory Debian preflight
 
-Stage 1 was prepared and tested locally; it has not touched the working Debian
+Stages 1-2 were prepared and tested locally; they have not touched the working Debian
 server. Before server deployment, perform read-only checks for OS/architecture,
 Docker/Compose versions, running containers and Compose projects, listening
 ports, memory/load, free space/inodes, mount filesystem/type/options, and the

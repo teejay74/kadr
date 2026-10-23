@@ -1,11 +1,12 @@
 # Architecture
 
-## Stage 1 boundaries
+## Stage 2 boundaries
 
 The first increment establishes two independently testable applications:
 
 ```text
-browser -> :8180 nginx/Vue -> /api/* -> FastAPI -> async SQLAlchemy -> SQLite
+browser -> :8180 nginx/Vue -> /api/* -> FastAPI -> TMDB adapter
+                                      -> async SQLAlchemy -> SQLite cache
 ```
 
 Only nginx publishes a host port. FastAPI is reachable solely on the isolated
@@ -13,10 +14,16 @@ Only nginx publishes a host port. FastAPI is reachable solely on the isolated
 mount outside the container. Alembic upgrades the schema before Uvicorn starts.
 
 The backend is split into API, schema, service, repository, model, and core
-layers. Empty domain package boundaries reserve the integration seams described
-in the specification without pretending those features exist. The frontend
-uses Vue Router, Pinia-ready bootstrapping, a dedicated API client, layouts,
-pages, components, composables, stores, styles, and types.
+layers. Thin catalogue controllers call `CatalogService`; it depends on a TMDB
+adapter and a metadata-cache repository. Requests have a strict timeout, use a
+short-lived persistent cache, and may serve expired cached metadata only while
+TMDB is unavailable. The token never reaches the browser.
+
+The responsive frontend uses Vue Router, Composition API, strict TypeScript,
+reusable media components, and a dedicated API client. It provides home rails,
+film and series catalogues, filters, pagination, search, detail pages, cast and
+season summaries. Empty integration packages continue to reserve later seams
+without presenting future features as implemented.
 
 ## Technical risks
 
@@ -27,7 +34,9 @@ pages, components, composables, stores, styles, and types.
 | Bind-mount ownership differs across hosts | API cannot migrate/write DB | Configurable UID/GID; validate and prepare only the KADR data directory during deployment. |
 | SQLite migration failure during startup | API remains unavailable | Alembic runs before Uvicorn and container health exposes failure; add automatic pre-upgrade backup in a later deployment-hardening step. |
 | ARM development vs x86_64 Debian production | Image or dependency mismatch | Official multi-architecture base images; final acceptance must build and run on Debian x86_64. |
-| External metadata/indexer outages | Slow or failed catalogue requests | Future adapters need strict timeouts, caching, retries with backoff, and controlled errors. |
+| External metadata outage or quota limit | Slow or failed catalogue requests | Eight-second configurable timeout, persistent TTL cache, stale-on-outage fallback, controlled 502 errors, and bounded page sizes. |
+| Missing or leaked TMDB credential | Catalogue unavailable or credential compromise | Server-only secret configuration, no token logging or frontend exposure, and a controlled 503 setup state. |
+| Upstream schema drift or incomplete artwork | Broken cards/details | Typed normalized API schemas, defensive optional-field mapping, placeholders, and adapter tests. |
 | Torrent and streaming I/O pressure | Playback or Photodom degradation | Not implemented; future managers need bounded concurrency, free-space gates, and playback-aware scheduling. |
 | Browser/TV codec fragmentation | Unsupported playback | Capability checks and honest errors; Direct Play first, no automatic transcoding. |
 | Path traversal or unsafe cache deletion | Loss of unrelated or saved data | Future storage services must canonicalize and enforce KADR roots; no deletion code exists in Stage 1. |
@@ -35,7 +44,7 @@ pages, components, composables, stores, styles, and types.
 
 ## Stage dependencies
 
-Stage 2 builds catalogue/UI/TMDB on this API shell. Stage 3 introduces the
+Stages 1-2 provide the shell and metadata catalogue. Stage 3 introduces the
 Prowlarr adapter. Stage 4 introduces the qBittorrent adapter. Stage 5 may build
 streaming only after torrent state is real and tested. Stage 6 owns library and
 cache lifecycle. TV, remote-access, and stabilization work follow those layers.
