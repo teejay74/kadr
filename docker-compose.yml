@@ -1,0 +1,88 @@
+name: ${COMPOSE_PROJECT_NAME:-kadr}
+
+services:
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    user: "${KADR_UID:-1000}:${KADR_GID:-1000}"
+    environment:
+      KADR_DATABASE_URL: ${KADR_DATABASE_URL:-sqlite+aiosqlite:////data/kadr.db}
+      KADR_LOG_LEVEL: ${KADR_LOG_LEVEL:-INFO}
+      KADR_CORS_ORIGINS: ${KADR_CORS_ORIGINS:-[]}
+    volumes:
+      - ./data/database:/data
+    expose:
+      - "8000"
+    networks:
+      - kadr-internal
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/system/health', timeout=2)",
+        ]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  api-test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    user: "${KADR_UID:-1000}:${KADR_GID:-1000}"
+    environment:
+      KADR_DATABASE_URL: sqlite+aiosqlite:////tmp/kadr-test.db
+      KADR_LOG_LEVEL: WARNING
+    command: ["pytest", "-p", "no:cacheprovider"]
+    networks:
+      - kadr-internal
+
+  web:
+    build:
+      context: ./frontend
+      target: runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${KADR_HTTP_PORT:-8180}:8080"
+    networks:
+      - kadr-internal
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  web-test:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      target: build
+    command: ["npm", "test", "--", "--run"]
+    networks:
+      - kadr-internal
+
+networks:
+  kadr-internal:
+    name: ${COMPOSE_PROJECT_NAME:-kadr}-internal
+    driver: bridge
+
