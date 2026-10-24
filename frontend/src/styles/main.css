@@ -117,7 +117,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .source-loading { padding: 2rem; text-align: center; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 1rem; }
 .source-results { display: grid; gap: .75rem; }
 .source-summary { margin: 0 0 .5rem; font-size: .85rem; }
-.source-release { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: center; padding: 1.15rem 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(32 34 43 / .65); }
+.source-release { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1.5rem; align-items: center; padding: 1.15rem 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(32 34 43 / .65); }
 .source-release h3 { margin: 0; overflow-wrap: anywhere; font-size: 1rem; }
 .source-release-main > p { margin: .42rem 0 .7rem; color: var(--text-secondary); font-size: .84rem; }
 .release-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -127,6 +127,17 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .source-health dt { color: var(--text-secondary); font-size: .68rem; }
 .source-health dd { margin: .2rem 0 0; font-weight: 800; }
 .source-stage-note { margin: .5rem 0 0; font-size: .8rem; }
+.source-add { justify-self: end; }
+.torrent-panel { display: grid; gap: 1rem; margin-top: 1.5rem; padding: 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(17 24 39 / .72); }
+.torrent-panel h3, .torrent-panel p { margin: 0; }
+.torrent-panel progress { width: 100%; height: .8rem; accent-color: var(--accent-primary); }
+.torrent-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.torrent-files { display: grid; gap: .5rem; }
+.torrent-file { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem; color: var(--text-primary); text-align: left; border: 1px solid var(--border-color); border-radius: .7rem; background: transparent; }
+.torrent-file.selected { border-color: var(--accent-primary); background: rgb(139 92 246 / .12); }
+.torrent-file:disabled { opacity: .48; }
+.torrent-file small, .torrent-error { color: var(--text-secondary); }
+.torrent-error { margin-top: 1rem; color: #fca5a5; }
 
 .credits { display: flex; justify-content: center; padding: 2rem; border-top: 1px solid rgb(255 255 255 / .06); }
 .tmdb-credit { display: inline-flex; align-items: center; gap: .7rem; color: var(--text-secondary); font-size: .78rem; }

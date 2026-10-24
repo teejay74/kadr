@@ -7,6 +7,8 @@ import type {
   SortOrder,
   SourceResults,
   SourceSort,
+  TorrentFile,
+  TorrentStatus,
 } from '../types/media'
 
 export interface HealthResponse {
@@ -31,8 +33,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+  if (init.body) headers.set('Content-Type', 'application/json')
+  const response = await fetch(path, { ...init, headers })
   if (!response.ok) {
     let payload: ApiErrorPayload = {}
     try {
@@ -43,6 +48,36 @@ async function request<T>(path: string): Promise<T> {
     throw new ApiError(response.status, payload.code ?? 'request_failed', payload.message ?? 'Request failed')
   }
   return (await response.json()) as T
+}
+
+export function addTorrent(mediaId: number, mediaKind: MediaKind, sourceId: string): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/media/${mediaId}/torrents`, {
+    method: 'POST',
+    body: JSON.stringify({ media_kind: mediaKind, source_id: sourceId }),
+  })
+}
+
+export function getTorrent(taskId: string): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${taskId}`)
+}
+
+export function getTorrentFiles(taskId: string): Promise<TorrentFile[]> {
+  return request<TorrentFile[]>(`/api/v1/torrents/${taskId}/files`)
+}
+
+export function selectTorrentFile(taskId: string, fileId: number): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${taskId}/selection`, {
+    method: 'PUT',
+    body: JSON.stringify({ file_id: fileId }),
+  })
+}
+
+export function startTorrent(taskId: string): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${taskId}/start`, { method: 'POST' })
+}
+
+export function stopTorrent(taskId: string): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${taskId}/stop`, { method: 'POST' })
 }
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -93,6 +128,21 @@ export function friendlyApiError(error: unknown): string {
   }
   if (error instanceof ApiError && error.code === 'indexer_unavailable') {
     return 'Prowlarr или один из индексаторов сейчас недоступен.'
+  }
+  if (error instanceof ApiError && error.code === 'torrent_not_configured') {
+    return 'qBittorrent ещё не настроен. Проверьте серверные учётные данные.'
+  }
+  if (error instanceof ApiError && error.code === 'torrent_limit_reached') {
+    return 'Достигнут лимит активных загрузок.'
+  }
+  if (error instanceof ApiError && error.code === 'invalid_torrent_file') {
+    return error.message
+  }
+  if (error instanceof ApiError && error.code === 'torrent_storage_unavailable') {
+    return 'Хранилище загрузок недоступно или на нём недостаточно свободного места.'
+  }
+  if (error instanceof ApiError && ['torrent_unavailable', 'torrent_not_found'].includes(error.code)) {
+    return 'Torrent Manager временно недоступен или задача больше не существует.'
   }
   return 'Каталог временно недоступен. Попробуйте ещё раз позже.'
 }

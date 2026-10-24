@@ -15,4 +15,8 @@ data/database/*
 !data/database/.gitkeep
 data/prowlarr/*
 !data/prowlarr/.gitkeep
+data/qbittorrent/*
+!data/qbittorrent/.gitkeep
+data/downloads/*
+!data/downloads/.gitkeep
 

@@ -1,11 +1,10 @@
 # KADR
 
 KADR is a self-hosted personal media platform. The repository currently
-contains the **Stage 3 source-search implementation**: a working FastAPI + Vue
-3 + TypeScript application with a TMDB catalogue and an isolated Prowlarr
-integration that normalizes torrent-indexer results. Torrent downloading,
-management, streaming, transcoding, and media-library operations are
-intentionally not implemented.
+contains the **Stage 4 Torrent Manager**: a working FastAPI + Vue 3 +
+TypeScript application with a TMDB catalogue, isolated Prowlarr source search,
+and server-side qBittorrent control. Streaming, playback, transcoding, and
+media-library deletion are intentionally not implemented.
 
 ## Quick start
 
@@ -17,6 +16,9 @@ cp .env.example .env
 docker compose up -d prowlarr
 # Configure an authorized torrent indexer at http://127.0.0.1:9696,
 # then copy Prowlarr's API key into KADR_PROWLARR_API_KEY in .env.
+docker compose up -d qbittorrent
+# Set a private Web UI account at http://127.0.0.1:8081 and copy the same
+# username/password into the KADR_QBITTORRENT_* variables.
 docker compose up --build -d
 curl http://localhost:8180/api/v1/system/health
 ```
@@ -32,6 +34,10 @@ Prowlarr's setup UI is bound to loopback only; it is not exposed to the LAN.
 KADR ships with no indexer credentials or preconfigured trackers. Follow the
 [Prowlarr setup guide](docs/prowlarr.md) and use only sources whose rules permit
 your access.
+
+qBittorrent's administration port is also loopback-only. New magnets stop as
+soon as metadata arrives; KADR requires an explicit video-file selection and
+start action. See the [qBittorrent setup guide](docs/qbittorrent.md).
 
 Stop KADR without deleting its database:
 
@@ -68,4 +74,6 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 2 report](docs/stage-2-report.md)
 - [Prowlarr setup](docs/prowlarr.md)
 - [Stage 3 report](docs/stage-3-report.md)
+- [qBittorrent setup](docs/qbittorrent.md)
+- [Stage 4 report](docs/stage-4-report.md)
 

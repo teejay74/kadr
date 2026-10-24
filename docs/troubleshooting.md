@@ -57,3 +57,30 @@ movie or TV categories must be configured and pass its test in Prowlarr. An
 empty result is valid and is not replaced with mock data. Respect each
 indexer's access rules and query limits.
 
+## qBittorrent does not become healthy
+
+Run `docker compose ps qbittorrent` and
+`docker compose logs --tail=200 qbittorrent`. Confirm local port 8081 is free
+and `data/qbittorrent` plus `data/downloads` are writable by the configured
+UID/GID. Do not delete either directory as a repair attempt.
+
+## Torrent Manager says qBittorrent is not configured
+
+Set a private account in qBittorrent's Web UI, copy the same values to
+`KADR_QBITTORRENT_USERNAME` and `KADR_QBITTORRENT_PASSWORD`, then recreate the
+API container. A rejected login is reported as a controlled 503; credentials
+must not be pasted into logs or committed.
+
+## A torrent has no selectable files
+
+Metadata may still be loading. Use the manual refresh action after peers are
+found. KADR accepts only known video extensions and rejects absolute or parent
+traversal paths. It does not guess that archives or unknown files are playable.
+
+## Starting a torrent returns insufficient storage
+
+Check free space on the configured KADR download filesystem. Do not lower
+`KADR_MIN_FREE_SPACE_GB` on a deployed host without confirming the cache size,
+database headroom, and impact on other services. The development override is
+not a production recommendation.
+

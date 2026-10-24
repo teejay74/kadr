@@ -22,6 +22,14 @@ from app.services.sources.exceptions import (
     IndexerNotConfiguredError,
     IndexerUnavailableError,
 )
+from app.services.torrents.exceptions import (
+    TorrentFileError,
+    TorrentLimitError,
+    TorrentNotConfiguredError,
+    TorrentNotFoundError,
+    TorrentStorageError,
+    TorrentUnavailableError,
+)
 
 settings = get_settings()
 logging.basicConfig(
@@ -44,9 +52,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             timeout=settings.prowlarr_timeout_seconds,
             headers={"Accept": "application/json"},
         ) as indexer_http_client:
-            application.state.metadata_http_client = metadata_http_client
-            application.state.indexer_http_client = indexer_http_client
-            yield
+            async with httpx.AsyncClient(
+                base_url=settings.qbittorrent_base_url,
+                timeout=settings.qbittorrent_timeout_seconds,
+                headers={"Accept": "application/json"},
+            ) as torrent_http_client:
+                application.state.metadata_http_client = metadata_http_client
+                application.state.indexer_http_client = indexer_http_client
+                application.state.torrent_http_client = torrent_http_client
+                yield
     await engine.dispose()
     logger.info("KADR API stopped")
 
@@ -102,8 +116,43 @@ def create_app() -> FastAPI:
         error = ErrorResponse(code="indexer_unavailable", message=str(exc))
         return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content=error.model_dump())
 
+    @application.exception_handler(TorrentNotConfiguredError)
+    async def torrent_not_configured(_: Request, exc: TorrentNotConfiguredError) -> JSONResponse:
+        error = ErrorResponse(code="torrent_not_configured", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=error.model_dump()
+        )
+
+    @application.exception_handler(TorrentUnavailableError)
+    async def torrent_unavailable(_: Request, exc: TorrentUnavailableError) -> JSONResponse:
+        error = ErrorResponse(code="torrent_unavailable", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content=error.model_dump())
+
+    @application.exception_handler(TorrentNotFoundError)
+    async def torrent_not_found(_: Request, exc: TorrentNotFoundError) -> JSONResponse:
+        error = ErrorResponse(code="torrent_not_found", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=error.model_dump())
+
+    @application.exception_handler(TorrentLimitError)
+    async def torrent_limit(_: Request, exc: TorrentLimitError) -> JSONResponse:
+        error = ErrorResponse(code="torrent_limit_reached", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(TorrentFileError)
+    async def torrent_file(_: Request, exc: TorrentFileError) -> JSONResponse:
+        error = ErrorResponse(code="invalid_torrent_file", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=error.model_dump()
+        )
+
+    @application.exception_handler(TorrentStorageError)
+    async def torrent_storage(_: Request, exc: TorrentStorageError) -> JSONResponse:
+        error = ErrorResponse(code="torrent_storage_unavailable", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE, content=error.model_dump()
+        )
+
     return application
 
 
 app = create_app()
-

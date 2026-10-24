@@ -21,9 +21,16 @@ class Settings(BaseSettings):
     prowlarr_api_key: SecretStr | None = None
     prowlarr_timeout_seconds: float = Field(default=30, gt=0, le=120)
     prowlarr_search_limit: int = Field(default=100, ge=1, le=500)
+    qbittorrent_base_url: str = "http://qbittorrent:8080"
+    qbittorrent_username: str = "kadr"
+    qbittorrent_password: SecretStr | None = None
+    qbittorrent_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    torrent_save_path: str = "/downloads/cache"
+    torrent_storage_root: str = "/downloads"
+    min_free_space_gb: float = Field(default=200, ge=0)
+    max_active_torrents: int = Field(default=3, ge=1, le=20)
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

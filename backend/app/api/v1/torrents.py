@@ -1,0 +1,57 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Path
+
+from app.api.dependencies import TorrentManagerDependency
+from app.schemas.torrents import (
+    AddTorrentRequest,
+    SelectTorrentFileRequest,
+    TorrentFile,
+    TorrentStatus,
+)
+
+router = APIRouter()
+
+
+@router.post("/media/{media_id}/torrents", response_model=TorrentStatus, status_code=201)
+async def add_torrent(
+    manager: TorrentManagerDependency,
+    body: AddTorrentRequest,
+    media_id: Annotated[int, Path(gt=0)],
+) -> TorrentStatus:
+    return await manager.add(media_id, body.media_kind, body.source_id)
+
+
+@router.get("/torrents/{task_id}", response_model=TorrentStatus)
+async def torrent_status(
+    manager: TorrentManagerDependency,
+    task_id: str,
+) -> TorrentStatus:
+    return await manager.status(task_id)
+
+
+@router.get("/torrents/{task_id}/files", response_model=list[TorrentFile])
+async def torrent_files(
+    manager: TorrentManagerDependency,
+    task_id: str,
+) -> list[TorrentFile]:
+    return await manager.files(task_id)
+
+
+@router.put("/torrents/{task_id}/selection", response_model=TorrentStatus)
+async def select_torrent_file(
+    manager: TorrentManagerDependency,
+    task_id: str,
+    body: SelectTorrentFileRequest,
+) -> TorrentStatus:
+    return await manager.select_file(task_id, body.file_id)
+
+
+@router.post("/torrents/{task_id}/start", response_model=TorrentStatus)
+async def start_torrent(manager: TorrentManagerDependency, task_id: str) -> TorrentStatus:
+    return await manager.start(task_id)
+
+
+@router.post("/torrents/{task_id}/stop", response_model=TorrentStatus)
+async def stop_torrent(manager: TorrentManagerDependency, task_id: str) -> TorrentStatus:
+    return await manager.stop(task_id)

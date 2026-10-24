@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.schemas.media import MediaDetails, MediaKind
@@ -24,6 +25,13 @@ class IndexerProvider(Protocol):
     async def list_indexers(self) -> list[dict[str, Any]]: ...
 
 
+@dataclass(frozen=True)
+class ResolvedSource:
+    release: SourceRelease
+    uri: str
+    info_hash: str | None
+
+
 class SourceSearchService:
     def __init__(
         self,
@@ -40,17 +48,9 @@ class SourceSearchService:
         sort: SourceSort,
         order: SortOrder,
     ) -> SourceResults:
-        media = await self._catalog.details(media_kind, media_id)
-        title = media.title or media.original_title
-        query = self._query(title, media.year)
-        raw_items = await self._provider.search(query, media_kind)
-        if not raw_items and media.original_title and media.original_title != title:
-            query = self._query(media.original_title, media.year)
-            raw_items = await self._provider.search(query, media_kind)
+        query, raw_items = await self._search_raw(media_id, media_kind)
         items = [
-            release
-            for payload in raw_items
-            if (release := self._normalize(payload)) is not None
+            release for payload in raw_items if (release := self._normalize(payload)) is not None
         ]
         items.sort(key=self._sort_key(sort), reverse=order == "desc")
         return SourceResults(
@@ -60,6 +60,43 @@ class SourceSearchService:
             items=items,
             total=len(items),
         )
+
+    async def resolve(
+        self,
+        media_id: int,
+        media_kind: MediaKind,
+        source_id: str,
+    ) -> ResolvedSource | None:
+        _, raw_items = await self._search_raw(media_id, media_kind)
+        for payload in raw_items:
+            release = self._normalize(payload)
+            if release is None or release.id != source_id:
+                continue
+            uri = self._optional_text(payload.get("magnetUrl")) or self._optional_text(
+                payload.get("downloadUrl")
+            )
+            if uri is None:
+                return None
+            return ResolvedSource(
+                release=release,
+                uri=uri,
+                info_hash=self._optional_text(payload.get("infoHash")),
+            )
+        return None
+
+    async def _search_raw(
+        self,
+        media_id: int,
+        media_kind: MediaKind,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        media = await self._catalog.details(media_kind, media_id)
+        title = media.title or media.original_title
+        query = self._query(title, media.year)
+        raw_items = await self._provider.search(query, media_kind)
+        if not raw_items and media.original_title and media.original_title != title:
+            query = self._query(media.original_title, media.year)
+            raw_items = await self._provider.search(query, media_kind)
+        return query, raw_items
 
     @staticmethod
     def _query(title: str, year: int | None) -> str:
@@ -88,9 +125,7 @@ class SourceSearchService:
         indexer = str(payload.get("indexer") or "Unknown indexer")
         size = max(self._integer(payload.get("size"), default=0), 0)
         identity = str(
-            payload.get("guid")
-            or payload.get("infoHash")
-            or f"{indexer}:{title}:{size}"
+            payload.get("guid") or payload.get("infoHash") or f"{indexer}:{title}:{size}"
         )
         parsed = parse_release_title(title)
         return SourceRelease(

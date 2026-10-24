@@ -92,3 +92,32 @@ export interface SourceResults {
   items: SourceRelease[]
   total: number
 }
+
+export interface TorrentFile {
+  id: number
+  name: string
+  size_bytes: number
+  progress: number
+  priority: number
+  is_video: boolean
+}
+
+export interface TorrentStatus {
+  id: string
+  media_id: number
+  media_kind: MediaKind
+  name: string
+  state: string
+  progress: number
+  downloaded_bytes: number
+  total_size_bytes: number
+  download_speed_bytes: number
+  upload_speed_bytes: number
+  peers: number
+  seeds: number
+  eta_seconds: number | null
+  selected_file_id: number | null
+  selected_file_path: string | null
+  can_start: boolean
+  can_stop: boolean
+}

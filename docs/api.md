@@ -73,8 +73,7 @@ Provider configuration and failure responses use the common error shape:
 ```
 
 Possible catalogue errors are `404 media_not_found`, `502
-metadata_unavailable`, and `503 metadata_not_configured`. Torrent, download,
-streaming, playback, and library mutation endpoints do not exist in Stage 3.
+metadata_unavailable`, and `503 metadata_not_configured`.
 
 ## Source endpoints
 
@@ -125,4 +124,26 @@ credentials.
 
 Source errors use `502 indexer_unavailable` and `503
 indexer_not_configured`. Source discovery does not add or download a torrent.
+
+## Torrent Manager endpoints
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /media/{id}/torrents` | Resolve an opaque source ID and add it stopped |
+| `GET /torrents/{task_id}` | Read real progress, speed, peers, and state |
+| `GET /torrents/{task_id}/files` | List torrent files and priorities |
+| `PUT /torrents/{task_id}/selection` | Prioritize one supported video |
+| `POST /torrents/{task_id}/start` | Start after selection and safety checks |
+| `POST /torrents/{task_id}/stop` | Stop without deleting data |
+
+The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`;
+selection uses `{"file_id":0}`. Responses include task ID, media identity,
+state, progress, byte counts, speeds, peers/seeds, ETA, selected file, and
+allowed actions. Source URIs, hashes, credentials, and raw qBittorrent data are
+not public API fields.
+
+Torrent errors use `torrent_not_configured` (503), `torrent_unavailable` (502),
+`torrent_not_found` (404), `torrent_limit_reached` (409),
+`invalid_torrent_file` (422), or `torrent_storage_unavailable` (507).
+Streaming and deletion endpoints remain out of scope in Stage 4.
 

@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { ApiError, getMediaPage, getSources } from './api'
+import { addTorrent, ApiError, getMediaPage, getSources } from './api'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -15,10 +15,9 @@ test('builds filtered movie catalogue query', async () => {
 
   await getMediaPage('movie', { page: 2, sort: 'rating', genre: 12, year: 1977 })
 
-  expect(fetchMock).toHaveBeenCalledWith(
-    '/api/v1/movies?page=2&sort=rating&genre=12&year=1977',
-    { headers: { Accept: 'application/json' } },
-  )
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/movies?page=2&sort=rating&genre=12&year=1977')
+  expect(new Headers(init.headers).get('Accept')).toBe('application/json')
 })
 
 test('preserves structured API errors', async () => {
@@ -45,8 +44,20 @@ test('builds a source search request without provider credentials', async () => 
 
   await getSources(42, 'movie', 'resolution', 'desc')
 
-  expect(fetchMock).toHaveBeenCalledWith(
-    '/api/v1/media/42/sources?kind=movie&sort=resolution&order=desc',
-    { headers: { Accept: 'application/json' } },
-  )
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/media/42/sources?kind=movie&sort=resolution&order=desc')
+  expect(new Headers(init.headers).get('Accept')).toBe('application/json')
+})
+
+test('adds a selected source without exposing its provider URL', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await addTorrent(42, 'movie', 'a'.repeat(24))
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/media/42/torrents')
+  expect(init.method).toBe('POST')
+  expect(JSON.parse(String(init.body))).toEqual({ media_kind: 'movie', source_id: 'a'.repeat(24) })
+  expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
 })

@@ -1,6 +1,6 @@
 # Architecture
 
-## Stage 3 boundaries
+## Stage 4 boundaries
 
 The current increment keeps the frontend, API, and indexer integration
 independently testable:
@@ -9,6 +9,7 @@ independently testable:
 browser -> :8180 nginx/Vue -> /api/* -> FastAPI -> TMDB adapter
                                       -> async SQLAlchemy -> SQLite cache
                                       -> Prowlarr adapter -> configured indexers
+                                      -> qBittorrent adapter -> KADR download cache
 ```
 
 Only nginx publishes a LAN-facing host port. Prowlarr's setup port is bound to
@@ -32,8 +33,17 @@ Source search is explicitly user-triggered. The source service first resolves
 the trusted title and year from the metadata service, then calls Prowlarr over
 the private Compose network. A dedicated Release Parser derives only attributes
 present in the release title. The public API omits Prowlarr download URLs,
-magnet links, credentials, and raw provider payloads; those are reserved for a
-future server-side Torrent Manager.
+magnet links, credentials, and raw provider payloads. The server-side Torrent
+Manager resolves the opaque source ID, passes the URI to qBittorrent, and
+exposes only normalized task/file state to the browser.
+
+qBittorrent persists configuration in `data/qbittorrent` and can write only to
+`data/downloads`. Its Web UI is bound to host loopback. The API sees the same
+download filesystem read-only solely for free-space checks. A magnet may run
+only long enough to receive metadata, using qBittorrent's
+`MetadataReceived` stop condition. Once files are visible, KADR disables all of
+them until the user selects one supported video. Active-download concurrency
+and minimum free space are configurable; refresh is manual.
 
 Prowlarr persists its own configuration in `data/prowlarr` and exposes its
 administrative UI only on host loopback. It is not a dependency of API health:
@@ -54,15 +64,15 @@ catalogue browsing continues when Prowlarr or an indexer is unavailable.
 | Indexer credentials or download URLs leak to browsers/logs | Tracker account compromise | Server-only `X-Api-Key`; normalized allowlisted response fields; no raw, magnet, or download URLs in Stage 3. |
 | Slow, rate-limited, or unavailable indexers | Delayed source search | User-triggered requests, bounded result count, configurable timeout, no background polling, controlled 502 errors. |
 | Incorrect quality inference from release names | Misleading source choice | Conservative parser with nullable attributes and a tested pattern matrix; no media probing claims. |
-| Torrent and streaming I/O pressure | Playback or Photodom degradation | Not implemented; future managers need bounded concurrency, free-space gates, and playback-aware scheduling. |
+| Torrent I/O pressure | Host or Photodom degradation | Stopped-by-default additions, bounded active torrents, configurable free-space gate, manual UI refresh, and qBittorrent memory limit; validate host headroom before deployment. |
 | Browser/TV codec fragmentation | Unsupported playback | Capability checks and honest errors; Direct Play first, no automatic transcoding. |
-| Path traversal or unsafe cache deletion | Loss of unrelated or saved data | Future storage services must canonicalize and enforce KADR roots; no deletion code exists through Stage 3. |
+| Malicious torrent paths or unsafe cache deletion | Filesystem escape or data loss | Absolute/traversal file names are rejected; qBittorrent is mounted only to the KADR download root; no deletion code exists through Stage 4. |
 | Public exposure of internal services/secrets | Account or host compromise | Only web entry point published; secrets server-side; auth and rate limiting are required before remote exposure. |
 
 ## Stage dependencies
 
-Stages 1-3 provide the shell, metadata catalogue, and Prowlarr source discovery.
-Stage 4 introduces the qBittorrent adapter. Stage 5 may build
+Stages 1-4 provide the shell, catalogue, source discovery, and qBittorrent
+control. Stage 5 may build
 streaming only after torrent state is real and tested. Stage 6 owns library and
 cache lifecycle. TV, remote-access, and stabilization work follow those layers.
 
