@@ -113,7 +113,7 @@ async def test_source_service_normalizes_filters_and_sorts() -> None:
 
     result = await service.search(42, "movie", "resolution", "desc")
 
-    assert provider.calls == [("Dune: Part Two 2024", "movie")]
+    assert provider.calls == [("Дюна: Часть вторая 2024", "movie")]
     assert result.total == 2
     assert [item.resolution for item in result.items] == ["2160p", "1080p"]
     assert result.items[0].release_type == "REMUX"
@@ -128,7 +128,7 @@ async def test_prowlarr_client_sends_key_and_search_parameters() -> None:
         assert request.url.path == "/api/v1/search"
         assert request.url.params["query"] == "Dune 2024"
         assert request.url.params["type"] == "movie"
-        assert request.url.params["categories"] == "2000"
+        assert request.url.params.get_list("categories") == ["2000", "8000"]
         return httpx.Response(200, json=[])
 
     async with httpx.AsyncClient(
@@ -160,3 +160,23 @@ async def test_sources_endpoint_returns_normalized_results(client: AsyncClient) 
     assert payload["media_id"] == 42
     assert payload["items"][0]["seeders"] == 20
     assert "download_url" not in payload["items"][0]
+
+
+async def test_source_service_prefers_localized_title_and_falls_back() -> None:
+    class EmptyThenFoundProvider(FakeIndexerProvider):
+        async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+            self.calls.append((query, media_kind))
+            if query.startswith("Дюна"):
+                return []
+            return await super().search(query, media_kind)
+
+    provider = EmptyThenFoundProvider()
+    service = SourceSearchService(FakeCatalog(), provider)
+
+    result = await service.search(42, "movie", "seeders", "desc")
+
+    assert provider.calls[:2] == [
+        ("Дюна: Часть вторая 2024", "movie"),
+        ("Dune: Part Two 2024", "movie"),
+    ]
+    assert result.query == "Dune: Part Two 2024"

@@ -23,10 +23,13 @@ class ProwlarrClient:
         return {"X-Api-Key": api_key.get_secret_value()}
 
     async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+        media_category = 2000 if media_kind == "movie" else 5000
         params: list[tuple[str, str | int]] = [
             ("query", query),
             ("type", "movie" if media_kind == "movie" else "tvsearch"),
-            ("categories", 2000 if media_kind == "movie" else 5000),
+            ("categories", media_category),
+            # Some indexers, including RuTor, expose search results as Other.
+            ("categories", 8000),
             ("limit", self._settings.prowlarr_search_limit),
             ("offset", 0),
         ]

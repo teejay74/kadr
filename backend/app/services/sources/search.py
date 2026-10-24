@@ -41,9 +41,12 @@ class SourceSearchService:
         order: SortOrder,
     ) -> SourceResults:
         media = await self._catalog.details(media_kind, media_id)
-        title = media.original_title or media.title
-        query = f"{title} {media.year}" if media.year else title
+        title = media.title or media.original_title
+        query = self._query(title, media.year)
         raw_items = await self._provider.search(query, media_kind)
+        if not raw_items and media.original_title and media.original_title != title:
+            query = self._query(media.original_title, media.year)
+            raw_items = await self._provider.search(query, media_kind)
         items = [
             release
             for payload in raw_items
@@ -57,6 +60,10 @@ class SourceSearchService:
             items=items,
             total=len(items),
         )
+
+    @staticmethod
+    def _query(title: str, year: int | None) -> str:
+        return f"{title} {year}" if year else title
 
     async def indexers(self) -> list[IndexerSummary]:
         raw_items = await self._provider.list_indexers()

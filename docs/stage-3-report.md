@@ -13,6 +13,8 @@
   provider errors.
 - Added a conservative Release Parser for resolution, source, codec, HDR,
   audio, language, and release type.
+- Added compatibility for indexers such as RuTor that classify results as
+  `Other (8000)`, plus localized-title search with original-title fallback.
 - Added a manual source-search panel to movie and series pages. No background
   polling or automatic searches are performed.
 - Deliberately excluded raw provider payloads, API keys, magnet/download URLs,
@@ -21,22 +23,23 @@
 ## Verification so far
 
 - All four KADR images build successfully.
-- Pytest: 13 passed.
+- Pytest: 14 passed.
 - Ruff: all checks passed.
 - Vitest: 4 files, 6 tests passed.
 - Strict TypeScript check passed.
 - `api`, `web`, and `prowlarr` report healthy.
 - Real Prowlarr API authentication succeeded; detected version 2.6.5.5623 and
   SQLite storage.
-- End-to-end KADR → TMDB → Prowlarr request returned HTTP 200 and a truthful
-  empty result.
+- Configured RuTor passed Prowlarr's connection test and is visible through
+  KADR as an enabled public torrent indexer.
+- End-to-end KADR → TMDB → Prowlarr → RuTor search returned HTTP 200 and 54
+  normalized releases for a real movie query.
 
-## Acceptance status and known issue
+## Acceptance status
 
-No indexer is configured yet. Therefore Stage 3's final acceptance criterion —
-displaying real releases from a configured source — has not yet been claimed.
-The owner must configure and test an authorized torrent indexer in the local
-Prowlarr UI; KADR must then be retested with a real non-empty response.
+Stage 3's acceptance criterion is met: a media page can request and display
+real normalized releases from the configured source. No torrent was selected,
+added, or downloaded during verification.
 
 ## Changed files
 
@@ -59,6 +62,5 @@ Prowlarr UI; KADR must then be retested with a real non-empty response.
 
 ## Next action
 
-Configure one authorized torrent indexer at `http://127.0.0.1:9696`. After a
-successful Prowlarr test, repeat the KADR source search, review the normalized
-fields, update this report with the live result, and only then finalize Stage 3.
+Review and commit the RuTor compatibility update. Begin Stage 4 only after its
+qBittorrent and storage-safety boundaries have been reviewed separately.

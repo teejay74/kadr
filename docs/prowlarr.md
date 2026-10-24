@@ -22,3 +22,9 @@ binding and use an SSH tunnel for administration.
 
 KADR does not ship indexer definitions, accounts, cookies, or credentials.
 Availability and permitted use depend on each indexer's rules and jurisdiction.
+
+RuTor reports its releases in Prowlarr's `Other` category rather than reliable
+movie/TV subcategories. KADR includes category `8000` alongside the requested
+movie or TV category and still applies a media-title query. Localized metadata
+titles are searched first, with the original title used only as an empty-result
+fallback.
