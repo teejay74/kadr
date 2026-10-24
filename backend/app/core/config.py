@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     tmdb_region: str = "RU"
     tmdb_timeout_seconds: float = Field(default=8, gt=0, le=30)
     metadata_cache_ttl_seconds: int = Field(default=21_600, ge=300, le=15_552_000)
+    prowlarr_base_url: str = "http://prowlarr:9696"
+    prowlarr_api_key: SecretStr | None = None
+    prowlarr_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    prowlarr_search_limit: int = Field(default=100, ge=1, le=500)
 
 
 @lru_cache

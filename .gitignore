@@ -13,4 +13,6 @@ frontend/node_modules/
 frontend/dist/
 data/database/*
 !data/database/.gitkeep
+data/prowlarr/*
+!data/prowlarr/.gitkeep
 

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import StatePanel from '../components/StatePanel.vue'
+import SourcesPanel from '../components/SourcesPanel.vue'
 import { friendlyApiError, getMediaDetails } from '../services/api'
 import type { MediaDetails, MediaKind } from '../types/media'
 
@@ -63,6 +64,8 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         </div>
       </div>
     </div>
+
+    <SourcesPanel :media-id="media.id" :kind="media.kind" />
 
     <section v-if="media.cast.length" class="details-section">
       <h2>В ролях</h2>

@@ -62,3 +62,33 @@ export interface CatalogQuery {
   genre?: number | null
   year?: number | null
 }
+
+export type SourceSort = 'seeders' | 'size' | 'resolution' | 'source' | 'title'
+export type SortOrder = 'asc' | 'desc'
+
+export interface SourceRelease {
+  id: string
+  title: string
+  indexer: string
+  size_bytes: number
+  seeders: number | null
+  peers: number | null
+  published_at: string | null
+  protocol: 'torrent'
+  resolution: string | null
+  source: string | null
+  codec: string | null
+  hdr: boolean
+  hdr_format: string | null
+  audio: string | null
+  language: string | null
+  release_type: string | null
+}
+
+export interface SourceResults {
+  media_id: number
+  media_kind: MediaKind
+  query: string
+  items: SourceRelease[]
+  total: number
+}

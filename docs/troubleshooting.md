@@ -37,3 +37,23 @@ outbound DNS/HTTPS, the token, and TMDB availability. KADR serves a previously
 cached response during a temporary provider outage when one exists; otherwise
 it returns a controlled `502`. Do not increase polling frequency as a remedy.
 
+## Prowlarr does not become healthy
+
+Run `docker compose ps prowlarr` and `docker compose logs --tail=200 prowlarr`.
+Its own `/init` process must remain PID 1, so do not add Compose `init: true` to
+that service. Confirm `data/prowlarr` permissions and that local port 9696 is
+free. Do not delete its database as a repair attempt.
+
+## Source search says Prowlarr is not configured
+
+Open `http://127.0.0.1:9696`, then copy the API key from Settings → General to
+`KADR_PROWLARR_API_KEY` in `.env`. Recreate the API with
+`docker compose up -d --force-recreate api`. Never expose or commit the key.
+
+## Source search returns no releases
+
+Check `GET /api/v1/indexers`. At least one enabled torrent indexer supporting
+movie or TV categories must be configured and pass its test in Prowlarr. An
+empty result is valid and is not replaced with mock data. Respect each
+indexer's access rules and query limits.
+

@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+import pytest
+from httpx import AsyncClient
+
+from app.api.dependencies import get_source_search_service
+from app.core.config import Settings
+from app.main import app
+from app.schemas.media import MediaDetails, MediaKind
+from app.services.sources.exceptions import IndexerNotConfiguredError
+from app.services.sources.prowlarr import ProwlarrClient
+from app.services.sources.release_parser import parse_release_title
+from app.services.sources.search import SourceSearchService
+
+
+class FakeCatalog:
+    async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+        return MediaDetails(
+            id=media_id,
+            kind=kind,
+            title="Дюна: Часть вторая",
+            original_title="Dune: Part Two",
+            overview="",
+            release_date="2024-02-27",
+            year=2024,
+            rating=8.0,
+            popularity=100,
+        )
+
+
+class FakeIndexerProvider:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+        self.calls.append((query, media_kind))
+        return [
+            {
+                "guid": "release-1",
+                "title": "Dune.Part.Two.2024.1080p.WEB-DL.x264.DDP5.1.RUS",
+                "indexer": "Example Torrent",
+                "size": 10_000,
+                "seeders": 20,
+                "leechers": 3,
+                "protocol": "torrent",
+                "downloadUrl": "http://prowlarr/secret-download-url",
+            },
+            {
+                "guid": "release-2",
+                "title": "Dune.Part.Two.2024.2160p.BluRay.REMUX.HEVC.HDR10.TrueHD.Atmos",
+                "indexer": "Example Torrent",
+                "size": 50_000,
+                "seeders": 8,
+                "leechers": 1,
+                "protocol": "torrent",
+            },
+            {
+                "title": "Usenet result",
+                "indexer": "Example Usenet",
+                "size": 1,
+                "protocol": "usenet",
+            },
+        ]
+
+    async def list_indexers(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 7,
+                "name": "Example Torrent",
+                "enable": True,
+                "protocol": "torrent",
+                "privacy": "public",
+            }
+        ]
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        (
+            "Movie.2025.1080p.WEB-DL.H264",
+            {"resolution": "1080p", "source": "WEB-DL", "codec": "H264", "hdr": False},
+        ),
+        (
+            "Movie.2025.2160p.BluRay.x265.HDR10+.DTS-HD.MA",
+            {
+                "resolution": "2160p",
+                "source": "BluRay",
+                "codec": "HEVC",
+                "hdr": True,
+                "hdr_format": "HDR10+",
+            },
+        ),
+        (
+            "Movie.Unknown.Release",
+            {"resolution": None, "source": None, "codec": None, "hdr": False},
+        ),
+    ],
+)
+def test_release_parser_is_conservative(title: str, expected: dict[str, object]) -> None:
+    parsed = parse_release_title(title)
+
+    for field, value in expected.items():
+        assert getattr(parsed, field) == value
+
+
+async def test_source_service_normalizes_filters_and_sorts() -> None:
+    provider = FakeIndexerProvider()
+    service = SourceSearchService(FakeCatalog(), provider)
+
+    result = await service.search(42, "movie", "resolution", "desc")
+
+    assert provider.calls == [("Dune: Part Two 2024", "movie")]
+    assert result.total == 2
+    assert [item.resolution for item in result.items] == ["2160p", "1080p"]
+    assert result.items[0].release_type == "REMUX"
+    assert result.items[0].hdr_format == "HDR10"
+    assert result.items[1].language == "RU"
+    assert "download" not in result.items[0].model_dump_json().lower()
+
+
+async def test_prowlarr_client_sends_key_and_search_parameters() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-Api-Key"] == "secret-key"
+        assert request.url.path == "/api/v1/search"
+        assert request.url.params["query"] == "Dune 2024"
+        assert request.url.params["type"] == "movie"
+        assert request.url.params["categories"] == "2000"
+        return httpx.Response(200, json=[])
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://prowlarr:9696",
+    ) as http_client:
+        client = ProwlarrClient(http_client, Settings(prowlarr_api_key="secret-key"))
+        assert await client.search("Dune 2024", "movie") == []
+
+
+async def test_prowlarr_client_requires_server_side_key() -> None:
+    async with httpx.AsyncClient(base_url="http://prowlarr:9696") as http_client:
+        client = ProwlarrClient(http_client, Settings())
+        with pytest.raises(IndexerNotConfiguredError):
+            await client.search("Dune 2024", "movie")
+
+
+async def test_sources_endpoint_returns_normalized_results(client: AsyncClient) -> None:
+    service = SourceSearchService(FakeCatalog(), FakeIndexerProvider())
+    app.dependency_overrides[get_source_search_service] = lambda: service
+
+    response = await client.get(
+        "/api/v1/media/42/sources",
+        params={"kind": "movie", "sort": "seeders", "order": "desc"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["media_id"] == 42
+    assert payload["items"][0]["seeders"] == 20
+    assert "download_url" not in payload["items"][0]

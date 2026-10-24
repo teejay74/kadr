@@ -74,5 +74,55 @@ Provider configuration and failure responses use the common error shape:
 
 Possible catalogue errors are `404 media_not_found`, `502
 metadata_unavailable`, and `503 metadata_not_configured`. Torrent, download,
-streaming, playback, and library mutation endpoints do not exist in Stage 2.
+streaming, playback, and library mutation endpoints do not exist in Stage 3.
+
+## Source endpoints
+
+### `GET /api/v1/media/{id}/sources`
+
+Runs a user-triggered Prowlarr search. Required query parameter `kind` is
+`movie` or `series`. Optional `sort` values are `seeders`, `size`,
+`resolution`, `source`, and `title`; `order` is `asc` or `desc`.
+
+```json
+{
+  "media_id": 42,
+  "media_kind": "movie",
+  "query": "Dune: Part Two 2024",
+  "total": 1,
+  "items": [
+    {
+      "id": "66d83f88a6b5b3d0b9f8f101",
+      "title": "Dune.Part.Two.2024.2160p.WEB-DL.HEVC.HDR10",
+      "indexer": "Configured indexer",
+      "size_bytes": 10737418240,
+      "seeders": 24,
+      "peers": 3,
+      "published_at": "2026-10-20T12:00:00Z",
+      "protocol": "torrent",
+      "resolution": "2160p",
+      "source": "WEB-DL",
+      "codec": "HEVC",
+      "hdr": true,
+      "hdr_format": "HDR10",
+      "audio": null,
+      "language": null,
+      "release_type": "web"
+    }
+  ]
+}
+```
+
+Unknown title characteristics are `null`; absence of an explicit HDR marker is
+reported as `false`. Usenet results are excluded. Raw Prowlarr payloads,
+download URLs, magnet links, and API keys are never returned.
+
+### `GET /api/v1/indexers`
+
+Returns safe summaries of configured Prowlarr indexers: ID, name, enabled
+state, protocol, and privacy type. It does not return indexer settings or
+credentials.
+
+Source errors use `502 indexer_unavailable` and `503
+indexer_not_configured`. Source discovery does not add or download a torrent.
 

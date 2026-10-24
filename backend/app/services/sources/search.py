@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+import hashlib
+from typing import Any, Protocol
+
+from app.schemas.media import MediaDetails, MediaKind
+from app.schemas.sources import (
+    IndexerSummary,
+    SortOrder,
+    SourceRelease,
+    SourceResults,
+    SourceSort,
+)
+from app.services.sources.release_parser import parse_release_title
+
+
+class MediaCatalog(Protocol):
+    async def details(self, kind: MediaKind, media_id: int) -> MediaDetails: ...
+
+
+class IndexerProvider(Protocol):
+    async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]: ...
+
+    async def list_indexers(self) -> list[dict[str, Any]]: ...
+
+
+class SourceSearchService:
+    def __init__(
+        self,
+        catalog: MediaCatalog,
+        provider: IndexerProvider,
+    ) -> None:
+        self._catalog = catalog
+        self._provider = provider
+
+    async def search(
+        self,
+        media_id: int,
+        media_kind: MediaKind,
+        sort: SourceSort,
+        order: SortOrder,
+    ) -> SourceResults:
+        media = await self._catalog.details(media_kind, media_id)
+        title = media.original_title or media.title
+        query = f"{title} {media.year}" if media.year else title
+        raw_items = await self._provider.search(query, media_kind)
+        items = [
+            release
+            for payload in raw_items
+            if (release := self._normalize(payload)) is not None
+        ]
+        items.sort(key=self._sort_key(sort), reverse=order == "desc")
+        return SourceResults(
+            media_id=media_id,
+            media_kind=media_kind,
+            query=query,
+            items=items,
+            total=len(items),
+        )
+
+    async def indexers(self) -> list[IndexerSummary]:
+        raw_items = await self._provider.list_indexers()
+        return [
+            IndexerSummary(
+                id=int(item.get("id") or 0),
+                name=str(item.get("name") or item.get("implementationName") or "Indexer"),
+                enabled=bool(item.get("enable", False)),
+                protocol=self._optional_text(item.get("protocol")),
+                privacy=self._optional_text(item.get("privacy")),
+            )
+            for item in raw_items
+            if item.get("id") is not None
+        ]
+
+    def _normalize(self, payload: dict[str, Any]) -> SourceRelease | None:
+        if str(payload.get("protocol") or "").lower() != "torrent":
+            return None
+        title = self._optional_text(payload.get("title"))
+        if title is None:
+            return None
+        indexer = str(payload.get("indexer") or "Unknown indexer")
+        size = max(self._integer(payload.get("size"), default=0), 0)
+        identity = str(
+            payload.get("guid")
+            or payload.get("infoHash")
+            or f"{indexer}:{title}:{size}"
+        )
+        parsed = parse_release_title(title)
+        return SourceRelease(
+            id=hashlib.sha256(identity.encode()).hexdigest()[:24],
+            title=title,
+            indexer=indexer,
+            size_bytes=size,
+            seeders=self._optional_non_negative_integer(payload.get("seeders")),
+            peers=self._optional_non_negative_integer(payload.get("leechers")),
+            published_at=self._optional_text(payload.get("publishDate")),
+            **parsed.model_dump(),
+        )
+
+    @staticmethod
+    def _sort_key(sort: SourceSort):
+        resolution_rank = {"2160p": 4, "1080p": 3, "720p": 2, "480p": 1}
+        source_rank = {"BluRay": 5, "WEB-DL": 4, "WEBRip": 3, "HDTV": 2, "DVDRip": 1, "CAM": 0}
+        if sort == "seeders":
+            return lambda item: item.seeders if item.seeders is not None else -1
+        if sort == "size":
+            return lambda item: item.size_bytes
+        if sort == "resolution":
+            return lambda item: resolution_rank.get(item.resolution or "", -1)
+        if sort == "source":
+            return lambda item: source_rank.get(item.source or "", -1)
+        return lambda item: item.title.casefold()
+
+    @staticmethod
+    def _integer(value: object, *, default: int) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return default
+
+    @classmethod
+    def _optional_non_negative_integer(cls, value: object) -> int | None:
+        if value is None:
+            return None
+        return max(cls._integer(value, default=0), 0)
+
+    @staticmethod
+    def _optional_text(value: object) -> str | None:
+        return value if isinstance(value, str) and value else None

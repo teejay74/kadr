@@ -1,6 +1,6 @@
 # Streaming
 
-Streaming is explicitly out of scope through Stage 2. There is no player, HTTP
+Streaming is explicitly out of scope through Stage 3. There is no player, HTTP
 Range endpoint, torrent client, fake download, or transcoding process in this
 repository.
 

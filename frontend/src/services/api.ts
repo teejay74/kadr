@@ -1,4 +1,13 @@
-import type { CatalogQuery, Genre, MediaDetails, MediaKind, MediaPage } from '../types/media'
+import type {
+  CatalogQuery,
+  Genre,
+  MediaDetails,
+  MediaKind,
+  MediaPage,
+  SortOrder,
+  SourceResults,
+  SourceSort,
+} from '../types/media'
 
 export interface HealthResponse {
   status: 'ok' | 'degraded'
@@ -62,12 +71,28 @@ export function getGenres(kind: MediaKind): Promise<Genre[]> {
   return request<Genre[]>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}/genres`)
 }
 
+export function getSources(
+  mediaId: number,
+  kind: MediaKind,
+  sort: SourceSort = 'seeders',
+  order: SortOrder = 'desc',
+): Promise<SourceResults> {
+  const params = new URLSearchParams({ kind, sort, order })
+  return request<SourceResults>(`/api/v1/media/${mediaId}/sources?${params}`)
+}
+
 export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError && error.code === 'metadata_not_configured') {
     return 'Добавьте KADR_TMDB_ACCESS_TOKEN в .env и перезапустите API.'
   }
   if (error instanceof ApiError && error.code === 'media_not_found') {
     return 'Такой фильм или сериал не найден.'
+  }
+  if (error instanceof ApiError && error.code === 'indexer_not_configured') {
+    return 'Prowlarr ещё не настроен. Добавьте индексатор и API-ключ.'
+  }
+  if (error instanceof ApiError && error.code === 'indexer_unavailable') {
+    return 'Prowlarr или один из индексаторов сейчас недоступен.'
   }
   return 'Каталог временно недоступен. Попробуйте ещё раз позже.'
 }
