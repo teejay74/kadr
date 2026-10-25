@@ -142,7 +142,26 @@ HDR tone mapping, and every browser/device combination are not yet supported.
 
 ## Resume position is missing
 
-Resume state is local to the current browser profile. Private browsing,
-clearing site data, or blocked local storage removes it. KADR does not yet sync
-watch history to the database; that belongs to Stage 6.
+Stage 6 stores resume state in SQLite and keeps browser-local state as a
+fallback. Check `GET /api/v1/history/{media_id}?media_kind=...` and API logs.
+Positions under five seconds and completed titles intentionally do not prompt
+for resume.
+
+## Saving to the library is unavailable
+
+The selected file must reach 100%. Confirm `data/library` is writable by the
+configured KADR UID/GID and remains an isolated KADR-only directory. Do not
+make unrelated paths writable as a workaround.
+
+## A saved file cannot be deleted
+
+Close every player using that item and retry. KADR rejects deletion while a
+library Range response is active and refuses paths outside
+`KADR_LIBRARY_ROOT`; never bypass these checks.
+
+## Cache cleanup did not remove a torrent
+
+Cleanup removes only stopped, unsaved KADR tasks older than
+`KADR_CACHE_TTL_HOURS`. Active playback, active downloading, and tasks tied to
+a saved library record are protected.
 

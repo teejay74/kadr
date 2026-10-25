@@ -1,12 +1,14 @@
 # KADR
 
 KADR is a self-hosted personal media platform. The repository currently
-contains the **Stage 5 Streaming MVP**: a working FastAPI + Vue 3 + TypeScript
+contains the **Stage 6 media-library increment**: a working FastAPI + Vue 3 + TypeScript
 application with a TMDB catalogue, isolated Prowlarr source search,
 server-side qBittorrent control, availability-aware HTTP byte ranges, and a
 Direct Play browser player. An explicit “Совместимая версия” action uses
 `ffprobe` and FFmpeg to remux or transcode completed files to browser-friendly
-H.264/AAC MP4. Media-library deletion remains intentionally unimplemented.
+H.264/AAC MP4. Fully downloaded selections can be saved to an isolated local
+library, replayed without a torrent source, favorited, resumed across browsers,
+and explicitly deleted with protected path checks.
 
 ## Quick start
 
@@ -45,6 +47,12 @@ If its container or codecs are unsupported, wait for the file to finish and
 choose «Совместимая версия»; FFmpeg never starts automatically.
 See the [qBittorrent setup guide](docs/qbittorrent.md) and
 [streaming guide](docs/streaming.md).
+
+After a selected video reaches 100%, use «Сохранить в библиотеку». The
+«Библиотека» page reports saved size, plays the independent copy, and requires
+confirmation before deletion. Temporary stopped downloads older than the
+configured TTL are eligible for cache cleanup; saved and active media are
+protected.
 
 Stop KADR without deleting its database:
 
@@ -85,4 +93,5 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 4 report](docs/stage-4-report.md)
 - [Stage 5 report](docs/stage-5-report.md)
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
+- [Stage 6 report](docs/stage-6-report.md)
 

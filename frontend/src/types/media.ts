@@ -139,3 +139,37 @@ export interface PlaybackPreparation {
   message: string | null
   stream_url: string | null
 }
+
+export interface MediaSnapshot {
+  media_id: number
+  media_kind: MediaKind
+  title: string
+  original_title: string
+  poster_url: string | null
+  backdrop_url: string | null
+}
+
+export interface LibraryItem extends MediaSnapshot {
+  id: string
+  task_id: string
+  size_bytes: number
+  created_at: string
+  stream_url: string
+}
+
+export interface FavoriteItem extends MediaSnapshot {
+  id: string
+  created_at: string
+}
+
+export interface HistoryItem {
+  id: string
+  media_id: number
+  media_kind: MediaKind
+  title: string
+  poster_url: string | null
+  position_seconds: number
+  duration_seconds: number
+  completed: boolean
+  updated_at: string
+}

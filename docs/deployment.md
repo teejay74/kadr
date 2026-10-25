@@ -1,6 +1,6 @@
 # Deployment
 
-## Local Stage 5
+## Local Stage 6
 
 1. Copy `.env.example` to `.env` and select an unused `KADR_HTTP_PORT`.
 2. Create a TMDB API Read Access Token and set `KADR_TMDB_ACCESS_TOKEN` in
@@ -14,7 +14,7 @@
    `KADR_QBITTORRENT_USERNAME` and `KADR_QBITTORRENT_PASSWORD`. Follow
    [qbittorrent.md](qbittorrent.md); do not retain the temporary password.
 6. Ensure `data/database`, `data/prowlarr`, `data/qbittorrent`,
-   `data/downloads`, and `data/playback` are writable by the configured UID/GID.
+   `data/downloads`, `data/playback`, and `data/library` are writable by the configured UID/GID.
    The API receives downloads read-only and writes only generated media under
    playback. Set both free-space floors for the audited host; the download
    default is 200 GB and the playback-cache reserve is 5 GB.
@@ -36,7 +36,7 @@ normal update.
 
 ## Mandatory Debian preflight
 
-Stages 1-5 were prepared and tested locally; they have not touched the working
+Stages 1-6 were prepared and tested locally; they have not touched the working
 Debian server. Before server deployment, perform read-only checks for OS/architecture,
 Docker/Compose versions, running containers and Compose projects, listening
 ports, memory/load, free space/inodes, mount filesystem/type/options, and the

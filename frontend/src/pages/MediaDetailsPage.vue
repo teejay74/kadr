@@ -4,7 +4,13 @@ import { useRoute } from 'vue-router'
 
 import StatePanel from '../components/StatePanel.vue'
 import SourcesPanel from '../components/SourcesPanel.vue'
-import { friendlyApiError, getMediaDetails } from '../services/api'
+import {
+  addFavorite,
+  deleteFavorite,
+  friendlyApiError,
+  getFavorites,
+  getMediaDetails,
+} from '../services/api'
 import type { MediaDetails, MediaKind } from '../types/media'
 
 const route = useRoute()
@@ -12,6 +18,8 @@ const kind = computed(() => route.meta.kind as MediaKind)
 const media = ref<MediaDetails | null>(null)
 const loading = ref(true)
 const error = ref('')
+const favorite = ref(false)
+const favoriteBusy = ref(false)
 
 async function loadDetails(): Promise<void> {
   const id = Number(route.params.id)
@@ -24,10 +32,37 @@ async function loadDetails(): Promise<void> {
   error.value = ''
   try {
     media.value = await getMediaDetails(kind.value, id)
+    const favorites = await getFavorites()
+    favorite.value = favorites.some((item) => item.media_id === id && item.media_kind === kind.value)
   } catch (caught) {
     error.value = friendlyApiError(caught)
   } finally {
     loading.value = false
+  }
+}
+
+async function toggleFavorite(): Promise<void> {
+  if (!media.value || favoriteBusy.value) return
+  favoriteBusy.value = true
+  try {
+    if (favorite.value) {
+      await deleteFavorite(media.value.kind, media.value.id)
+      favorite.value = false
+    } else {
+      await addFavorite({
+        media_id: media.value.id,
+        media_kind: media.value.kind,
+        title: media.value.title,
+        original_title: media.value.original_title,
+        poster_url: media.value.poster_url,
+        backdrop_url: media.value.backdrop_url,
+      })
+      favorite.value = true
+    }
+  } catch (caught) {
+    error.value = friendlyApiError(caught)
+  } finally {
+    favoriteBusy.value = false
   }
 }
 
@@ -60,12 +95,22 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         <p class="details-overview">{{ media.overview || 'Описание пока не переведено.' }}</p>
         <div class="action-row">
           <a class="button primary focus-ring" href="#media-sources">Выбрать источник</a>
+          <button class="button secondary focus-ring" type="button" :disabled="favoriteBusy" @click="toggleFavorite">
+            {{ favorite ? 'В избранном' : 'В избранное' }}
+          </button>
           <a v-if="media.trailer_url" class="button secondary focus-ring" :href="media.trailer_url" target="_blank" rel="noopener">Трейлер ↗</a>
         </div>
       </div>
     </div>
 
-    <SourcesPanel :media-id="media.id" :kind="media.kind" />
+    <SourcesPanel
+      :media-id="media.id"
+      :kind="media.kind"
+      :title="media.title"
+      :original-title="media.original_title"
+      :poster-url="media.poster_url"
+      :backdrop-url="media.backdrop_url"
+    />
 
     <section v-if="media.cast.length" class="details-section">
       <h2>В ролях</h2>

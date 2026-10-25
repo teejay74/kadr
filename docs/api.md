@@ -146,7 +146,8 @@ not public API fields.
 Torrent errors use `torrent_not_configured` (503), `torrent_unavailable` (502),
 `torrent_not_found` (404), `torrent_limit_reached` (409),
 `invalid_torrent_file` (422), or `torrent_storage_unavailable` (507).
-Deletion endpoints remain out of scope through Stage 5.
+Torrent deletion is internal to the guarded cache lifecycle; it is not exposed
+as an arbitrary public torrent-delete endpoint.
 
 ## Streaming endpoint
 
@@ -198,4 +199,28 @@ by default. Errors use `playback_preparation_failed` or
 `playback_preparation_limit` (409). The compatible stream returns `200`/`206`
 and the same Range headers as Direct Play; requesting it before completion
 returns `playback_artifact_not_ready` (409).
+
+## Library, favorites, and history
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /library` | List saved local media and byte sizes |
+| `POST /library` | Save one fully downloaded selected file |
+| `GET /library/{id}/stream` | Range-stream a saved file without qBittorrent |
+| `DELETE /library/{id}` | Delete one inactive saved file |
+| `GET /favorites` | List favorites |
+| `POST /favorites` | Add an idempotent favorite snapshot |
+| `DELETE /favorites/{kind}/{media_id}` | Remove a favorite |
+| `GET /history` | List server-side watch history |
+| `GET /history/{media_id}?media_kind=movie` | Read one resume position |
+| `PUT /history/{media_id}` | Upsert position, duration, and completion |
+| `POST /cache/cleanup` | Run the guarded TTL cleanup immediately |
+| `GET /system/storage` | Report library/cache counts, bytes, and free space |
+
+Saving requires a task whose selected video is fully downloaded. KADR creates
+an atomic hard link when possible and otherwise copies to the configured
+library root. API responses never expose filesystem paths. Library streaming
+supports the same single-range `200`/`206`/`416` contract. Deleting an active
+library stream returns `409 library_conflict`; unsafe or unavailable storage
+returns `507 library_storage`.
 

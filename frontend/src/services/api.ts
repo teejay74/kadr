@@ -1,6 +1,10 @@
 import type {
   CatalogQuery,
   Genre,
+  FavoriteItem,
+  HistoryItem,
+  LibraryItem,
+  MediaSnapshot,
   MediaDetails,
   MediaKind,
   MediaPage,
@@ -49,7 +53,53 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(response.status, payload.code ?? 'request_failed', payload.message ?? 'Request failed')
   }
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+export function getLibrary(): Promise<LibraryItem[]> {
+  return request<LibraryItem[]>('/api/v1/library')
+}
+
+export function saveToLibrary(taskId: string, media: MediaSnapshot): Promise<LibraryItem> {
+  return request<LibraryItem>('/api/v1/library', {
+    method: 'POST',
+    body: JSON.stringify({ task_id: taskId, ...media }),
+  })
+}
+
+export function deleteLibraryItem(itemId: string): Promise<void> {
+  return request<void>(`/api/v1/library/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
+}
+
+export function getFavorites(): Promise<FavoriteItem[]> {
+  return request<FavoriteItem[]>('/api/v1/favorites')
+}
+
+export function addFavorite(media: MediaSnapshot): Promise<FavoriteItem> {
+  return request<FavoriteItem>('/api/v1/favorites', {
+    method: 'POST',
+    body: JSON.stringify(media),
+  })
+}
+
+export function deleteFavorite(kind: MediaKind, mediaId: number): Promise<void> {
+  return request<void>(`/api/v1/favorites/${kind}/${mediaId}`, { method: 'DELETE' })
+}
+
+export function getHistoryItem(mediaId: number, kind: MediaKind): Promise<HistoryItem | null> {
+  const params = new URLSearchParams({ media_kind: kind })
+  return request<HistoryItem | null>(`/api/v1/history/${mediaId}?${params}`)
+}
+
+export function updateHistory(
+  mediaId: number,
+  payload: Omit<HistoryItem, 'id' | 'media_id' | 'updated_at'>,
+): Promise<HistoryItem> {
+  return request<HistoryItem>(`/api/v1/history/${mediaId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function addTorrent(mediaId: number, mediaKind: MediaKind, sourceId: string): Promise<TorrentStatus> {
@@ -170,6 +220,15 @@ export function friendlyApiError(error: unknown): string {
   }
   if (error instanceof ApiError && error.code === 'playback_preparation_limit') {
     return 'Уже подготавливается другая совместимая версия. Дождитесь её завершения.'
+  }
+  if (error instanceof ApiError && error.code === 'library_conflict') {
+    return error.message
+  }
+  if (error instanceof ApiError && error.code === 'library_storage') {
+    return 'Хранилище библиотеки недоступно. Проверьте каталог и свободное место.'
+  }
+  if (error instanceof ApiError && error.code === 'library_not_found') {
+    return 'Запись библиотеки не найдена.'
   }
   return 'Каталог временно недоступен. Попробуйте ещё раз позже.'
 }

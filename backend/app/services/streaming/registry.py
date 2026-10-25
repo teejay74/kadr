@@ -45,3 +45,7 @@ class StreamRegistry:
     async def active_count(self) -> int:
         async with self._lock:
             return len(self._tasks)
+
+    async def is_active(self, task_id: str) -> bool:
+        async with self._lock:
+            return self._tasks[task_id] > 0

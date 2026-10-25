@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.torrent_task import TorrentTask
@@ -46,4 +48,16 @@ class TorrentTaskRepository:
 
     async def set_state(self, task: TorrentTask, state: str) -> None:
         task.state = state
+        await self._session.commit()
+
+    async def list_older_than(self, cutoff: datetime) -> list[TorrentTask]:
+        result = await self._session.execute(
+            select(TorrentTask)
+            .where(TorrentTask.updated_at < cutoff)
+            .order_by(TorrentTask.updated_at)
+        )
+        return list(result.scalars())
+
+    async def delete(self, task: TorrentTask) -> None:
+        await self._session.execute(delete(TorrentTask).where(TorrentTask.id == task.id))
         await self._session.commit()

@@ -1,6 +1,6 @@
 # Storage
 
-Stage 4 persists SQLite at `./data/database/kadr.db`. In addition to application
+SQLite is persisted at `./data/database/kadr.db`. In addition to application
 state, the database holds normalized TMDB response-cache records with expiry
 timestamps. The API container
 mounts that directory at `/data`; the location and database URL are
@@ -20,13 +20,19 @@ The API writes generated compatible MP4 files only beneath
 `./data/playback`, mounted at `/playback`. Source downloads remain mounted
 read-only in the API. Preparation uses a task-specific `.part.mp4` and an
 atomic rename, enforces a configurable free-space reserve, and reuses a
-completed artifact. Failed temporary output is removed; no user-facing cache
-deletion operation exists yet.
+completed artifact. Failed temporary output is removed.
 
-No media-library delete operation exists. Future cache/library code must receive
-configured KADR-only roots, resolve
-canonical paths, reject traversal/symlink escapes, protect `SAVED` and active
-files, and never have write access to Photodom.
+Saved media lives only beneath `./data/library`, mounted at `/library`. Saving
+verifies a complete selected file under the read-only download root, then
+creates a hard link where supported or safely copies to a temporary file
+followed by atomic rename. API responses do not expose filesystem paths.
+
+Deletion canonicalizes the stored path against `KADR_LIBRARY_ROOT`, refuses an
+active stream, unlinks only that saved file, and leaves the torrent source
+untouched. Cache cleanup operates through qBittorrent only for stopped KADR
+tasks older than `KADR_CACHE_TTL_HOURS`; it skips active streams and tasks
+referenced by saved library items. A low-rate background pass runs every
+`KADR_CACHE_CLEANUP_INTERVAL_MINUTES`. Neither service has a Photodom mount.
 
 KADR also persists Prowlarr configuration and its private database under
 `./data/prowlarr`. This directory may contain API keys, cookies, and tracker

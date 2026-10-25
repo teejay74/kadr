@@ -9,6 +9,7 @@ import {
   getTorrent,
   getTorrentFiles,
   selectTorrentFile,
+  saveToLibrary,
   startTorrent,
   stopTorrent,
 } from '../services/api'
@@ -16,7 +17,14 @@ import type { MediaKind, SourceRelease, SourceSort, TorrentFile, TorrentStatus }
 import KadrPlayer from './KadrPlayer.vue'
 import StatePanel from './StatePanel.vue'
 
-const props = defineProps<{ mediaId: number; kind: MediaKind }>()
+const props = withDefaults(defineProps<{
+  mediaId: number
+  kind: MediaKind
+  title?: string
+  originalTitle?: string
+  posterUrl?: string | null
+  backdropUrl?: string | null
+}>(), { title: '', originalTitle: '', posterUrl: null, backdropUrl: null })
 const items = ref<SourceRelease[]>([])
 const query = ref('')
 const loading = ref(false)
@@ -28,6 +36,7 @@ const torrent = ref<TorrentStatus | null>(null)
 const torrentFiles = ref<TorrentFile[]>([])
 const torrentBusy = ref(false)
 const torrentError = ref('')
+const librarySaved = ref(false)
 let torrentTimer: ReturnType<typeof setTimeout> | undefined
 const dismissedTask = 'dismissed'
 
@@ -155,6 +164,27 @@ async function applyTorrentAction(action: 'start' | 'stop'): Promise<void> {
   }
 }
 
+async function saveSelectedVideo(): Promise<void> {
+  if (!torrent.value) return
+  torrentBusy.value = true
+  torrentError.value = ''
+  try {
+    await saveToLibrary(torrent.value.id, {
+      media_id: props.mediaId,
+      media_kind: props.kind,
+      title: props.title,
+      original_title: props.originalTitle,
+      poster_url: props.posterUrl,
+      backdrop_url: props.backdropUrl,
+    })
+    librarySaved.value = true
+  } catch (caught) {
+    torrentError.value = friendlyApiError(caught)
+  } finally {
+    torrentBusy.value = false
+  }
+}
+
 async function refreshTorrentState(): Promise<void> {
   if (!torrent.value || torrentBusy.value) {
     scheduleTorrentRefresh()
@@ -176,6 +206,7 @@ function chooseAnotherSource(): void {
   torrent.value = null
   torrentFiles.value = []
   torrentError.value = ''
+  librarySaved.value = false
 }
 
 async function restoreTask(): Promise<void> {
@@ -428,7 +459,24 @@ onBeforeUnmount(clearTorrentTimer)
       </div>
       <div v-if="hasSelectedFile && torrent.selected_file_path" class="watch-step">
         <p class="workflow-step">Шаг 3 из 3</p>
-        <KadrPlayer :task-id="torrent.id" :title="torrent.selected_file_path" />
+        <KadrPlayer
+          :task-id="torrent.id"
+          :title="title"
+          :media-id="mediaId"
+          :media-kind="kind"
+          :poster-url="posterUrl"
+        />
+        <div v-if="torrent.progress >= 1" class="library-save-row">
+          <p>{{ librarySaved ? 'Видео сохранено в библиотеке.' : 'Сохраните готовый файл для просмотра без повторной загрузки.' }}</p>
+          <button
+            class="button secondary focus-ring"
+            type="button"
+            :disabled="torrentBusy || librarySaved"
+            @click="saveSelectedVideo"
+          >
+            {{ librarySaved ? 'Сохранено' : 'Сохранить в библиотеку' }}
+          </button>
+        </div>
       </div>
     </section>
     <p v-if="torrentError" class="torrent-error" role="alert">{{ torrentError }}</p>

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import HomePage from '../pages/HomePage.vue'
+import LibraryPage from '../pages/LibraryPage.vue'
 import CatalogPage from '../pages/CatalogPage.vue'
 import CreditsPage from '../pages/CreditsPage.vue'
 import MediaDetailsPage from '../pages/MediaDetailsPage.vue'
@@ -17,6 +18,7 @@ export const router = createRouter({
     { path: '/series/:id', name: 'series-details', component: MediaDetailsPage, meta: { kind: 'series' } },
     { path: '/search', name: 'search', component: SearchPage },
     { path: '/credits', name: 'credits', component: CreditsPage },
+    { path: '/library', name: 'library', component: LibraryPage },
   ],
 })
 

@@ -25,6 +25,7 @@ services:
       KADR_QBITTORRENT_TIMEOUT_SECONDS: ${KADR_QBITTORRENT_TIMEOUT_SECONDS:-15}
       KADR_TORRENT_SAVE_PATH: ${KADR_TORRENT_SAVE_PATH:-/downloads/cache}
       KADR_TORRENT_STORAGE_ROOT: ${KADR_TORRENT_STORAGE_ROOT:-/downloads}
+      KADR_LIBRARY_ROOT: ${KADR_LIBRARY_ROOT:-/library}
       KADR_MIN_FREE_SPACE_GB: ${KADR_MIN_FREE_SPACE_GB:-200}
       KADR_MAX_ACTIVE_TORRENTS: ${KADR_MAX_ACTIVE_TORRENTS:-3}
       KADR_MAX_ACTIVE_STREAMS: ${KADR_MAX_ACTIVE_STREAMS:-2}
@@ -42,9 +43,12 @@ services:
       KADR_TRANSCODE_MAX_WIDTH: ${KADR_TRANSCODE_MAX_WIDTH:-1920}
       KADR_TRANSCODE_MAX_HEIGHT: ${KADR_TRANSCODE_MAX_HEIGHT:-1080}
       KADR_TRANSCODE_AUDIO_BITRATE: ${KADR_TRANSCODE_AUDIO_BITRATE:-192k}
+      KADR_CACHE_TTL_HOURS: ${KADR_CACHE_TTL_HOURS:-24}
+      KADR_CACHE_CLEANUP_INTERVAL_MINUTES: ${KADR_CACHE_CLEANUP_INTERVAL_MINUTES:-60}
     volumes:
       - ./data/database:/data
       - ./data/downloads:/downloads:ro
+      - ./data/library:/library
       - ./data/playback:/playback
     expose:
       - "8000"
@@ -139,6 +143,7 @@ services:
       KADR_LOG_LEVEL: WARNING
       KADR_MIN_FREE_SPACE_GB: 0
       KADR_PLAYBACK_CACHE_ROOT: /tmp/kadr-playback
+      KADR_LIBRARY_ROOT: /tmp/kadr-library
     command: ["pytest", "-p", "no:cacheprovider"]
     networks:
       - kadr-internal

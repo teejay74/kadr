@@ -4,12 +4,20 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import {
   friendlyApiError,
   getCompatiblePlayback,
+  getHistoryItem,
   getStreamReadiness,
   startCompatiblePlayback,
+  updateHistory,
 } from '../services/api'
-import type { PlaybackPreparation } from '../types/media'
+import type { MediaKind, PlaybackPreparation } from '../types/media'
 
-const props = defineProps<{ taskId: string; title: string }>()
+const props = withDefaults(defineProps<{
+  taskId: string
+  title: string
+  mediaId?: number
+  mediaKind?: MediaKind
+  posterUrl?: string | null
+}>(), { mediaId: 0, mediaKind: 'movie', posterUrl: null })
 
 const active = ref(false)
 const waiting = ref(false)
@@ -59,6 +67,14 @@ async function activate(): Promise<void> {
   waiting.value = true
   playbackEnded = false
   resumeAt.value = readSavedPosition()
+  try {
+    const history = props.mediaId > 0
+      ? await getHistoryItem(props.mediaId, props.mediaKind)
+      : null
+    if (history && !history.completed) resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
+  } catch {
+    // Browser-local resume remains available when the API is unavailable.
+  }
   active.value = true
   streamReady.value = false
   bufferProgress.value = 0
@@ -171,6 +187,15 @@ function savePosition(): void {
   } catch {
     // Playback remains usable when browser storage is unavailable.
   }
+  if (props.mediaId <= 0) return
+  void updateHistory(props.mediaId, {
+    media_kind: props.mediaKind,
+    title: props.title,
+    poster_url: props.posterUrl,
+    position_seconds: current,
+    duration_seconds: Math.floor(video.value?.duration ?? 0),
+    completed: false,
+  }).catch(() => undefined)
 }
 
 function onTimeUpdate(): void {
@@ -186,6 +211,15 @@ function onEnded(): void {
     // Playback remains usable when browser storage is unavailable.
   }
   lastSavedSecond = -1
+  if (props.mediaId <= 0) return
+  void updateHistory(props.mediaId, {
+    media_kind: props.mediaKind,
+    title: props.title,
+    poster_url: props.posterUrl,
+    position_seconds: 0,
+    duration_seconds: Math.floor(video.value?.duration ?? 0),
+    completed: true,
+  }).catch(() => undefined)
 }
 
 function onPlaying(): void {

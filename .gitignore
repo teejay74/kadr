@@ -21,4 +21,6 @@ data/downloads/*
 !data/downloads/.gitkeep
 data/playback/*
 !data/playback/.gitkeep
+data/library/*
+!data/library/.gitkeep
 

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     qbittorrent_timeout_seconds: float = Field(default=15, gt=0, le=60)
     torrent_save_path: str = "/downloads/cache"
     torrent_storage_root: str = "/downloads"
+    library_root: str = "/library"
     min_free_space_gb: float = Field(default=200, ge=0)
     max_active_torrents: int = Field(default=3, ge=1, le=20)
     max_active_streams: int = Field(default=2, ge=1, le=10)
@@ -46,6 +47,8 @@ class Settings(BaseSettings):
     transcode_max_width: int = Field(default=1920, ge=320, le=3840)
     transcode_max_height: int = Field(default=1080, ge=240, le=2160)
     transcode_audio_bitrate: str = "192k"
+    cache_ttl_hours: int = Field(default=24, ge=1, le=8760)
+    cache_cleanup_interval_minutes: int = Field(default=60, ge=5, le=1440)
 
 
 @lru_cache

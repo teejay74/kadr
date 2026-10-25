@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import httpx
 from fastapi import FastAPI, Request, status
@@ -11,8 +12,16 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.database import engine
+from app.core.database import SessionFactory, engine
+from app.repositories.library import LibraryRepository
+from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.schemas.system import ErrorResponse
+from app.services.cache.manager import CacheManager
+from app.services.library.exceptions import (
+    LibraryConflictError,
+    LibraryNotFoundError,
+    LibraryStorageError,
+)
 from app.services.metadata.exceptions import (
     MetadataNotConfiguredError,
     MetadataNotFoundError,
@@ -43,6 +52,7 @@ from app.services.torrents.exceptions import (
     TorrentStorageError,
     TorrentUnavailableError,
 )
+from app.services.torrents.qbittorrent import QBittorrentClient
 
 settings = get_settings()
 logging.basicConfig(
@@ -50,6 +60,32 @@ logging.basicConfig(
     format='{"level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
 )
 logger = logging.getLogger(__name__)
+
+
+async def cache_cleanup_loop(application: FastAPI) -> None:
+    interval = settings.cache_cleanup_interval_minutes * 60
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            async with SessionFactory() as session:
+                manager = CacheManager(
+                    TorrentTaskRepository(session),
+                    LibraryRepository(session),
+                    QBittorrentClient(application.state.torrent_http_client, settings),
+                    application.state.stream_registry,
+                    settings,
+                )
+                result = await manager.cleanup()
+                if result.removed_tasks:
+                    logger.info(
+                        "KADR cache cleanup completed: tasks=%s bytes=%s",
+                        result.removed_tasks,
+                        result.reclaimed_bytes,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("KADR cache cleanup failed")
 
 
 @asynccontextmanager
@@ -78,9 +114,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.metadata_http_client = metadata_http_client
                 application.state.indexer_http_client = indexer_http_client
                 application.state.torrent_http_client = torrent_http_client
+                cleanup_task = asyncio.create_task(cache_cleanup_loop(application))
                 try:
                     yield
                 finally:
+                    cleanup_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await cleanup_task
                     await application.state.compatibility_manager.close()
     await engine.dispose()
     logger.info("KADR API stopped")
@@ -229,6 +269,24 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         error = ErrorResponse(code="playback_artifact_not_ready", message=str(exc))
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(LibraryNotFoundError)
+    async def library_not_found(_: Request, exc: LibraryNotFoundError) -> JSONResponse:
+        error = ErrorResponse(code="library_not_found", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=error.model_dump())
+
+    @application.exception_handler(LibraryConflictError)
+    async def library_conflict(_: Request, exc: LibraryConflictError) -> JSONResponse:
+        error = ErrorResponse(code="library_conflict", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(LibraryStorageError)
+    async def library_storage(_: Request, exc: LibraryStorageError) -> JSONResponse:
+        error = ErrorResponse(code="library_storage", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            content=error.model_dump(),
+        )
 
     return application
 

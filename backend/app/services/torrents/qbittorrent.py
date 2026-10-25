@@ -126,6 +126,13 @@ class QBittorrentClient:
     async def stop(self, torrent_hash: str) -> None:
         await self._request("POST", "/api/v2/torrents/stop", data={"hashes": torrent_hash})
 
+    async def delete(self, torrent_hash: str, *, delete_files: bool) -> None:
+        await self._request(
+            "POST",
+            "/api/v2/torrents/delete",
+            data={"hashes": torrent_hash, "deleteFiles": str(delete_files).lower()},
+        )
+
     async def _authenticate(self) -> None:
         if self._authenticated:
             return
