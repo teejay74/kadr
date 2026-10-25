@@ -44,6 +44,9 @@ const videoFiles = computed(() => torrentFiles.value.filter((file) => file.is_vi
 const selectedFile = computed(() => videoFiles.value.find(
   (file) => file.id === torrent.value?.selected_file_id,
 ))
+const selectedEpisodeLabel = computed(() => selectedFile.value
+  ? describeVideoFile(selectedFile.value.name)
+  : '')
 const skippedFileCount = computed(() => torrentFiles.value.length - videoFiles.value.length)
 const hasSelectedFile = computed(() => torrent.value?.selected_file_id !== null
   && torrent.value?.selected_file_id !== undefined)
@@ -58,6 +61,20 @@ function formatBytes(bytes: number): string {
 
 function formatSpeed(bytes: number): string {
   return bytes > 0 ? `${formatBytes(bytes)}/с` : 'ожидание источников'
+}
+
+function describeVideoFile(filename: string): string {
+  const seasonEpisode = filename.match(/(?:^|[^a-z0-9])s(\d{1,2})e(\d{1,3})(?:[^a-z0-9]|$)/i)
+  if (seasonEpisode) {
+    return `Сезон ${Number(seasonEpisode[1])} · Серия ${Number(seasonEpisode[2])}`
+  }
+
+  const alternateEpisode = filename.match(/(?:^|[^0-9])(\d{1,2})x(\d{1,3})(?:[^0-9]|$)/i)
+  if (alternateEpisode) {
+    return `Сезон ${Number(alternateEpisode[1])} · Серия ${Number(alternateEpisode[2])}`
+  }
+
+  return props.kind === 'series' ? 'Выбранный эпизод' : 'Выбранный фильм'
 }
 
 function stateLabel(state: string): string {
@@ -436,6 +453,7 @@ onBeforeUnmount(clearTorrentTimer)
       <div v-if="hasSelectedFile && selectedFile" class="selected-file-summary">
         <div>
           <span>Выбрано для просмотра</span>
+          <b class="selected-episode-label">{{ selectedEpisodeLabel }}</b>
           <strong>{{ selectedFile.name }}</strong>
           <small>{{ formatBytes(selectedFile.size_bytes) }}</small>
         </div>
@@ -460,8 +478,11 @@ onBeforeUnmount(clearTorrentTimer)
       <div v-if="hasSelectedFile && torrent.selected_file_path" class="watch-step">
         <p class="workflow-step">Шаг 3 из 3</p>
         <KadrPlayer
+          :key="`${torrent.id}:${torrent.selected_file_id}`"
           :task-id="torrent.id"
           :title="title"
+          :selection-label="selectedEpisodeLabel"
+          :file-name="selectedFile?.name ?? torrent.selected_file_path"
           :media-id="mediaId"
           :media-kind="kind"
           :poster-url="posterUrl"

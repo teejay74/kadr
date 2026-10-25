@@ -5,7 +5,6 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.dependencies import (
-    CompatibilityManagerDependency,
     PlaybackPreparationServiceDependency,
 )
 from app.schemas.playback import PlaybackPreparation
@@ -30,10 +29,10 @@ async def prepare_compatible_playback(
     response_model=PlaybackPreparation,
 )
 async def compatible_playback_status(
-    manager: CompatibilityManagerDependency,
+    service: PlaybackPreparationServiceDependency,
     task_id: str,
 ) -> PlaybackPreparation:
-    return manager.status(task_id)
+    return await service.status(task_id)
 
 
 @router.get(
@@ -42,11 +41,11 @@ async def compatible_playback_status(
 )
 async def stream_compatible_playback(
     request: Request,
-    manager: CompatibilityManagerDependency,
+    service: PlaybackPreparationServiceDependency,
     task_id: str,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
 ) -> StreamingResponse:
-    prepared = await manager.open(
+    prepared = await service.open(
         task_id,
         range_header,
         request.app.state.stream_registry,

@@ -79,7 +79,8 @@ def test_ffmpeg_command_bounds_incompatible_video_conversion(tmp_path: Path) -> 
 
 async def test_ready_compatible_file_supports_byte_ranges(tmp_path: Path) -> None:
     task_id = "task-1"
-    output = tmp_path / task_id / "compatible.mp4"
+    selected_file_id = 3
+    output = tmp_path / task_id / str(selected_file_id) / "compatible.mp4"
     output.parent.mkdir(parents=True)
     output.write_bytes(b"0123456789")
     manager = CompatibilityManager(
@@ -87,9 +88,14 @@ async def test_ready_compatible_file_supports_byte_ranges(tmp_path: Path) -> Non
     )
     registry = StreamRegistry(2)
 
-    status = manager.status(task_id)
+    status = manager.status(task_id, selected_file_id)
     direct_lease = await registry.acquire(task_id)
-    prepared = await manager.open(task_id, "bytes=2-5", registry)
+    prepared = await manager.open(
+        task_id,
+        selected_file_id,
+        "bytes=2-5",
+        registry,
+    )
     assert await registry.active_count() == 1
     content = b"".join([chunk async for chunk in prepared.content])
 
@@ -102,3 +108,17 @@ async def test_ready_compatible_file_supports_byte_ranges(tmp_path: Path) -> Non
     assert await registry.active_count() == 1
     await direct_lease.release()
     assert await registry.active_count() == 0
+
+
+def test_compatible_files_are_isolated_by_selected_torrent_file(tmp_path: Path) -> None:
+    task_id = "task-1"
+    first = tmp_path / task_id / "1" / "compatible.mp4"
+    first.parent.mkdir(parents=True)
+    first.write_bytes(b"first episode")
+    manager = CompatibilityManager(Settings(playback_cache_root=str(tmp_path)))
+
+    first_status = manager.status(task_id, 1)
+    third_status = manager.status(task_id, 3)
+
+    assert first_status.state == "ready"
+    assert third_status.state == "idle"

@@ -14,10 +14,18 @@ import type { MediaKind, PlaybackPreparation } from '../types/media'
 const props = withDefaults(defineProps<{
   taskId: string
   title: string
+  selectionLabel?: string
+  fileName?: string
   mediaId?: number
   mediaKind?: MediaKind
   posterUrl?: string | null
-}>(), { mediaId: 0, mediaKind: 'movie', posterUrl: null })
+}>(), {
+  selectionLabel: '',
+  fileName: '',
+  mediaId: 0,
+  mediaKind: 'movie',
+  posterUrl: null,
+})
 
 const active = ref(false)
 const waiting = ref(false)
@@ -286,7 +294,8 @@ onBeforeUnmount(stopPlayback)
       <div class="player-launch-copy">
         <h3>Смотреть выбранное видео</h3>
         <p>Просмотр можно начать до завершения загрузки — KADR сам подготовит начальный буфер.</p>
-        <small>{{ title }}</small>
+        <strong v-if="selectionLabel" class="player-selection-label">{{ selectionLabel }}</strong>
+        <small>{{ fileName || title }}</small>
       </div>
       <div class="player-launch-actions">
         <button class="button primary focus-ring" type="button" @click="activate">
@@ -303,7 +312,10 @@ onBeforeUnmount(stopPlayback)
     </div>
     <div v-else class="player-active">
       <div class="player-toolbar">
-        <strong>{{ title }}</strong>
+        <div class="player-toolbar-title">
+          <strong>{{ selectionLabel || title }}</strong>
+          <small v-if="selectionLabel">{{ fileName || title }}</small>
+        </div>
         <button class="button secondary focus-ring" type="button" @click="stopPlayback">
           Закрыть плеер
         </button>
