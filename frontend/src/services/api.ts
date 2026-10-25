@@ -4,7 +4,9 @@ import type {
   MediaDetails,
   MediaKind,
   MediaPage,
+  PlaybackPreparation,
   SortOrder,
+  StreamReadiness,
   SourceResults,
   SourceSort,
   TorrentFile,
@@ -61,6 +63,11 @@ export function getTorrent(taskId: string): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}`)
 }
 
+export function getMediaTorrent(mediaId: number, mediaKind: MediaKind): Promise<TorrentStatus> {
+  const params = new URLSearchParams({ media_kind: mediaKind })
+  return request<TorrentStatus>(`/api/v1/media/${mediaId}/torrents?${params}`)
+}
+
 export function getTorrentFiles(taskId: string): Promise<TorrentFile[]> {
   return request<TorrentFile[]>(`/api/v1/torrents/${taskId}/files`)
 }
@@ -78,6 +85,20 @@ export function startTorrent(taskId: string): Promise<TorrentStatus> {
 
 export function stopTorrent(taskId: string): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}/stop`, { method: 'POST' })
+}
+
+export function getStreamReadiness(taskId: string): Promise<StreamReadiness> {
+  return request<StreamReadiness>(`/api/v1/torrents/${encodeURIComponent(taskId)}/stream/readiness`)
+}
+
+export function startCompatiblePlayback(taskId: string): Promise<PlaybackPreparation> {
+  return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible`, {
+    method: 'POST',
+  })
+}
+
+export function getCompatiblePlayback(taskId: string): Promise<PlaybackPreparation> {
+  return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible`)
 }
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -143,6 +164,12 @@ export function friendlyApiError(error: unknown): string {
   }
   if (error instanceof ApiError && ['torrent_unavailable', 'torrent_not_found'].includes(error.code)) {
     return 'Torrent Manager временно недоступен или задача больше не существует.'
+  }
+  if (error instanceof ApiError && error.code === 'playback_preparation_failed') {
+    return error.message
+  }
+  if (error instanceof ApiError && error.code === 'playback_preparation_limit') {
+    return 'Уже подготавливается другая совместимая версия. Дождитесь её завершения.'
   }
   return 'Каталог временно недоступен. Попробуйте ещё раз позже.'
 }

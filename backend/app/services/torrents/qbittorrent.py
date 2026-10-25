@@ -15,6 +15,7 @@ class QBittorrentClient:
     def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
         self._http_client = http_client
         self._settings = settings
+        self._authenticated = False
 
     async def version(self) -> str:
         response = await self._request("GET", "/api/v2/app/version")
@@ -30,6 +31,8 @@ class QBittorrentClient:
                 "tags": tag,
                 "stopCondition": "MetadataReceived",
                 "autoTMM": "false",
+                "sequentialDownload": "true",
+                "firstLastPiecePrio": "true",
             },
         )
         if response.text.strip().lower().startswith("fails"):
@@ -61,6 +64,26 @@ class QBittorrentClient:
             raise TorrentUnavailableError("qBittorrent returned an invalid file list")
         return [item for item in payload if isinstance(item, dict)]
 
+    async def properties(self, torrent_hash: str) -> dict[str, Any]:
+        response = await self._request(
+            "GET", "/api/v2/torrents/properties", params={"hash": torrent_hash}
+        )
+        payload = self._json(response)
+        if not isinstance(payload, dict):
+            raise TorrentUnavailableError("qBittorrent returned invalid torrent properties")
+        return payload
+
+    async def piece_states(self, torrent_hash: str) -> list[int]:
+        response = await self._request(
+            "GET", "/api/v2/torrents/pieceStates", params={"hash": torrent_hash}
+        )
+        payload = self._json(response)
+        if not isinstance(payload, list) or not all(
+            isinstance(item, int) for item in payload
+        ):
+            raise TorrentUnavailableError("qBittorrent returned invalid piece states")
+        return payload
+
     async def set_file_priority(
         self,
         torrent_hash: str,
@@ -79,6 +102,24 @@ class QBittorrentClient:
             },
         )
 
+    async def prepare_for_streaming(self, torrent_hash: str) -> None:
+        torrents = await self.list(torrent_hash=torrent_hash)
+        if not torrents:
+            raise TorrentUnavailableError("The torrent is no longer present in qBittorrent")
+        torrent = torrents[0]
+        if not bool(torrent.get("seq_dl")):
+            await self._request(
+                "POST",
+                "/api/v2/torrents/toggleSequentialDownload",
+                data={"hashes": torrent_hash},
+            )
+        if not bool(torrent.get("f_l_piece_prio")):
+            await self._request(
+                "POST",
+                "/api/v2/torrents/toggleFirstLastPiecePrio",
+                data={"hashes": torrent_hash},
+            )
+
     async def start(self, torrent_hash: str) -> None:
         await self._request("POST", "/api/v2/torrents/start", data={"hashes": torrent_hash})
 
@@ -86,6 +127,8 @@ class QBittorrentClient:
         await self._request("POST", "/api/v2/torrents/stop", data={"hashes": torrent_hash})
 
     async def _authenticate(self) -> None:
+        if self._authenticated:
+            return
         password = self._settings.qbittorrent_password
         if password is None or not password.get_secret_value():
             raise TorrentNotConfiguredError("qBittorrent credentials are not configured")
@@ -104,6 +147,7 @@ class QBittorrentClient:
         )
         if not accepted:
             raise TorrentNotConfiguredError("qBittorrent rejected the configured credentials")
+        self._authenticated = True
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         await self._authenticate()
@@ -112,6 +156,7 @@ class QBittorrentClient:
         except httpx.RequestError as exc:
             raise TorrentUnavailableError("qBittorrent request failed") from exc
         if response.status_code in {401, 403}:
+            self._authenticated = False
             raise TorrentNotConfiguredError("qBittorrent rejected the configured credentials")
         if response.status_code == 404:
             raise TorrentUnavailableError("qBittorrent resource was not found")

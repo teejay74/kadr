@@ -18,10 +18,23 @@ from app.services.metadata.exceptions import (
     MetadataNotFoundError,
     MetadataUnavailableError,
 )
+from app.services.playback.exceptions import (
+    PlaybackArtifactNotReadyError,
+    PlaybackPreparationError,
+    PlaybackPreparationLimitError,
+)
+from app.services.playback.manager import CompatibilityManager
 from app.services.sources.exceptions import (
     IndexerNotConfiguredError,
     IndexerUnavailableError,
 )
+from app.services.streaming.exceptions import (
+    StreamBufferTimeoutError,
+    StreamLimitError,
+    StreamNotReadyError,
+    StreamRangeError,
+)
+from app.services.streaming.registry import StreamRegistry
 from app.services.torrents.exceptions import (
     TorrentFileError,
     TorrentLimitError,
@@ -42,6 +55,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     logger.info("KADR API starting")
+    application.state.stream_registry = StreamRegistry(
+        settings.max_active_streams,
+        settings.max_range_requests_per_stream,
+    )
+    application.state.compatibility_manager = CompatibilityManager(settings)
     async with httpx.AsyncClient(
         base_url=settings.tmdb_base_url,
         timeout=settings.tmdb_timeout_seconds,
@@ -60,7 +78,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.metadata_http_client = metadata_http_client
                 application.state.indexer_http_client = indexer_http_client
                 application.state.torrent_http_client = torrent_http_client
-                yield
+                try:
+                    yield
+                finally:
+                    await application.state.compatibility_manager.close()
     await engine.dispose()
     logger.info("KADR API stopped")
 
@@ -79,6 +100,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type"],
+            expose_headers=["Accept-Ranges", "Content-Length", "Content-Range"],
         )
     application.include_router(api_router, prefix="/api/v1")
 
@@ -151,6 +173,62 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=status.HTTP_507_INSUFFICIENT_STORAGE, content=error.model_dump()
         )
+
+    @application.exception_handler(StreamNotReadyError)
+    async def stream_not_ready(_: Request, exc: StreamNotReadyError) -> JSONResponse:
+        error = ErrorResponse(code="stream_not_ready", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(StreamBufferTimeoutError)
+    async def stream_buffer_timeout(
+        _: Request, exc: StreamBufferTimeoutError
+    ) -> JSONResponse:
+        error = ErrorResponse(code="stream_buffer_timeout", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT, content=error.model_dump())
+
+    @application.exception_handler(StreamLimitError)
+    async def stream_limit(_: Request, exc: StreamLimitError) -> JSONResponse:
+        error = ErrorResponse(code="stream_limit_reached", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=error.model_dump(),
+        )
+
+    @application.exception_handler(StreamRangeError)
+    async def stream_range(_: Request, exc: StreamRangeError) -> JSONResponse:
+        error = ErrorResponse(code="range_not_satisfiable", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            content=error.model_dump(),
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{exc.total_size}",
+            },
+        )
+
+    @application.exception_handler(PlaybackPreparationError)
+    async def playback_preparation(
+        _: Request,
+        exc: PlaybackPreparationError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="playback_preparation_failed", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(PlaybackPreparationLimitError)
+    async def playback_preparation_limit(
+        _: Request,
+        exc: PlaybackPreparationLimitError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="playback_preparation_limit", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(PlaybackArtifactNotReadyError)
+    async def playback_artifact_not_ready(
+        _: Request,
+        exc: PlaybackArtifactNotReadyError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="playback_artifact_not_ready", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
 
     return application
 

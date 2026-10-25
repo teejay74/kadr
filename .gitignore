@@ -19,4 +19,6 @@ data/qbittorrent/*
 !data/qbittorrent/.gitkeep
 data/downloads/*
 !data/downloads/.gitkeep
+data/playback/*
+!data/playback/.gitkeep
 

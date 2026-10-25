@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import {
   addTorrent,
   friendlyApiError,
+  getMediaTorrent,
   getSources,
   getTorrent,
   getTorrentFiles,
@@ -12,6 +13,7 @@ import {
   stopTorrent,
 } from '../services/api'
 import type { MediaKind, SourceRelease, SourceSort, TorrentFile, TorrentStatus } from '../types/media'
+import KadrPlayer from './KadrPlayer.vue'
 import StatePanel from './StatePanel.vue'
 
 const props = defineProps<{ mediaId: number; kind: MediaKind }>()
@@ -26,6 +28,17 @@ const torrent = ref<TorrentStatus | null>(null)
 const torrentFiles = ref<TorrentFile[]>([])
 const torrentBusy = ref(false)
 const torrentError = ref('')
+let torrentTimer: ReturnType<typeof setTimeout> | undefined
+const dismissedTask = 'dismissed'
+
+const videoFiles = computed(() => torrentFiles.value.filter((file) => file.is_video))
+const selectedFile = computed(() => videoFiles.value.find(
+  (file) => file.id === torrent.value?.selected_file_id,
+))
+const skippedFileCount = computed(() => torrentFiles.value.length - videoFiles.value.length)
+const hasSelectedFile = computed(() => torrent.value?.selected_file_id !== null
+  && torrent.value?.selected_file_id !== undefined)
+const taskStorageKey = computed(() => `kadr:torrent:${props.kind}:${props.mediaId}`)
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'Размер неизвестен'
@@ -34,12 +47,65 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** unit).toFixed(unit > 2 ? 1 : 0)} ${units[unit]}`
 }
 
+function formatSpeed(bytes: number): string {
+  return bytes > 0 ? `${formatBytes(bytes)}/с` : 'ожидание источников'
+}
+
+function stateLabel(state: string): string {
+  if (['downloading', 'forcedDL'].includes(state)) return 'загружается'
+  if (['queuedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'].includes(state)) {
+    return 'ожидает источники'
+  }
+  if (['stoppedDL', 'pausedDL'].includes(state)) return 'приостановлено'
+  if (['uploading', 'stalledUP', 'queuedUP', 'stoppedUP', 'pausedUP'].includes(state)) {
+    return 'загружено'
+  }
+  if (state === 'checkingDL' || state === 'checkingUP') return 'проверка файла'
+  if (state === 'error' || state === 'missingFiles') return 'ошибка загрузки'
+  return state
+}
+
+function clearTorrentTimer(): void {
+  if (torrentTimer) clearTimeout(torrentTimer)
+  torrentTimer = undefined
+}
+
+function scheduleTorrentRefresh(): void {
+  clearTorrentTimer()
+  if (!torrent.value) return
+  if (torrent.value.progress >= 1 && torrentFiles.value.length > 0) return
+  if (torrentFiles.value.length > 0 && !hasSelectedFile.value) return
+  if (
+    torrentFiles.value.length > 0
+    && ['stoppedDL', 'pausedDL'].includes(torrent.value.state)
+  ) return
+  torrentTimer = setTimeout(() => void refreshTorrentState(), 5000)
+}
+
+function rememberTask(taskId: string): void {
+  try {
+    localStorage.setItem(taskStorageKey.value, taskId)
+  } catch {
+    // The active task still works when browser storage is unavailable.
+  }
+}
+
+function dismissTask(): void {
+  try {
+    localStorage.setItem(taskStorageKey.value, dismissedTask)
+  } catch {
+    // Nothing else is required when browser storage is unavailable.
+  }
+}
+
 async function addSource(sourceId: string): Promise<void> {
   torrentBusy.value = true
   torrentError.value = ''
   try {
     torrent.value = await addTorrent(props.mediaId, props.kind, sourceId)
+    rememberTask(torrent.value.id)
     await refreshFiles()
+    scheduleTorrentRefresh()
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
   } finally {
@@ -57,12 +123,15 @@ async function refreshFiles(): Promise<void> {
   }
 }
 
-async function chooseFile(fileId: number): Promise<void> {
+async function chooseFileAndStart(file: TorrentFile): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
   torrentError.value = ''
   try {
-    torrent.value = await selectTorrentFile(torrent.value.id, fileId)
+    torrent.value = await selectTorrentFile(torrent.value.id, file.id)
+    if (file.progress < 1) torrent.value = await startTorrent(torrent.value.id)
+    await refreshFiles()
+    scheduleTorrentRefresh()
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
   } finally {
@@ -70,18 +139,74 @@ async function chooseFile(fileId: number): Promise<void> {
   }
 }
 
-async function applyTorrentAction(action: 'start' | 'stop' | 'refresh'): Promise<void> {
+async function applyTorrentAction(action: 'start' | 'stop'): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
   torrentError.value = ''
   try {
     torrent.value = action === 'start'
       ? await startTorrent(torrent.value.id)
-      : action === 'stop'
-        ? await stopTorrent(torrent.value.id)
-        : await getTorrent(torrent.value.id)
+      : await stopTorrent(torrent.value.id)
+    scheduleTorrentRefresh()
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
+  } finally {
+    torrentBusy.value = false
+  }
+}
+
+async function refreshTorrentState(): Promise<void> {
+  if (!torrent.value || torrentBusy.value) {
+    scheduleTorrentRefresh()
+    return
+  }
+  try {
+    torrent.value = await getTorrent(torrent.value.id)
+    if (torrentFiles.value.length === 0) await refreshFiles()
+  } catch (caught) {
+    torrentError.value = friendlyApiError(caught)
+  } finally {
+    scheduleTorrentRefresh()
+  }
+}
+
+function chooseAnotherSource(): void {
+  clearTorrentTimer()
+  dismissTask()
+  torrent.value = null
+  torrentFiles.value = []
+  torrentError.value = ''
+}
+
+async function restoreTask(): Promise<void> {
+  let taskId: string | null = null
+  try {
+    taskId = localStorage.getItem(taskStorageKey.value)
+  } catch {
+    // The server lookup below remains available without browser storage.
+  }
+  if (taskId === dismissedTask) return
+  torrentBusy.value = true
+  try {
+    torrent.value = taskId
+      ? await getTorrent(taskId)
+      : await getMediaTorrent(props.mediaId, props.kind)
+    rememberTask(torrent.value.id)
+    await refreshFiles()
+    scheduleTorrentRefresh()
+  } catch {
+    torrent.value = null
+    torrentFiles.value = []
+    if (taskId) {
+      try {
+        torrent.value = await getMediaTorrent(props.mediaId, props.kind)
+        rememberTask(torrent.value.id)
+        await refreshFiles()
+        scheduleTorrentRefresh()
+      } catch {
+        dismissTask()
+      }
+    }
   } finally {
     torrentBusy.value = false
   }
@@ -106,13 +231,25 @@ async function loadSources(): Promise<void> {
 watch(sort, () => {
   if (searched.value) void loadSources()
 })
+watch(taskStorageKey, () => {
+  clearTorrentTimer()
+  torrent.value = null
+  torrentFiles.value = []
+  torrentError.value = ''
+  items.value = []
+  searched.value = false
+  void restoreTask()
+})
+
+onMounted(() => void restoreTask())
+onBeforeUnmount(clearTorrentTimer)
 </script>
 
 <template>
-  <section class="details-section sources-section">
+  <section id="media-sources" class="details-section sources-section">
     <div class="sources-heading">
       <div>
-        <p class="eyebrow">Prowlarr</p>
+        <p class="eyebrow">Источник просмотра</p>
         <h2>Доступные источники</h2>
       </div>
       <label v-if="searched" class="source-sort">
@@ -127,28 +264,32 @@ watch(sort, () => {
       </label>
     </div>
 
-    <div v-if="!searched" class="source-intro">
-      <p>Поиск выполняется вручную через настроенные индексаторы и может занять несколько секунд.</p>
+    <div v-if="!torrent && !searched" class="source-intro">
+      <div>
+        <p class="workflow-step">Шаг 1 из 3</p>
+        <h3>Выберите релиз</h3>
+        <p>Поиск выполняется вручную через настроенные индексаторы и может занять несколько секунд.</p>
+      </div>
       <button class="button primary focus-ring" type="button" @click="loadSources">
         Найти источники
       </button>
     </div>
-    <div v-else-if="loading" class="source-loading" role="status">Ищем доступные релизы…</div>
+    <div v-else-if="!torrent && loading" class="source-loading" role="status">Ищем доступные релизы…</div>
     <StatePanel
-      v-else-if="error"
+      v-else-if="!torrent && error"
       title="Поиск источников недоступен"
       :message="error"
       show-retry
       @retry="loadSources"
     />
     <StatePanel
-      v-else-if="items.length === 0"
+      v-else-if="!torrent && items.length === 0"
       title="Релизы не найдены"
       :message="`По запросу «${query}» настроенные индексаторы ничего не вернули.`"
       show-retry
       @retry="loadSources"
     />
-    <div v-else class="source-results">
+    <div v-else-if="!torrent" class="source-results">
       <p class="source-summary">Найдено: {{ items.length }} · запрос «{{ query }}»</p>
       <article v-for="item in items" :key="item.id" class="source-release">
         <div class="source-release-main">
@@ -174,43 +315,121 @@ watch(sort, () => {
           :disabled="torrentBusy || torrent !== null"
           @click="addSource(item.id)"
         >
-          Добавить
+          Выбрать релиз
         </button>
       </article>
-      <p class="source-stage-note">Задача остановится после получения метаданных. Загрузка видео начнётся только после выбора файла.</p>
+      <p class="source-stage-note">
+        После выбора KADR покажет фильмы или серии внутри релиза. Ничего лишнего автоматически не скачивается.
+      </p>
     </div>
 
     <section v-if="torrent" class="torrent-panel" aria-live="polite">
       <div class="sources-heading">
         <div>
-          <p class="eyebrow">qBittorrent</p>
-          <h3>{{ torrent.name }}</h3>
+          <p class="workflow-step">Шаг 2 из 3</p>
+          <h3>{{ !hasSelectedFile
+            ? 'Выберите фильм или серию'
+            : torrent.progress >= 1 ? 'Видео готово' : 'Загружаем видео' }}</h3>
+          <p class="torrent-release-name">Источник: {{ torrent.name }}</p>
         </div>
-        <strong>{{ Math.round(torrent.progress * 100) }}%</strong>
+        <strong v-if="hasSelectedFile" class="torrent-percent">
+          {{ Math.round(torrent.progress * 100) }}%
+        </strong>
       </div>
-      <progress :value="torrent.progress" max="1" />
-      <p>Состояние: {{ torrent.state }} · сиды {{ torrent.seeds }} · пиры {{ torrent.peers }}</p>
+      <template v-if="hasSelectedFile">
+        <progress :value="torrent.progress" max="1" />
+        <p class="torrent-status-line">
+          <strong>{{ stateLabel(torrent.state) }}</strong>
+          <span>Скорость: {{ formatSpeed(torrent.download_speed_bytes) }}</span>
+          <span>Сиды: {{ torrent.seeds }}</span>
+          <span>Пиры: {{ torrent.peers }}</span>
+        </p>
+      </template>
       <div class="torrent-actions">
-        <button class="button focus-ring" type="button" :disabled="torrentBusy" @click="refreshFiles">Обновить файлы</button>
-        <button class="button focus-ring" type="button" :disabled="torrentBusy" @click="applyTorrentAction('refresh')">Обновить прогресс</button>
-        <button v-if="torrent.can_start" class="button primary focus-ring" type="button" :disabled="torrentBusy" @click="applyTorrentAction('start')">Запустить</button>
-        <button v-if="torrent.can_stop" class="button focus-ring" type="button" :disabled="torrentBusy" @click="applyTorrentAction('stop')">Остановить</button>
-      </div>
-      <div v-if="torrentFiles.length" class="torrent-files">
+        <button class="button secondary focus-ring" type="button" :disabled="torrentBusy" @click="chooseAnotherSource">
+          Сменить релиз
+        </button>
         <button
-          v-for="file in torrentFiles"
+          v-if="hasSelectedFile && torrent.can_start"
+          class="button primary focus-ring"
+          type="button"
+          :disabled="torrentBusy"
+          @click="applyTorrentAction('start')"
+        >
+          Продолжить загрузку
+        </button>
+        <button
+          v-if="hasSelectedFile && torrent.can_stop && torrent.progress < 1"
+          class="button secondary focus-ring"
+          type="button"
+          :disabled="torrentBusy"
+          @click="applyTorrentAction('stop')"
+        >
+          Приостановить
+        </button>
+      </div>
+      <div v-if="videoFiles.length && !hasSelectedFile" class="torrent-file-selection">
+        <p class="selection-help">
+          Нажмите на нужный фильм или эпизод — KADR выберет только этот файл и сразу начнёт загрузку.
+        </p>
+        <div class="torrent-files">
+        <button
+          v-for="file in videoFiles"
           :key="file.id"
           class="torrent-file focus-ring"
           :class="{ selected: torrent.selected_file_id === file.id }"
           type="button"
-          :disabled="torrentBusy || !file.is_video"
-          @click="chooseFile(file.id)"
+          :disabled="torrentBusy || torrent.selected_file_id === file.id"
+          @click="chooseFileAndStart(file)"
         >
           <span>{{ file.name }}</span>
-          <small>{{ formatBytes(file.size_bytes) }}{{ file.is_video ? '' : ' · не видео' }}</small>
+          <small>{{ formatBytes(file.size_bytes) }} · скачано {{ Math.round(file.progress * 100) }}%</small>
+          <strong>
+            {{ torrent.selected_file_id === file.id
+              ? 'Выбрано'
+              : file.progress >= 1 ? 'Выбрать для просмотра' : 'Выбрать и скачать' }}
+          </strong>
         </button>
+        </div>
+        <p v-if="skippedFileCount" class="source-stage-note">
+          Скрыто сопутствующих файлов: {{ skippedFileCount }}.
+        </p>
       </div>
-      <p v-else>Метаданные файлов ещё не получены. Нажмите «Обновить файлы» через несколько секунд.</p>
+      <div v-else-if="videoFiles.length === 0" class="metadata-wait" role="status">
+        <span class="spinner" aria-hidden="true" />
+        <div>
+          <strong>Получаем список файлов…</strong>
+          <p>KADR обновит его автоматически. Обычно это занимает несколько секунд.</p>
+        </div>
+      </div>
+      <div v-if="hasSelectedFile && selectedFile" class="selected-file-summary">
+        <div>
+          <span>Выбрано для просмотра</span>
+          <strong>{{ selectedFile.name }}</strong>
+          <small>{{ formatBytes(selectedFile.size_bytes) }}</small>
+        </div>
+        <details v-if="videoFiles.length > 1" class="change-file-details">
+          <summary class="focus-ring">Выбрать другой эпизод</summary>
+          <div class="torrent-files compact">
+            <button
+              v-for="file in videoFiles.filter((item) => item.id !== selectedFile?.id)"
+              :key="file.id"
+              class="torrent-file focus-ring"
+              type="button"
+              :disabled="torrentBusy"
+              @click="chooseFileAndStart(file)"
+            >
+              <span>{{ file.name }}</span>
+              <small>{{ formatBytes(file.size_bytes) }} · скачано {{ Math.round(file.progress * 100) }}%</small>
+              <strong>{{ file.progress >= 1 ? 'Выбрать для просмотра' : 'Выбрать и скачать' }}</strong>
+            </button>
+          </div>
+        </details>
+      </div>
+      <div v-if="hasSelectedFile && torrent.selected_file_path" class="watch-step">
+        <p class="workflow-step">Шаг 3 из 3</p>
+        <KadrPlayer :task-id="torrent.id" :title="torrent.selected_file_path" />
+      </div>
     </section>
     <p v-if="torrentError" class="torrent-error" role="alert">{{ torrentError }}</p>
   </section>

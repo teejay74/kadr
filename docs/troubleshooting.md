@@ -73,9 +73,10 @@ must not be pasted into logs or committed.
 
 ## A torrent has no selectable files
 
-Metadata may still be loading. Use the manual refresh action after peers are
-found. KADR accepts only known video extensions and rejects absolute or parent
-traversal paths. It does not guess that archives or unknown files are playable.
+Metadata may still be loading. The open task refreshes automatically every five
+seconds. KADR accepts only known video extensions and rejects absolute or
+parent traversal paths. It does not guess that archives or unknown files are
+playable.
 
 ## Starting a torrent returns insufficient storage
 
@@ -83,4 +84,65 @@ Check free space on the configured KADR download filesystem. Do not lower
 `KADR_MIN_FREE_SPACE_GB` on a deployed host without confirming the cache size,
 database headroom, and impact on other services. The development override is
 not a production recommendation.
+
+## Adding a source reports the active-download limit
+
+The limit applies only when KADR needs to create a new torrent task. Selecting
+a release that is already registered returns the existing task even when the
+new-download limit is full. Completed torrents that are seeding do not consume
+download slots. Incomplete `downloading`, `queuedDL`, and `stalledDL` tasks do;
+stop an unneeded one before adding a truly new release. Stopping is
+non-destructive and keeps downloaded data.
+
+## Player remains on “Подготавливаем буфер”
+
+The player polls stream readiness every five seconds and shows the percentage
+of required startup pieces. Confirm that peers are present if that percentage
+does not change. KADR does not attach the browser media source or send
+unavailable sparse bytes until the beginning and required container tail are
+ready. It enables qBittorrent's sequential and first/last-piece modes for
+incomplete streams. A distant seek can still time out because qBittorrent's Web
+API cannot assign priority to an arbitrary piece range.
+
+If the beginning remains unavailable while later pieces are downloading, make
+sure the selected file has normal priority (`1`), not maximal priority (`7`).
+Maximal file priority can conflict with sequential piece ordering in
+qBittorrent 5.x. Opening the player reapplies the safe priority automatically.
+
+## Player reports that the video stream cannot be opened
+
+Inspect the readiness and stream requests plus API logs. A 409
+means no usable selected file, 429 means either the distinct-task limit or the
+per-task parallel Range limit was reached, 504 means required pieces did not
+arrive, and 416 means the browser or client sent an invalid range. A failed
+media decode with successful HTTP ranges usually means the browser does not
+support the container or codec. Wait for the selected file to finish, then use
+“Совместимая версия”. FFmpeg is intentionally not started automatically.
+After preparation succeeds, subsequent playback attempts automatically reuse
+the compatible artifact. Refresh a page that was already open while the
+artifact was being prepared.
+
+## Compatible-version preparation fails
+
+The file must be completely downloaded. A preparation-limit response means
+another FFmpeg job is running; wait for it to finish. For other failures,
+inspect `docker compose logs --tail=200 api`, verify `ffmpeg -version` and
+`ffprobe -version` inside the API container, and confirm `data/playback` is
+writable by `KADR_UID:KADR_GID`. Do not make `data/downloads` writable to the
+API as a workaround.
+
+An insufficient-space message includes the estimated output size plus the
+configured `KADR_PLAYBACK_MIN_FREE_SPACE_GB` reserve. Reclaim only confirmed
+KADR-owned cache data through a reviewed process; do not run broad Docker or
+filesystem cleanup commands.
+
+The compatible profile uses the first audio stream, AAC-LC stereo, and H.264
+8-bit video when conversion is needed. Alternate tracks, embedded subtitles,
+HDR tone mapping, and every browser/device combination are not yet supported.
+
+## Resume position is missing
+
+Resume state is local to the current browser profile. Private browsing,
+clearing site data, or blocked local storage removes it. KADR does not yet sync
+watch history to the database; that belongs to Stage 6.
 

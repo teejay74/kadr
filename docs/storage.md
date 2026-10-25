@@ -16,7 +16,14 @@ stored separately at `./data/qbittorrent`. `KADR_TORRENT_SAVE_PATH`,
 `KADR_TORRENT_STORAGE_ROOT`, and `KADR_MIN_FREE_SPACE_GB` are configurable.
 The save path must remain inside the qBittorrent KADR-only mount.
 
-No delete operation exists in Stage 4. Future cache/library code must receive
+The API writes generated compatible MP4 files only beneath
+`./data/playback`, mounted at `/playback`. Source downloads remain mounted
+read-only in the API. Preparation uses a task-specific `.part.mp4` and an
+atomic rename, enforces a configurable free-space reserve, and reuses a
+completed artifact. Failed temporary output is removed; no user-facing cache
+deletion operation exists yet.
+
+No media-library delete operation exists. Future cache/library code must receive
 configured KADR-only roots, resolve
 canonical paths, reject traversal/symlink escapes, protect `SAVED` and active
 files, and never have write access to Photodom.

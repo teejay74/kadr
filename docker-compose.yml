@@ -27,15 +27,33 @@ services:
       KADR_TORRENT_STORAGE_ROOT: ${KADR_TORRENT_STORAGE_ROOT:-/downloads}
       KADR_MIN_FREE_SPACE_GB: ${KADR_MIN_FREE_SPACE_GB:-200}
       KADR_MAX_ACTIVE_TORRENTS: ${KADR_MAX_ACTIVE_TORRENTS:-3}
+      KADR_MAX_ACTIVE_STREAMS: ${KADR_MAX_ACTIVE_STREAMS:-2}
+      KADR_MAX_RANGE_REQUESTS_PER_STREAM: ${KADR_MAX_RANGE_REQUESTS_PER_STREAM:-32}
+      KADR_STREAM_START_BUFFER_MB: ${KADR_STREAM_START_BUFFER_MB:-32}
+      KADR_STREAM_READ_TIMEOUT_SECONDS: ${KADR_STREAM_READ_TIMEOUT_SECONDS:-30}
+      KADR_STREAM_POLL_INTERVAL_SECONDS: ${KADR_STREAM_POLL_INTERVAL_SECONDS:-0.5}
+      KADR_STREAM_CHUNK_SIZE_KB: ${KADR_STREAM_CHUNK_SIZE_KB:-1024}
+      KADR_PLAYBACK_CACHE_ROOT: ${KADR_PLAYBACK_CACHE_ROOT:-/playback}
+      KADR_PLAYBACK_MIN_FREE_SPACE_GB: ${KADR_PLAYBACK_MIN_FREE_SPACE_GB:-5}
+      KADR_MAX_ACTIVE_TRANSCODES: ${KADR_MAX_ACTIVE_TRANSCODES:-1}
+      KADR_TRANSCODE_VIDEO_THREADS: ${KADR_TRANSCODE_VIDEO_THREADS:-2}
+      KADR_TRANSCODE_VIDEO_PRESET: ${KADR_TRANSCODE_VIDEO_PRESET:-veryfast}
+      KADR_TRANSCODE_VIDEO_CRF: ${KADR_TRANSCODE_VIDEO_CRF:-23}
+      KADR_TRANSCODE_MAX_WIDTH: ${KADR_TRANSCODE_MAX_WIDTH:-1920}
+      KADR_TRANSCODE_MAX_HEIGHT: ${KADR_TRANSCODE_MAX_HEIGHT:-1080}
+      KADR_TRANSCODE_AUDIO_BITRATE: ${KADR_TRANSCODE_AUDIO_BITRATE:-192k}
     volumes:
       - ./data/database:/data
       - ./data/downloads:/downloads:ro
+      - ./data/playback:/playback
     expose:
       - "8000"
     networks:
       - kadr-internal
     restart: unless-stopped
     init: true
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test:
         [
@@ -51,7 +69,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          cpus: "2.0"
+          memory: 1024M
 
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest@sha256:b3b00047ed20f6ce2b16780145cb6a0acb51c9e28ea6aa6f5dcd33c7034f1797
@@ -119,6 +138,7 @@ services:
       KADR_DATABASE_URL: sqlite+aiosqlite:////tmp/kadr-test.db
       KADR_LOG_LEVEL: WARNING
       KADR_MIN_FREE_SPACE_GB: 0
+      KADR_PLAYBACK_CACHE_ROOT: /tmp/kadr-playback
     command: ["pytest", "-p", "no:cacheprovider"]
     networks:
       - kadr-internal

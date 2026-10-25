@@ -50,10 +50,6 @@ class TorrentManager:
         self._settings = settings
 
     async def add(self, media_id: int, media_kind: MediaKind, source_id: str) -> TorrentStatus:
-        await self._ensure_free_space()
-        active = [item for item in await self._client.list() if self._is_active(item)]
-        if len(active) >= self._settings.max_active_torrents:
-            raise TorrentLimitError("The active torrent limit has been reached")
         source = await self._sources.resolve(media_id, media_kind, source_id)
         if source is None:
             raise TorrentNotFoundError("The selected source is no longer available")
@@ -62,6 +58,10 @@ class TorrentManager:
             existing = await self._repository.get_by_hash(known_hash)
             if existing is not None:
                 return await self.status(existing.id)
+        await self._ensure_free_space()
+        active = [item for item in await self._client.list() if self._is_active(item)]
+        if len(active) >= self._settings.max_active_torrents:
+            raise TorrentLimitError("The active torrent limit has been reached")
         task_id = str(uuid.uuid4())
         tag = f"kadr-{task_id}"
         await self._client.add(source.uri, tag)
@@ -94,6 +94,12 @@ class TorrentManager:
         await self._repository.set_state(task, state)
         return self._to_status(task, items[0])
 
+    async def current(self, media_id: int, media_kind: MediaKind) -> TorrentStatus:
+        task = await self._repository.get_latest_by_media(media_id, media_kind)
+        if task is None:
+            raise TorrentNotFoundError("Torrent task not found")
+        return await self.status(task.id)
+
     async def files(self, task_id: str) -> list[TorrentFile]:
         task = await self._task(task_id)
         items = await self._client.files(task.torrent_hash)
@@ -115,7 +121,11 @@ class TorrentManager:
             raise TorrentFileError("The selected torrent file has an unsafe path")
         all_ids = list(range(len(files)))
         await self._client.set_file_priority(task.torrent_hash, all_ids, 0)
-        await self._client.set_file_priority(task.torrent_hash, [file_id], 7)
+        # qBittorrent 5.x can abandon sequential piece ordering when the only
+        # selected file has maximal priority. Normal priority keeps skipped
+        # files disabled while allowing the sequential picker to start at the
+        # beginning of the selected video.
+        await self._client.set_file_priority(task.torrent_hash, [file_id], 1)
         await self._repository.select_file(task, file_id, selected.name)
         return await self.status(task_id)
 
@@ -175,6 +185,9 @@ class TorrentManager:
 
     @staticmethod
     def _is_active(item: dict[str, Any]) -> bool:
+        progress = min(max(float(item.get("progress") or 0), 0), 1)
+        if progress >= 1:
+            return False
         return str(item.get("state") or "unknown") not in STOPPED_STATES
 
     @staticmethod

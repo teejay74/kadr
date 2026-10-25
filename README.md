@@ -1,10 +1,12 @@
 # KADR
 
 KADR is a self-hosted personal media platform. The repository currently
-contains the **Stage 4 Torrent Manager**: a working FastAPI + Vue 3 +
-TypeScript application with a TMDB catalogue, isolated Prowlarr source search,
-and server-side qBittorrent control. Streaming, playback, transcoding, and
-media-library deletion are intentionally not implemented.
+contains the **Stage 5 Streaming MVP**: a working FastAPI + Vue 3 + TypeScript
+application with a TMDB catalogue, isolated Prowlarr source search,
+server-side qBittorrent control, availability-aware HTTP byte ranges, and a
+Direct Play browser player. An explicit “Совместимая версия” action uses
+`ffprobe` and FFmpeg to remux or transcode completed files to browser-friendly
+H.264/AAC MP4. Media-library deletion remains intentionally unimplemented.
 
 ## Quick start
 
@@ -36,8 +38,13 @@ KADR ships with no indexer credentials or preconfigured trackers. Follow the
 your access.
 
 qBittorrent's administration port is also loopback-only. New magnets stop as
-soon as metadata arrives; KADR requires an explicit video-file selection and
-start action. See the [qBittorrent setup guide](docs/qbittorrent.md).
+soon as metadata arrives. Choose a film or episode with the single
+«Выбрать и скачать» action; KADR selects only that file and starts it. Then use
+«Начать просмотр» for Direct Play.
+If its container or codecs are unsupported, wait for the file to finish and
+choose «Совместимая версия»; FFmpeg never starts automatically.
+See the [qBittorrent setup guide](docs/qbittorrent.md) and
+[streaming guide](docs/streaming.md).
 
 Stop KADR without deleting its database:
 
@@ -76,4 +83,6 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 3 report](docs/stage-3-report.md)
 - [qBittorrent setup](docs/qbittorrent.md)
 - [Stage 4 report](docs/stage-4-report.md)
+- [Stage 5 report](docs/stage-5-report.md)
+- [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 

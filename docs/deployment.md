@@ -1,6 +1,6 @@
 # Deployment
 
-## Local Stage 4
+## Local Stage 5
 
 1. Copy `.env.example` to `.env` and select an unused `KADR_HTTP_PORT`.
 2. Create a TMDB API Read Access Token and set `KADR_TMDB_ACCESS_TOKEN` in
@@ -13,21 +13,30 @@
 5. Start qBittorrent, set a private Web UI username/password, and copy them to
    `KADR_QBITTORRENT_USERNAME` and `KADR_QBITTORRENT_PASSWORD`. Follow
    [qbittorrent.md](qbittorrent.md); do not retain the temporary password.
-6. Ensure `data/database`, `data/prowlarr`, `data/qbittorrent`, and
-   `data/downloads` are writable by the configured UID/GID. Set the free-space
-   floor appropriate for the audited host; production default is 200 GB.
+6. Ensure `data/database`, `data/prowlarr`, `data/qbittorrent`,
+   `data/downloads`, and `data/playback` are writable by the configured UID/GID.
+   The API receives downloads read-only and writes only generated media under
+   playback. Set both free-space floors for the audited host; the download
+   default is 200 GB and the playback-cache reserve is 5 GB.
 7. Run `docker compose config --quiet`.
 8. Run `docker compose up --build -d`.
 9. Wait for `docker compose ps` to report all four core services healthy.
 10. Check `curl http://localhost:8180/api/v1/system/health`, then load the UI and
    verify one catalogue and detail request.
+11. Select a supported video, open the player, and verify `200`, `206`, and a
+    forward seek while watching API and qBittorrent logs. Tune stream settings
+    only after measuring the target host and network.
+12. On a fully downloaded incompatible fixture, explicitly request
+    “Совместимая версия”, verify FFmpeg progress, probe the generated MP4 for
+    H.264/AAC, and test a ranged compatible-stream response. Full transcodes
+    should be load-tested on the target CPU before regular use.
 
 `docker compose down` stops only this Compose project. Never use `down -v` in a
 normal update.
 
 ## Mandatory Debian preflight
 
-Stages 1-4 were prepared and tested locally; they have not touched the working
+Stages 1-5 were prepared and tested locally; they have not touched the working
 Debian server. Before server deployment, perform read-only checks for OS/architecture,
 Docker/Compose versions, running containers and Compose projects, listening
 ports, memory/load, free space/inodes, mount filesystem/type/options, and the
@@ -55,4 +64,10 @@ Its BitTorrent listen port is not published by the development Compose file;
 review the actual network/NAT requirement separately before production changes.
 Back up its configuration, but treat downloaded cache data according to the
 later Stage 6 lifecycle policy.
+
+The API image includes FFmpeg and `ffprobe`. Compatible output is a separate
+bind mount at `data/playback`; back it up only if regenerating files would be
+undesirable. Do not point that root at Photodom. CPU/RAM limits and the default
+single active job are safety baselines, not proof of capacity on the Debian
+host.
 

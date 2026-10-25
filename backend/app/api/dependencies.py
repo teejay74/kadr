@@ -9,8 +9,12 @@ from app.repositories.metadata_cache import MetadataCacheRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.services.metadata.catalog import CatalogService
 from app.services.metadata.tmdb import TMDBClient
+from app.services.playback.manager import CompatibilityManager
+from app.services.playback.service import PlaybackPreparationService
 from app.services.sources.prowlarr import ProwlarrClient
 from app.services.sources.search import SourceSearchService
+from app.services.streaming.manager import StreamingManager
+from app.services.streaming.registry import StreamRegistry
 from app.services.torrents.manager import TorrentManager
 from app.services.torrents.qbittorrent import QBittorrentClient
 
@@ -62,3 +66,52 @@ def get_torrent_manager(
 
 
 TorrentManagerDependency = Annotated[TorrentManager, Depends(get_torrent_manager)]
+
+
+def get_streaming_manager(
+    request: Request,
+    torrents: TorrentManagerDependency,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StreamingManager:
+    settings = get_settings()
+    registry: StreamRegistry = request.app.state.stream_registry
+    return StreamingManager(
+        QBittorrentClient(request.app.state.torrent_http_client, settings),
+        torrents,
+        TorrentTaskRepository(session),
+        registry,
+        settings,
+    )
+
+
+StreamingManagerDependency = Annotated[StreamingManager, Depends(get_streaming_manager)]
+
+
+def get_compatibility_manager(request: Request) -> CompatibilityManager:
+    return request.app.state.compatibility_manager  # type: ignore[no-any-return]
+
+
+CompatibilityManagerDependency = Annotated[
+    CompatibilityManager,
+    Depends(get_compatibility_manager),
+]
+
+
+def get_playback_preparation_service(
+    request: Request,
+    manager: CompatibilityManagerDependency,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlaybackPreparationService:
+    settings = get_settings()
+    return PlaybackPreparationService(
+        manager,
+        QBittorrentClient(request.app.state.torrent_http_client, settings),
+        TorrentTaskRepository(session),
+        settings,
+    )
+
+
+PlaybackPreparationServiceDependency = Annotated[
+    PlaybackPreparationService,
+    Depends(get_playback_preparation_service),
+]

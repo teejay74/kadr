@@ -59,7 +59,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         <div class="genre-list"><span v-for="genre in media.genres" :key="genre.id">{{ genre.name }}</span></div>
         <p class="details-overview">{{ media.overview || 'Описание пока не переведено.' }}</p>
         <div class="action-row">
-          <button class="button primary" type="button" disabled title="Воспроизведение появится на этапе 5">Смотреть · этап 5</button>
+          <a class="button primary focus-ring" href="#media-sources">Выбрать источник</a>
           <a v-if="media.trailer_url" class="button secondary focus-ring" :href="media.trailer_url" target="_blank" rel="noopener">Трейлер ↗</a>
         </div>
       </div>

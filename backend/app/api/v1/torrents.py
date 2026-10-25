@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, Query
 
 from app.api.dependencies import TorrentManagerDependency
+from app.schemas.media import MediaKind
 from app.schemas.torrents import (
     AddTorrentRequest,
     SelectTorrentFileRequest,
@@ -20,6 +21,15 @@ async def add_torrent(
     media_id: Annotated[int, Path(gt=0)],
 ) -> TorrentStatus:
     return await manager.add(media_id, body.media_kind, body.source_id)
+
+
+@router.get("/media/{media_id}/torrents", response_model=TorrentStatus)
+async def current_torrent(
+    manager: TorrentManagerDependency,
+    media_id: Annotated[int, Path(gt=0)],
+    media_kind: Annotated[MediaKind, Query()],
+) -> TorrentStatus:
+    return await manager.current(media_id, media_kind)
 
 
 @router.get("/torrents/{task_id}", response_model=TorrentStatus)

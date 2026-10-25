@@ -43,4 +43,9 @@ class TorrentStatus(BaseModel):
     can_stop: bool
 
 
+class StreamReadiness(BaseModel):
+    ready: bool
+    buffer_progress: float = Field(ge=0, le=1)
+
+
 TorrentAction = Literal["start", "stop"]

@@ -1,6 +1,6 @@
 # Architecture
 
-## Stage 4 boundaries
+## Stage 5 boundaries
 
 The current increment keeps the frontend, API, and indexer integration
 independently testable:
@@ -10,6 +10,8 @@ browser -> :8180 nginx/Vue -> /api/* -> FastAPI -> TMDB adapter
                                       -> async SQLAlchemy -> SQLite cache
                                       -> Prowlarr adapter -> configured indexers
                                       -> qBittorrent adapter -> KADR download cache
+                                      -> Streaming Manager -> read-only video file
+                                      -> Compatibility Manager -> FFmpeg -> MP4 cache
 ```
 
 Only nginx publishes a LAN-facing host port. Prowlarr's setup port is bound to
@@ -39,11 +41,39 @@ exposes only normalized task/file state to the browser.
 
 qBittorrent persists configuration in `data/qbittorrent` and can write only to
 `data/downloads`. Its Web UI is bound to host loopback. The API sees the same
-download filesystem read-only solely for free-space checks. A magnet may run
+download filesystem read-only for free-space checks and Direct Play. A magnet may run
 only long enough to receive metadata, using qBittorrent's
 `MetadataReceived` stop condition. Once files are visible, KADR disables all of
 them until the user selects one supported video. Active-download concurrency
-and minimum free space are configurable; refresh is manual.
+and minimum free space are configurable. The UI refreshes metadata and active
+download progress every five seconds only while work is pending.
+
+The Streaming Manager resolves the selected file only beneath the configured
+KADR storage root, maps file offsets to torrent pieces, and checks
+qBittorrent's authoritative piece state before every filesystem read. The
+initial buffer starts at one response chunk, grows to four seconds of current
+download speed, and is capped by the configured target and requested range.
+The selected file keeps normal priority so qBittorrent's sequential picker is
+not displaced by maximal file priority. Missing data is awaited only up to the
+configured timeout. An in-memory registry limits concurrent torrent tasks and
+also caps parallel Range requests per task. This lets one native browser player
+replace or overlap HTTP ranges without consuming several viewer slots. Leases
+are released when each response finishes or its client disconnects. The API
+never sends a sparse or not-yet-complete piece.
+
+The Vue player uses native browser controls and requests the same-origin range
+endpoint through nginx. It is created only after an explicit user action,
+offers locally saved resume position, and tears down its media source when
+closed. Playback is Direct Play: the browser must support the selected
+container, video codec, and audio codec.
+
+The Compatibility Manager is an explicit fallback. It canonicalizes a
+completed selected source beneath the read-only KADR download root, probes its
+real streams, and chooses remux, audio-only conversion, or bounded H.264/AAC
+conversion. A process-local scheduler permits one FFmpeg job by default. Work
+is written to a temporary file under the separate writable playback cache and
+atomically renamed only on success. Generated MP4 ranges share the Streaming
+Manager's request registry. Opening Direct Play never starts FFmpeg.
 
 Prowlarr persists its own configuration in `data/prowlarr` and exposes its
 administrative UI only on host loopback. It is not a dependency of API health:
@@ -64,15 +94,19 @@ catalogue browsing continues when Prowlarr or an indexer is unavailable.
 | Indexer credentials or download URLs leak to browsers/logs | Tracker account compromise | Server-only `X-Api-Key`; normalized allowlisted response fields; no raw, magnet, or download URLs in Stage 3. |
 | Slow, rate-limited, or unavailable indexers | Delayed source search | User-triggered requests, bounded result count, configurable timeout, no background polling, controlled 502 errors. |
 | Incorrect quality inference from release names | Misleading source choice | Conservative parser with nullable attributes and a tested pattern matrix; no media probing claims. |
-| Torrent I/O pressure | Host or Photodom degradation | Stopped-by-default additions, bounded active torrents, configurable free-space gate, manual UI refresh, and qBittorrent memory limit; validate host headroom before deployment. |
-| Browser/TV codec fragmentation | Unsupported playback | Capability checks and honest errors; Direct Play first, no automatic transcoding. |
-| Malicious torrent paths or unsafe cache deletion | Filesystem escape or data loss | Absolute/traversal file names are rejected; qBittorrent is mounted only to the KADR download root; no deletion code exists through Stage 4. |
+| Torrent I/O pressure | Host or Photodom degradation | Stopped-by-default additions, bounded active torrents, configurable free-space gate, low-rate polling only for the open task, and qBittorrent memory limit; validate host headroom before deployment. |
+| Browser/TV codec fragmentation | Unsupported playback | Direct Play first; explicit ffprobe/FFmpeg fallback produces H.264/AAC MP4, with honest errors for remaining device limits. |
+| FFmpeg CPU, memory, and disk-I/O pressure | Existing services become slow or playback cache fills storage | Explicit-only jobs, one-job/two-thread defaults, 1080p cap, container CPU/RAM limits, free-space reserve, separate cache; validate production host headroom. |
+| Corrupt or malicious media input | FFmpeg failure or excessive processing | Unprivileged container, no-new-privileges, read-only source mount, bounded concurrency, exact argv execution without a shell, controlled failure state. |
+| qBittorrent Web API cannot prioritize an arbitrary piece range | A long seek into an incomplete file can time out | Enable sequential and first/last-piece modes, reassert maximum file priority, wait only for verified pieces, and evaluate a libtorrent-capable adapter before claiming arbitrary seek-priority optimization. |
+| A stream fails after response headers are sent | Browser sees a network/media error rather than a JSON body | Validate the initial buffer before returning headers; surface later starvation as a player error and keep timeout bounded. |
+| Process restart loses active-stream counters | Temporary concurrency accounting reset | Registry is deliberately process-local for the single-worker MVP; use shared coordination before adding API replicas. |
+| Malicious torrent paths or unsafe cache deletion | Filesystem escape or data loss | Canonical paths must stay beneath the KADR storage root; qBittorrent is mounted only to that root; no deletion code exists through Stage 5. |
 | Public exposure of internal services/secrets | Account or host compromise | Only web entry point published; secrets server-side; auth and rate limiting are required before remote exposure. |
 
 ## Stage dependencies
 
-Stages 1-4 provide the shell, catalogue, source discovery, and qBittorrent
-control. Stage 5 may build
-streaming only after torrent state is real and tested. Stage 6 owns library and
+Stages 1-5 provide the shell, catalogue, source discovery, qBittorrent control,
+and Direct Play streaming. Stage 6 owns library and
 cache lifecycle. TV, remote-access, and stabilization work follow those layers.
 

@@ -121,3 +121,21 @@ export interface TorrentStatus {
   can_start: boolean
   can_stop: boolean
 }
+
+export interface StreamReadiness {
+  ready: boolean
+  buffer_progress: number
+}
+
+export type PlaybackPreparationState = 'idle' | 'probing' | 'processing' | 'ready' | 'failed'
+export type PlaybackStrategy = 'remux' | 'audio_transcode' | 'transcode'
+
+export interface PlaybackPreparation {
+  state: PlaybackPreparationState
+  progress: number
+  strategy: PlaybackStrategy | null
+  video_codec: string | null
+  audio_codec: string | null
+  message: string | null
+  stream_url: string | null
+}

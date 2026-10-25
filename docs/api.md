@@ -130,6 +130,7 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 | Method and path | Purpose |
 | --- | --- |
 | `POST /media/{id}/torrents` | Resolve an opaque source ID and add it stopped |
+| `GET /media/{id}/torrents?media_kind=movie` | Restore the latest task for this title |
 | `GET /torrents/{task_id}` | Read real progress, speed, peers, and state |
 | `GET /torrents/{task_id}/files` | List torrent files and priorities |
 | `PUT /torrents/{task_id}/selection` | Prioritize one supported video |
@@ -145,5 +146,56 @@ not public API fields.
 Torrent errors use `torrent_not_configured` (503), `torrent_unavailable` (502),
 `torrent_not_found` (404), `torrent_limit_reached` (409),
 `invalid_torrent_file` (422), or `torrent_storage_unavailable` (507).
-Streaming and deletion endpoints remain out of scope in Stage 4.
+Deletion endpoints remain out of scope through Stage 5.
+
+## Streaming endpoint
+
+### `GET /api/v1/torrents/{task_id}/stream/readiness`
+
+Starts or resumes preparation of the selected file and reports whether the
+startup buffer can be opened safely. The response contains `ready` and
+`buffer_progress`. KADR checks both the beginning of the adaptive startup
+buffer and the tail needed by containers such as MP4 before the player attaches
+the media source.
+
+### `GET /api/v1/torrents/{task_id}/stream`
+
+Streams the selected video using Direct Play. The torrent task and video-file
+selection must already exist. Without `Range`, the endpoint returns `200 OK`
+for the complete file. A single `Range: bytes=START-END`, open-ended range, or
+suffix range returns `206 Partial Content`.
+
+Successful responses include `Accept-Ranges: bytes`, exact `Content-Length`,
+`Cache-Control: no-store`, and, for partial responses, `Content-Range`. An
+invalid, multiple, or unsatisfiable range returns `416` with
+`Content-Range: bytes */TOTAL`.
+
+Before sending headers, KADR waits for a bounded initial buffer. It then checks
+every chunk's torrent pieces before reading the file. Errors use
+`stream_not_ready` (409), `stream_limit_reached` (429), or
+`stream_buffer_timeout` (504). If data becomes unavailable after a streaming
+response has begun, the connection ends and the player reports a playback
+error because HTTP headers can no longer be replaced with JSON.
+
+This Direct Play endpoint does not remux or transcode and does not expose
+torrent paths or credentials.
+
+## Compatible-playback endpoints
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /torrents/{task_id}/compatible` | Explicitly start or reuse preparation |
+| `GET /torrents/{task_id}/compatible` | Read probe/conversion progress and strategy |
+| `GET /torrents/{task_id}/compatible/stream` | Stream the ready MP4 with byte ranges |
+
+Preparation requires a selected, fully downloaded video. A `202` response has
+`state` (`probing`, `processing`, `ready`, or `failed`), normalized progress,
+the chosen `strategy` (`remux`, `audio_transcode`, or `transcode`), detected
+video/audio codecs, an optional message, and a stream URL only when ready.
+
+Only the POST starts FFmpeg; GET is read-only. One preparation runs at a time
+by default. Errors use `playback_preparation_failed` or
+`playback_preparation_limit` (409). The compatible stream returns `200`/`206`
+and the same Range headers as Direct Play; requesting it before completion
+returns `playback_artifact_not_ready` (409).
 

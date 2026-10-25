@@ -23,6 +23,22 @@ class TorrentTaskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_by_media(
+        self,
+        media_id: int,
+        media_kind: str,
+    ) -> TorrentTask | None:
+        result = await self._session.execute(
+            select(TorrentTask)
+            .where(
+                TorrentTask.media_id == media_id,
+                TorrentTask.media_kind == media_kind,
+            )
+            .order_by(TorrentTask.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def select_file(self, task: TorrentTask, file_id: int, file_path: str) -> None:
         task.selected_file_id = file_id
         task.selected_file_path = file_path
