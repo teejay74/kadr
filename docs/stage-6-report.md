@@ -113,6 +113,8 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 - Added conservative source-title parsing for single seasons, explicit lists,
   and ranges including `S01-05`, `S01-S05`, episode-spanning ranges, English,
   and Russian season labels.
+- Distinguished episode ranges such as `S1E1-9` from season ranges; only an
+  explicit second `S` marker makes an episode-spanning title multi-season.
 - Separated release coverage from the season-specific search context, grouped
   multi-season packs independently, and deduplicated the same opaque source
   across seasonal searches.
@@ -133,6 +135,7 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 ### Checks
 
 - Backend Pytest: 72 passed.
+- Focused source/parser Pytest after the episode-range fix: 20 passed.
 - Frontend Vitest: 33 passed across 6 files.
 - Ruff passed; TypeScript checking and the production Vite build passed.
 - Compose configuration validation passed.
