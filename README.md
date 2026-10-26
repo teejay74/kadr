@@ -37,12 +37,16 @@ and the UI explains that metadata is not configured.
 Prowlarr's setup UI is bound to loopback only; it is not exposed to the LAN.
 KADR ships with no indexer credentials or preconfigured trackers. Follow the
 [Prowlarr setup guide](docs/prowlarr.md) and use only sources whose rules permit
-your access.
+your access. The internal FlareSolverr service can handle supported Cloudflare
+browser challenges for explicitly tagged indexers; it is not published on a
+host port and cannot overcome a hard IP block.
 
 qBittorrent's administration port is also loopback-only. New magnets stop as
 soon as metadata arrives. Choose a film or episode with the single
-«Выбрать и скачать» action; KADR selects only that file and starts it. Then use
-«Начать просмотр» for Direct Play.
+«Выбрать и скачать» action; KADR selects only that file and starts it. Series
+sources are grouped by season, and an explicit action can queue the whole
+selected season without changing the episode being watched. Then use «Начать
+просмотр» for Direct Play.
 If its container or codecs are unsupported, wait for the file to finish and
 choose «Совместимая версия»; FFmpeg never starts automatically.
 See the [qBittorrent setup guide](docs/qbittorrent.md) and
@@ -94,4 +98,5 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 5 report](docs/stage-5-report.md)
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 - [Stage 6 report](docs/stage-6-report.md)
+- [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

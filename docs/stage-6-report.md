@@ -16,6 +16,10 @@ Date: 2026-10-25
 - Added guarded manual and low-frequency TTL cache cleanup. Active downloads,
   active streams, and saved tasks are skipped.
 - Added storage status for library/cache counts, bytes, and free space.
+- Added an explicit whole-season download action for recognized `S01E01` and
+  `1x01` episode names while preserving the current playback selection.
+- Grouped series source results by single seasons and season ranges inferred
+  from release titles, with ambiguous releases retained in a separate group.
 
 ## Safety boundaries
 
@@ -51,3 +55,14 @@ Date: 2026-10-25
 
 Stage 7 adds directional TV focus, remote-control interaction, player
 adaptation, and a measured Android TV / Google TV compatibility matrix.
+
+## Follow-up verification — 2026-10-26
+
+- Backend Pytest: `62 passed`.
+- Frontend Vitest: `27 passed` across 6 files.
+- Changed Python files pass Ruff; the whole-tree check still reports three
+  pre-existing E501 lines in migration `0004_library.py`.
+- TypeScript check and production Vite build passed.
+- Compose configuration validation passed. The application stack was not
+  running during this local verification, so no live health or log check was
+  performed.

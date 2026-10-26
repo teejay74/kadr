@@ -120,6 +120,10 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .source-loading { padding: 2rem; text-align: center; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 1rem; }
 .source-results { display: grid; gap: .75rem; }
 .source-summary { margin: 0 0 .5rem; font-size: .85rem; }
+.source-season-group { display: grid; gap: .75rem; }
+.source-season-group + .source-season-group { margin-top: .75rem; }
+.source-season-heading { display: flex; align-items: center; gap: .55rem; margin: 0; font-size: 1.05rem; }
+.source-season-heading small { display: grid; min-width: 1.5rem; height: 1.5rem; padding: 0 .35rem; place-items: center; color: var(--text-secondary); border-radius: 999px; background: rgb(255 255 255 / .08); font-size: .72rem; }
 .source-release { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1.5rem; align-items: center; padding: 1.15rem 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(32 34 43 / .65); }
 .source-release h3 { margin: 0; overflow-wrap: anywhere; font-size: 1rem; }
 .source-release-main > p { margin: .42rem 0 .7rem; color: var(--text-secondary); font-size: .84rem; }
@@ -164,6 +168,9 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .prefetch-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
 .prefetch-controls label { display: grid; gap: .3rem; color: var(--text-secondary); font-size: .76rem; }
 .prefetch-controls select { min-width: 7rem; padding: .65rem .75rem; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: .65rem; background: rgb(32 34 43 / .95); }
+.season-download-control { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.season-download-control small { color: var(--text-secondary); }
+.next-episodes-control { padding-top: .75rem; border-top: 1px solid var(--border-color); }
 .prefetch-queue { display: grid; gap: .65rem; padding-top: .75rem; border-top: 1px solid var(--border-color); }
 .prefetch-queue ul { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
 .prefetch-queue li { display: flex; justify-content: space-between; gap: 1rem; }

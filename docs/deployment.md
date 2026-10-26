@@ -15,12 +15,16 @@
    [qbittorrent.md](qbittorrent.md); do not retain the temporary password.
 6. Ensure `data/database`, `data/prowlarr`, `data/qbittorrent`,
    `data/downloads`, `data/playback`, and `data/library` are writable by the configured UID/GID.
+   Set `KADR_DATA_ROOT` to an audited KADR-only host directory when persistent
+   media should live outside the application checkout. Do not point it at a
+   Photodom directory or filesystem root; use a separately owned child
+   directory created explicitly for KADR.
    The API receives downloads read-only and writes only generated media under
    playback. Set both free-space floors for the audited host; the download
    default is 200 GB and the playback-cache reserve is 5 GB.
 7. Run `docker compose config --quiet`.
 8. Run `docker compose up --build -d`.
-9. Wait for `docker compose ps` to report all four core services healthy.
+9. Wait for `docker compose ps` to report all five core services healthy.
 10. Check `curl http://localhost:8180/api/v1/system/health`, then load the UI and
    verify one catalogue and detail request.
 11. Select a supported video, open the player, and verify `200`, `206`, and a
@@ -70,4 +74,11 @@ bind mount at `data/playback`; back it up only if regenerating files would be
 undesirable. Do not point that root at Photodom. CPU/RAM limits and the default
 single active job are safety baselines, not proof of capacity on the Debian
 host.
+
+FlareSolverr is internal-only and must not publish port 8191. Configure it in
+Prowlarr under Settings → Indexers → Indexer Proxies with host
+`http://flaresolverr:8191`. Assign a dedicated tag to the proxy and only to
+indexers that require Cloudflare handling. FlareSolverr starts a browser per
+request, so keep concurrency low and retain the configured memory, shared-memory,
+and tmpfs limits unless target-host measurements justify a change.
 

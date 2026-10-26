@@ -88,6 +88,48 @@ test('searches only after user action and renders normalized release data', asyn
   expect(api.getSources).toHaveBeenCalledWith(42, 'movie', 'seeders', 'desc')
 })
 
+test('groups series sources by season without hiding ambiguous releases', async () => {
+  const baseRelease = {
+    id: 'release-id',
+    title: 'Example.Show',
+    indexer: 'Example Indexer',
+    size_bytes: 1_000,
+    seeders: 5,
+    peers: 1,
+    published_at: null,
+    protocol: 'torrent' as const,
+    resolution: '1080p',
+    source: 'WEB-DL',
+    codec: 'H264',
+    hdr: false,
+    hdr_format: null,
+    audio: null,
+    language: null,
+    release_type: 'web',
+  }
+  api.getSources.mockResolvedValue({
+    media_id: 42,
+    media_kind: 'series',
+    query: 'Example Show',
+    total: 4,
+    items: [
+      { ...baseRelease, id: 's2', title: 'Example.Show.S02.1080p' },
+      { ...baseRelease, id: 'other', title: 'Example.Show.Specials.1080p' },
+      { ...baseRelease, id: 's1', title: 'Example.Show.S01.1080p' },
+      { ...baseRelease, id: 'range', title: 'Example.Show.S01-S03.Complete' },
+    ],
+  })
+
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'series' } })
+  await fireEvent.click(screen.getByRole('button', { name: 'Найти источники' }))
+
+  expect(await screen.findByText('Сезон 1')).toBeTruthy()
+  expect(screen.getByText('Сезоны 1–3')).toBeTruthy()
+  expect(screen.getByText('Сезон 2')).toBeTruthy()
+  expect(screen.getByText('Другие релизы')).toBeTruthy()
+  expect(screen.getByText('Example.Show.Specials.1080p')).toBeTruthy()
+})
+
 test('adds the selected normalized source as a stopped torrent task', async () => {
   render(SourcesPanel, { props: { mediaId: 42, kind: 'movie' } })
   await fireEvent.click(screen.getByRole('button', { name: 'Найти источники' }))
@@ -241,6 +283,67 @@ test('queues several following episodes without changing the selected episode', 
     name: 'Отменить загрузку следующих серий',
   }))
   expect(api.configureTorrentPrefetch).toHaveBeenLastCalledWith('task-id', [])
+})
+
+test('downloads every missing episode from the selected season only', async () => {
+  const selectedTorrent = {
+    ...stoppedTorrent,
+    media_kind: 'series' as const,
+    progress: 0.5,
+    selected_file_id: 1,
+    selected_file_path: 'Series/S01E02.mkv',
+  }
+  const files = [
+    {
+      id: 0,
+      name: 'Series/S01E01.mkv',
+      size_bytes: 1_000,
+      progress: 0,
+      priority: 0,
+      is_video: true,
+    },
+    {
+      id: 1,
+      name: 'Series/S01E02.mkv',
+      size_bytes: 1_000,
+      progress: 0.5,
+      priority: 1,
+      is_video: true,
+    },
+    {
+      id: 2,
+      name: 'Series/1x03.mkv',
+      size_bytes: 1_000,
+      progress: 0,
+      priority: 0,
+      is_video: true,
+    },
+    {
+      id: 3,
+      name: 'Series/S02E01.mkv',
+      size_bytes: 1_000,
+      progress: 0,
+      priority: 0,
+      is_video: true,
+    },
+  ]
+  api.getMediaTorrent.mockResolvedValue(selectedTorrent)
+  api.getTorrentFiles.mockResolvedValue(files)
+  api.configureTorrentPrefetch.mockResolvedValue({
+    ...selectedTorrent,
+    state: 'downloading',
+    can_stop: true,
+  })
+
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
+
+  await fireEvent.click(await screen.findByRole('button', {
+    name: 'Скачать сезон 1 целиком',
+  }))
+
+  expect(api.configureTorrentPrefetch).toHaveBeenCalledWith('task-id', [0, 2])
+  expect(await screen.findByText('Сезон 1 добавлен в загрузку. Эпизодов в очереди: 2.')).toBeTruthy()
+  expect(selectedTorrent.selected_file_id).toBe(1)
 })
 
 test('requires confirmation and deletes one downloaded episode', async () => {

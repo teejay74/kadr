@@ -57,6 +57,18 @@ movie or TV categories must be configured and pass its test in Prowlarr. An
 empty result is valid and is not replaced with mock data. Respect each
 indexer's access rules and query limits.
 
+## Indexer is blocked by Cloudflare
+
+Confirm the failure in Prowlarr logs and try another base URL shipped by the
+current indexer definition. For a browser challenge, configure the internal
+FlareSolverr endpoint `http://flaresolverr:8191` as an Indexer Proxy and use a
+matching tag on the proxy and indexer. If FlareSolverr also receives a blocked
+page, the site is rejecting the public IP; changing credentials or repeatedly
+retrying will not help.
+
+Keep `KADR_FLARESOLVERR_LOG_LEVEL=warning`. At `info`, FlareSolverr logs full
+request bodies, which can include indexer login credentials.
+
 ## qBittorrent does not become healthy
 
 Run `docker compose ps qbittorrent` and

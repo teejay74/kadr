@@ -10,6 +10,7 @@ from app.api.dependencies import get_torrent_manager
 from app.core.config import Settings
 from app.main import app
 from app.models.torrent_task import TorrentTask
+from app.schemas.torrents import PrefetchTorrentFilesRequest
 from app.services.sources.search import ResolvedSource
 from app.services.torrents.exceptions import TorrentFileError, TorrentStorageError
 from app.services.torrents.manager import TorrentManager
@@ -238,6 +239,15 @@ async def test_torrent_manager_rejects_invalid_prefetch_selection() -> None:
 
     with pytest.raises(TorrentFileError):
         await manager.configure_prefetch(task.id, [1, 1])
+
+
+def test_whole_season_prefetch_request_accepts_up_to_one_hundred_files() -> None:
+    request = PrefetchTorrentFilesRequest(file_ids=list(range(100)))
+
+    assert len(request.file_ids) == 100
+
+    with pytest.raises(ValueError):
+        PrefetchTorrentFilesRequest(file_ids=list(range(101)))
 
 
 async def test_switching_episode_keeps_only_the_forward_prefetch_queue() -> None:

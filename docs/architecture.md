@@ -47,7 +47,9 @@ only long enough to receive metadata, using qBittorrent's
 `MetadataReceived` stop condition. Once files are visible, KADR disables all of
 them until the user selects one supported video. Active-download concurrency
 and minimum free space are configurable. The UI refreshes metadata and active
-download progress every five seconds only while work is pending.
+download progress every five seconds only while work is pending. For a series,
+the user may explicitly queue the next few episodes or every recognized episode
+from the selected season; the current playback selection remains unchanged.
 
 The Streaming Manager resolves the selected file only beneath the configured
 KADR storage root, maps file offsets to torrent pieces, and checks
@@ -82,9 +84,17 @@ to a separate library root with hard-link-first/copy fallback and atomic
 publication. Saved-file Range streams use registry keys, so active items
 cannot be deleted. Favorites and watch history are persistent SQLite records.
 
-Prowlarr persists its own configuration in `data/prowlarr` and exposes its
-administrative UI only on host loopback. It is not a dependency of API health:
+The series source view groups normalized results by season markers found in
+release titles, including season ranges, and keeps ambiguous results visible in
+a separate group. Prowlarr persists its own configuration in `data/prowlarr`
+and exposes its administrative UI only on host loopback. It is not a dependency of API health:
 catalogue browsing continues when Prowlarr or an indexer is unavailable.
+
+FlareSolverr is an internal-only browser-challenge adapter on the KADR network.
+Prowlarr reaches it at `http://flaresolverr:8191`; no host port is published.
+Prowlarr applies it only to indexers sharing an explicit proxy tag. The
+container is unprivileged, resource-limited, and uses RAM-backed temporary
+browser profiles. A hard Cloudflare IP block can still reject the request.
 
 ## Technical risks
 

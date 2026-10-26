@@ -141,7 +141,8 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 
 The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`;
 selection uses `{"file_id":0}`. Episode prefetch uses
-`{"file_ids":[1,2,3]}` (up to 20 supported video files); an empty list cancels
+`{"file_ids":[1,2,3]}` (up to 100 supported video files, including an explicitly
+selected whole season); an empty list cancels
 all queued files except the episode currently selected for playback. Responses include task ID, media identity,
 state, progress, byte counts, speeds, peers/seeds, ETA, selected file, and
 allowed actions. Source URIs, hashes, credentials, and raw qBittorrent data are

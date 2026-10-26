@@ -59,6 +59,18 @@ const downloadedVideoFiles = computed(() => videoFiles.value.filter(
 ))
 const hasSelectedFile = computed(() => torrent.value?.selected_file_id !== null
   && torrent.value?.selected_file_id !== undefined)
+const selectedSeasonNumber = computed(() => selectedFile.value
+  ? parseEpisodeIdentity(selectedFile.value.name)?.season ?? null
+  : null)
+const seasonVideoFiles = computed(() => {
+  if (selectedSeasonNumber.value === null) return []
+  return videoFiles.value.filter(
+    (file) => parseEpisodeIdentity(file.name)?.season === selectedSeasonNumber.value,
+  )
+})
+const seasonDownloadCandidates = computed(() => seasonVideoFiles.value.filter(
+  (file) => file.id !== selectedFile.value?.id && file.progress < 1,
+))
 const followingVideoFiles = computed(() => {
   const selectedIndex = videoFiles.value.findIndex((file) => file.id === selectedFile.value?.id)
   return selectedIndex >= 0 ? videoFiles.value.slice(selectedIndex + 1) : []
@@ -66,8 +78,8 @@ const followingVideoFiles = computed(() => {
 const prefetchCandidates = computed(() => followingVideoFiles.value.filter(
   (file) => file.progress < 1,
 ))
-const queuedAheadFiles = computed(() => followingVideoFiles.value.filter(
-  (file) => file.priority > 0 && file.progress < 1,
+const queuedBackgroundFiles = computed(() => videoFiles.value.filter(
+  (file) => file.id !== selectedFile.value?.id && file.priority > 0 && file.progress < 1,
 ))
 const effectivePrefetchCount = computed(() => Math.min(
   prefetchCount.value,
@@ -77,6 +89,27 @@ const hasPendingDownload = computed(() => torrentFiles.value.some(
   (file) => file.priority > 0 && file.progress < 1,
 ))
 const taskStorageKey = computed(() => `kadr:torrent:${props.kind}:${props.mediaId}`)
+const sourceGroups = computed(() => {
+  if (props.kind !== 'series') {
+    return [{ key: 'all', label: '', sortOrder: 0, items: items.value }]
+  }
+
+  const groups = new Map<string, {
+    key: string
+    label: string
+    sortOrder: number
+    items: SourceRelease[]
+  }>()
+  for (const item of items.value) {
+    const identity = releaseSeasonIdentity(item.title)
+    const group = groups.get(identity.key) ?? { ...identity, items: [] }
+    group.items.push(item)
+    groups.set(identity.key, group)
+  }
+  return [...groups.values()].sort((left, right) => (
+    left.sortOrder - right.sortOrder || left.label.localeCompare(right.label, 'ru')
+  ))
+})
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'Размер неизвестен'
@@ -89,16 +122,52 @@ function formatSpeed(bytes: number): string {
   return bytes > 0 ? `${formatBytes(bytes)}/с` : 'ожидание источников'
 }
 
-function describeVideoFile(filename: string): string {
+function releaseSeasonIdentity(title: string): {
+  key: string
+  label: string
+  sortOrder: number
+} {
+  const range = title.match(/(?:^|[^a-z0-9])s(\d{1,2})\s*[-–—]\s*s?(\d{1,2})(?:[^a-z0-9]|$)/i)
+  if (range) {
+    const first = Number(range[1])
+    const last = Number(range[2])
+    return {
+      key: `range-${first}-${last}`,
+      label: `Сезоны ${first}–${last}`,
+      sortOrder: first,
+    }
+  }
+
+  const season = title.match(/(?:^|[^a-zа-яё0-9])(?:s|season\s*|сезон\s*)(\d{1,2})(?:[^0-9]|$)/i)
+    ?? title.match(/(?:^|[^0-9])(\d{1,2})\s*сезон(?:[^а-яёa-z0-9]|$)/i)
+  if (season) {
+    const number = Number(season[1])
+    return { key: `season-${number}`, label: `Сезон ${number}`, sortOrder: number }
+  }
+
+  if (/(?:complete|all[ ._-]*seasons?|все[ ._-]*сезоны)/i.test(title)) {
+    return { key: 'complete', label: 'Все сезоны', sortOrder: 10_000 }
+  }
+  return { key: 'other', label: 'Другие релизы', sortOrder: 20_000 }
+}
+
+function parseEpisodeIdentity(filename: string): { season: number, episode: number } | null {
   const seasonEpisode = filename.match(/(?:^|[^a-z0-9])s(\d{1,2})e(\d{1,3})(?:[^a-z0-9]|$)/i)
   if (seasonEpisode) {
-    return `Сезон ${Number(seasonEpisode[1])} · Серия ${Number(seasonEpisode[2])}`
+    return { season: Number(seasonEpisode[1]), episode: Number(seasonEpisode[2]) }
   }
 
   const alternateEpisode = filename.match(/(?:^|[^0-9])(\d{1,2})x(\d{1,3})(?:[^0-9]|$)/i)
   if (alternateEpisode) {
-    return `Сезон ${Number(alternateEpisode[1])} · Серия ${Number(alternateEpisode[2])}`
+    return { season: Number(alternateEpisode[1]), episode: Number(alternateEpisode[2]) }
   }
+
+  return null
+}
+
+function describeVideoFile(filename: string): string {
+  const identity = parseEpisodeIdentity(filename)
+  if (identity) return `Сезон ${identity.season} · Серия ${identity.episode}`
 
   return props.kind === 'series' ? 'Выбранный эпизод' : 'Выбранный фильм'
 }
@@ -238,7 +307,7 @@ async function deleteDownloadedVideo(file: TorrentFile): Promise<void> {
   }
 }
 
-async function setPrefetch(fileIds: number[]): Promise<void> {
+async function setPrefetch(fileIds: number[], successNotice = ''): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
   torrentError.value = ''
@@ -246,6 +315,7 @@ async function setPrefetch(fileIds: number[]): Promise<void> {
   try {
     torrent.value = await configureTorrentPrefetch(torrent.value.id, fileIds)
     await refreshFiles()
+    torrentNotice.value = successNotice
     scheduleTorrentRefresh()
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
@@ -259,6 +329,15 @@ function prefetchNextEpisodes(): void {
     .slice(0, prefetchCount.value)
     .map((file) => file.id)
   void setPrefetch(fileIds)
+}
+
+function downloadSelectedSeason(): void {
+  if (selectedSeasonNumber.value === null) return
+  const fileIds = seasonDownloadCandidates.value.map((file) => file.id)
+  void setPrefetch(
+    fileIds,
+    `Сезон ${selectedSeasonNumber.value} добавлен в загрузку. Эпизодов в очереди: ${fileIds.length}.`,
+  )
 }
 
 async function applyTorrentAction(action: 'start' | 'stop'): Promise<void> {
@@ -442,33 +521,38 @@ onBeforeUnmount(clearTorrentTimer)
     />
     <div v-else-if="!torrent" class="source-results">
       <p class="source-summary">Найдено: {{ items.length }} · запрос «{{ query }}»</p>
-      <article v-for="item in items" :key="item.id" class="source-release">
-        <div class="source-release-main">
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.indexer }} · {{ formatBytes(item.size_bytes) }}</p>
-          <div class="release-tags">
-            <span v-if="item.resolution">{{ item.resolution }}</span>
-            <span v-if="item.source">{{ item.source }}</span>
-            <span v-if="item.codec">{{ item.codec }}</span>
-            <span v-if="item.hdr_format">{{ item.hdr_format }}</span>
-            <span v-if="item.audio">{{ item.audio }}</span>
-            <span v-if="item.language">{{ item.language }}</span>
-            <span v-if="item.release_type">{{ item.release_type }}</span>
+      <section v-for="group in sourceGroups" :key="group.key" class="source-season-group">
+        <h3 v-if="group.label" class="source-season-heading">
+          {{ group.label }} <small>{{ group.items.length }}</small>
+        </h3>
+        <article v-for="item in group.items" :key="item.id" class="source-release">
+          <div class="source-release-main">
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.indexer }} · {{ formatBytes(item.size_bytes) }}</p>
+            <div class="release-tags">
+              <span v-if="item.resolution">{{ item.resolution }}</span>
+              <span v-if="item.source">{{ item.source }}</span>
+              <span v-if="item.codec">{{ item.codec }}</span>
+              <span v-if="item.hdr_format">{{ item.hdr_format }}</span>
+              <span v-if="item.audio">{{ item.audio }}</span>
+              <span v-if="item.language">{{ item.language }}</span>
+              <span v-if="item.release_type">{{ item.release_type }}</span>
+            </div>
           </div>
-        </div>
-        <dl class="source-health">
-          <div><dt>Сиды</dt><dd>{{ item.seeders ?? '—' }}</dd></div>
-          <div><dt>Пиры</dt><dd>{{ item.peers ?? '—' }}</dd></div>
-        </dl>
-        <button
-          class="button source-add focus-ring"
-          type="button"
-          :disabled="torrentBusy || torrent !== null"
-          @click="addSource(item.id)"
-        >
-          Выбрать релиз
-        </button>
-      </article>
+          <dl class="source-health">
+            <div><dt>Сиды</dt><dd>{{ item.seeders ?? '—' }}</dd></div>
+            <div><dt>Пиры</dt><dd>{{ item.peers ?? '—' }}</dd></div>
+          </dl>
+          <button
+            class="button source-add focus-ring"
+            type="button"
+            :disabled="torrentBusy || torrent !== null"
+            @click="addSource(item.id)"
+          >
+            Выбрать релиз
+          </button>
+        </article>
+      </section>
       <p class="source-stage-note">
         После выбора KADR покажет фильмы или серии внутри релиза. Ничего лишнего автоматически не скачивается.
       </p>
@@ -622,15 +706,32 @@ onBeforeUnmount(clearTorrentTimer)
         </ul>
       </section>
       <section
-        v-if="kind === 'series' && hasSelectedFile && selectedFile && followingVideoFiles.length"
+        v-if="kind === 'series'
+          && hasSelectedFile
+          && selectedFile
+          && (followingVideoFiles.length || selectedSeasonNumber !== null)"
         class="episode-prefetch"
         aria-labelledby="episode-prefetch-title"
       >
         <div>
-          <h4 id="episode-prefetch-title">Скачать следующие серии заранее</h4>
-          <p>Текущая серия останется выбранной для просмотра. Следующие загрузятся в фоне по порядку.</p>
+          <h4 id="episode-prefetch-title">Загрузка серий</h4>
+          <p>Текущая серия останется выбранной для просмотра. Остальные загрузятся в фоне.</p>
         </div>
-        <div v-if="prefetchCandidates.length" class="prefetch-controls">
+        <div v-if="selectedSeasonNumber !== null" class="season-download-control">
+          <button
+            class="button primary focus-ring"
+            type="button"
+            :disabled="torrentBusy || seasonDownloadCandidates.length === 0"
+            @click="downloadSelectedSeason"
+          >
+            Скачать сезон {{ selectedSeasonNumber }} целиком
+          </button>
+          <small v-if="seasonDownloadCandidates.length">
+            Будет загружено эпизодов: {{ seasonDownloadCandidates.length }}
+          </small>
+          <small v-else>Остальные эпизоды сезона уже загружены или добавлены.</small>
+        </div>
+        <div v-if="prefetchCandidates.length" class="prefetch-controls next-episodes-control">
           <label>
             <span>Сколько серий</span>
             <select v-model.number="prefetchCount" :disabled="torrentBusy">
@@ -648,11 +749,11 @@ onBeforeUnmount(clearTorrentTimer)
             Скачать следующие {{ effectivePrefetchCount }}
           </button>
         </div>
-        <p v-else class="prefetch-complete">Все следующие серии уже загружены.</p>
-        <div v-if="queuedAheadFiles.length" class="prefetch-queue">
+        <p v-else-if="followingVideoFiles.length" class="prefetch-complete">Все следующие серии уже загружены.</p>
+        <div v-if="queuedBackgroundFiles.length" class="prefetch-queue">
           <strong>Загружаются заранее</strong>
           <ul>
-            <li v-for="file in queuedAheadFiles" :key="file.id">
+            <li v-for="file in queuedBackgroundFiles" :key="file.id">
               <span>{{ describeVideoFile(file.name) }}</span>
               <small>{{ Math.round(file.progress * 100) }}%</small>
             </li>
