@@ -165,4 +165,31 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 
 ### Checks
 
-- Pending full backend/frontend verification.
+- Backend Pytest: 78 passed.
+- Frontend Vitest: 35 passed across 6 files; TypeScript production build
+  passed.
+- Ruff passed with its cache disabled because the test container filesystem is
+  read-only.
+- Compose configuration validation and `git diff --check` passed.
+
+## Library streaming range fix — 2026-10-26
+
+### Completed work
+
+- Fixed the saved-library stream response to use the shared `ByteRange.total`
+  field when constructing `Content-Range`.
+- Added an API-level regression test covering a browser-style byte-range
+  request and its `206`, `Content-Range`, length, and payload.
+- Confirmed on the Debian host that the previous exception leaked stream
+  leases until the global stream limit rejected all subsequent playback with
+  HTTP 429.
+
+### Checks
+
+- Backend Pytest: 78 passed.
+- Ruff, Compose configuration validation, and `git diff --check` passed.
+
+### Known issues and next actions
+
+- Deployment must recreate the API container once to clear stream leases left
+  in memory by requests that failed before this fix.

@@ -57,7 +57,7 @@ async def stream_library_item(
     if range_header is not None:
         response_status = status.HTTP_206_PARTIAL_CONTENT
         headers["Content-Range"] = (
-            f"bytes {byte_range.start}-{byte_range.end}/{byte_range.total_size}"
+            f"bytes {byte_range.start}-{byte_range.end}/{byte_range.total}"
         )
     return StreamingResponse(
         prepared.content,

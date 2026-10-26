@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_library_manager
 from app.core.config import Settings
+from app.main import app
 from app.models.library import LibraryItem
 from app.models.torrent_task import TorrentTask
 from app.repositories.library import LibraryRepository
@@ -98,6 +101,34 @@ async def test_save_stream_and_delete_library_item(session: AsyncSession, tmp_pa
     assert stream.byte_range.length == 4
     await manager.delete(saved.id)
     assert await manager.list() == []
+
+
+@pytest.mark.asyncio
+async def test_library_stream_endpoint_supports_byte_ranges(
+    client: AsyncClient,
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    manager, _, task = await make_manager(session, tmp_path)
+    saved = await manager.save(
+        SaveLibraryItemRequest(
+            task_id=task.id,
+            media_id=42,
+            media_kind="movie",
+            title="Example",
+        )
+    )
+    app.dependency_overrides[get_library_manager] = lambda: manager
+
+    response = await client.get(
+        f"/api/v1/library/{saved.id}/stream",
+        headers={"Range": "bytes=2-5"},
+    )
+
+    assert response.status_code == 206
+    assert response.headers["content-range"] == "bytes 2-5/8"
+    assert response.headers["content-length"] == "4"
+    assert response.content == b"cdef"
 
 
 @pytest.mark.asyncio
