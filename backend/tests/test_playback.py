@@ -41,11 +41,13 @@ def test_ffmpeg_command_never_reencodes_compatible_video(tmp_path: Path) -> None
         Path("input.mkv"),
         Path("output.part.mp4"),
         "audio_transcode",
+        "hevc",
     )
 
     assert command[0] == "ffmpeg"
     assert command[command.index("-c:v") + 1] == "copy"
     assert command[command.index("-c:a") + 1] == "aac"
+    assert command[command.index("-tag:v") + 1] == "hvc1"
     assert "-nostdin" in command
     assert "-map_metadata" in command
     assert "-sn" in command
@@ -93,6 +95,7 @@ async def test_ready_compatible_file_supports_byte_ranges(tmp_path: Path) -> Non
     prepared = await manager.open(
         task_id,
         selected_file_id,
+        "compatible",
         "bytes=2-5",
         registry,
     )
@@ -122,3 +125,23 @@ def test_compatible_files_are_isolated_by_selected_torrent_file(tmp_path: Path) 
 
     assert first_status.state == "ready"
     assert third_status.state == "idle"
+
+
+def test_audio_only_artifact_is_separate_from_full_compatibility(
+    tmp_path: Path,
+) -> None:
+    task_id = "task-1"
+    directory = tmp_path / task_id / "1"
+    directory.mkdir(parents=True)
+    (directory / "audio-only.mp4").write_bytes(b"fast")
+    manager = CompatibilityManager(Settings(playback_cache_root=str(tmp_path)))
+
+    fast = manager.status(task_id, 1, "audio_only")
+    full = manager.status(task_id, 1, "compatible")
+
+    assert fast.state == "ready"
+    assert fast.mode == "audio_only"
+    assert fast.stream_url == (
+        "/api/v1/torrents/task-1/compatible/stream?mode=audio_only"
+    )
+    assert full.state == "idle"

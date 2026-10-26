@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 
 import StatePanel from '../components/StatePanel.vue'
+import KadrPlayer from '../components/KadrPlayer.vue'
 import { deleteLibraryItem, friendlyApiError, getFavorites, getLibrary } from '../services/api'
 import type { FavoriteItem, LibraryItem } from '../types/media'
 
@@ -56,7 +57,17 @@ onMounted(load)
           <p class="eyebrow">{{ item.media_kind === 'movie' ? 'Фильм' : 'Сериал' }}</p>
           <h2>{{ item.title }}</h2>
           <p>{{ formatBytes(item.size_bytes) }}</p>
-          <video :src="item.stream_url" controls preload="metadata" playsinline />
+          <KadrPlayer
+            :task-id="item.task_id"
+            :title="item.title"
+            :file-name="item.original_title || item.title"
+            :media-id="item.media_id"
+            :media-kind="item.media_kind"
+            :poster-url="item.poster_url"
+            :download-progress="1"
+            download-state="stoppedUP"
+            :direct-stream-url="item.stream_url"
+          />
           <div class="action-row">
             <RouterLink class="button secondary" :to="`/${item.media_kind === 'movie' ? 'movies' : 'series'}/${item.media_id}`">Карточка</RouterLink>
             <button class="button danger" type="button" @click="remove(item)">Удалить</button>

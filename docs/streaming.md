@@ -83,6 +83,11 @@ codec-specific player error. The retry action creates a fresh media request,
 and “Change source” returns to the release list without deleting the existing
 KADR download.
 
+Saved-library cards use the same controlled player around the independent
+library stream instead of exposing a blank native video element. Unsupported
+audio can therefore invoke the explicit fast repair mode, while ordinary
+library playback still reads the saved file without another download.
+
 ## Compatible playback
 
 “Совместимая версия” is an explicit alternative to Direct Play. The selected
@@ -99,6 +104,13 @@ The result is written atomically as
 `data/playback/{task_id}/compatible.mp4`; the download mount remains read-only
 inside the API. Once ready, the file supports the same single byte-range
 contract as Direct Play. Reopening it reuses the cached result.
+
+When Direct Play already shows an image but the browser cannot decode the
+audio, the explicit fast mode copies the original video stream, tags copied
+HEVC as `hvc1` for MP4 playback, and converts only the first audio track to AAC
+stereo. It writes a separate `audio-only.mp4` artifact, so it cannot replace a
+fully converted compatibility file. This mode does not make an unsupported
+video codec playable; use full compatibility preparation in that case.
 
 Full video conversion is CPU-intensive and completes before playback begins.
 The default is one concurrent preparation, two video threads, CRF 23,

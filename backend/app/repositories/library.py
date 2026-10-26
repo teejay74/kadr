@@ -1,4 +1,5 @@
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.library import Favorite, LibraryItem, WatchHistory
@@ -28,7 +29,14 @@ class LibraryRepository:
 
     async def add_library(self, item: LibraryItem) -> LibraryItem:
         self._session.add(item)
-        await self._session.commit()
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            existing = await self.get_library_by_media(item.media_id, item.media_kind)
+            if existing is None:
+                raise
+            return existing
         await self._session.refresh(item)
         return item
 

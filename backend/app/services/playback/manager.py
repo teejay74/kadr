@@ -10,7 +10,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.config import Settings
-from app.schemas.playback import PlaybackPreparation, PlaybackState, PlaybackStrategy
+from app.schemas.playback import (
+    PlaybackMode,
+    PlaybackPreparation,
+    PlaybackState,
+    PlaybackStrategy,
+)
 from app.services.playback.exceptions import (
     PlaybackArtifactNotReadyError,
     PlaybackPreparationError,
@@ -72,19 +77,20 @@ class CompatibilityManager:
         task_id: str,
         selected_file_id: int,
         source: Path,
+        mode: PlaybackMode = "compatible",
     ) -> PlaybackPreparation:
-        job_id = self._job_id(task_id, selected_file_id)
-        output = self._output_path(task_id, selected_file_id)
+        job_id = self._job_id(task_id, selected_file_id, mode)
+        output = self._output_path(task_id, selected_file_id, mode)
         if await asyncio.to_thread(output.is_file):
             job = self._jobs.setdefault(job_id, PreparationJob())
             job.state = "ready"
             job.progress = 1.0
-            return self._to_status(task_id, job)
+            return self._to_status(task_id, mode, job)
 
         async with self._lock:
             current = self._jobs.get(job_id)
             if current is not None and current.task is not None and not current.task.done():
-                return self._to_status(task_id, current)
+                return self._to_status(task_id, mode, current)
             running = sum(
                 job.task is not None and not job.task.done()
                 for job in self._jobs.values()
@@ -97,28 +103,34 @@ class CompatibilityManager:
             await self._ensure_output_space(source)
             self._jobs[job_id] = job
             job.task = asyncio.create_task(
-                self._run(task_id, selected_file_id, source, job)
+                self._run(task_id, selected_file_id, source, mode, job)
             )
-            return self._to_status(task_id, job)
+            return self._to_status(task_id, mode, job)
 
-    def status(self, task_id: str, selected_file_id: int) -> PlaybackPreparation:
-        job = self._jobs.get(self._job_id(task_id, selected_file_id))
-        output = self._output_path(task_id, selected_file_id)
+    def status(
+        self,
+        task_id: str,
+        selected_file_id: int,
+        mode: PlaybackMode = "compatible",
+    ) -> PlaybackPreparation:
+        job = self._jobs.get(self._job_id(task_id, selected_file_id, mode))
+        output = self._output_path(task_id, selected_file_id, mode)
         if job is None:
             if output.is_file():
                 job = PreparationJob(state="ready", progress=1.0)
             else:
                 job = PreparationJob()
-        return self._to_status(task_id, job)
+        return self._to_status(task_id, mode, job)
 
     async def open(
         self,
         task_id: str,
         selected_file_id: int,
+        mode: PlaybackMode,
         range_header: str | None,
         registry: StreamRegistry,
     ) -> PreparedStream:
-        output = self._output_path(task_id, selected_file_id)
+        output = self._output_path(task_id, selected_file_id, mode)
         if not await asyncio.to_thread(output.is_file):
             raise PlaybackArtifactNotReadyError(
                 "The compatible playback file is not ready"
@@ -145,21 +157,29 @@ class CompatibilityManager:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def is_preparing(self, task_id: str, selected_file_id: int) -> bool:
-        job = self._jobs.get(self._job_id(task_id, selected_file_id))
-        return job is not None and job.task is not None and not job.task.done()
+        return any(
+            (job := self._jobs.get(self._job_id(task_id, selected_file_id, mode)))
+            is not None
+            and job.task is not None
+            and not job.task.done()
+            for mode in ("compatible", "audio_only")
+        )
 
     async def discard(self, task_id: str, selected_file_id: int) -> None:
         if self.is_preparing(task_id, selected_file_id):
             raise PlaybackPreparationError(
                 "Stop compatible playback preparation before deleting this video"
             )
-        self._jobs.pop(self._job_id(task_id, selected_file_id), None)
-        output = self._output_path(task_id, selected_file_id)
-        temporary = output.with_suffix(".part.mp4")
-        await asyncio.to_thread(output.unlink, missing_ok=True)
-        await asyncio.to_thread(temporary.unlink, missing_ok=True)
+        outputs = [
+            self._output_path(task_id, selected_file_id, mode)
+            for mode in ("compatible", "audio_only")
+        ]
+        for mode, output in zip(("compatible", "audio_only"), outputs, strict=True):
+            self._jobs.pop(self._job_id(task_id, selected_file_id, mode), None)
+            await asyncio.to_thread(output.unlink, missing_ok=True)
+            await asyncio.to_thread(output.with_suffix(".part.mp4").unlink, missing_ok=True)
         try:
-            await asyncio.to_thread(output.parent.rmdir)
+            await asyncio.to_thread(outputs[0].parent.rmdir)
         except OSError:
             pass
 
@@ -168,20 +188,28 @@ class CompatibilityManager:
         task_id: str,
         selected_file_id: int,
         source: Path,
+        mode: PlaybackMode,
         job: PreparationJob,
     ) -> None:
-        temporary = self._output_path(task_id, selected_file_id).with_suffix(
+        temporary = self._output_path(task_id, selected_file_id, mode).with_suffix(
             ".part.mp4"
         )
         try:
             probe = await self._probe(source)
             job.video_codec = probe.video_codec
             job.audio_codec = probe.audio_codec
-            job.strategy = select_strategy(probe)
+            job.strategy = (
+                "audio_transcode" if mode == "audio_only" else select_strategy(probe)
+            )
             job.state = "processing"
-            output = self._output_path(task_id, selected_file_id)
+            output = self._output_path(task_id, selected_file_id, mode)
             await asyncio.to_thread(output.parent.mkdir, parents=True, exist_ok=True)
-            command = self._ffmpeg_command(source, temporary, job.strategy)
+            command = self._ffmpeg_command(
+                source,
+                temporary,
+                job.strategy,
+                probe.video_codec,
+            )
             job.process = await asyncio.create_subprocess_exec(
                 *command,
                 stdout=asyncio.subprocess.PIPE,
@@ -272,6 +300,7 @@ class CompatibilityManager:
         source: Path,
         output: Path,
         strategy: PlaybackStrategy,
+        video_codec: str | None = None,
     ) -> list[str]:
         command = [
             self._settings.ffmpeg_path,
@@ -293,6 +322,8 @@ class CompatibilityManager:
         ]
         if strategy in {"remux", "audio_transcode"}:
             command.extend(["-c:v", "copy"])
+            if video_codec == "hevc":
+                command.extend(["-tag:v", "hvc1"])
         else:
             command.extend(
                 [
@@ -370,24 +401,36 @@ class CompatibilityManager:
             logger.warning("Could not remove incomplete playback artifact: %s", exc)
 
     @staticmethod
-    def _job_id(task_id: str, selected_file_id: int) -> str:
-        return f"{task_id}:{selected_file_id}"
+    def _job_id(task_id: str, selected_file_id: int, mode: PlaybackMode) -> str:
+        return f"{task_id}:{selected_file_id}:{mode}"
 
-    def _output_path(self, task_id: str, selected_file_id: int) -> Path:
+    def _output_path(
+        self,
+        task_id: str,
+        selected_file_id: int,
+        mode: PlaybackMode,
+    ) -> Path:
         if not task_id or Path(task_id).name != task_id:
             raise PlaybackPreparationError("Invalid playback task identifier")
         if selected_file_id < 0:
             raise PlaybackPreparationError("Invalid selected file identifier")
         root = Path(self._settings.playback_cache_root).resolve(strict=False)
+        filename = "compatible.mp4" if mode == "compatible" else "audio-only.mp4"
         output = (
-            root / task_id / str(selected_file_id) / "compatible.mp4"
+            root / task_id / str(selected_file_id) / filename
         ).resolve(strict=False)
         if not output.is_relative_to(root):
             raise PlaybackPreparationError("Playback output is outside KADR cache")
         return output
 
-    def _to_status(self, task_id: str, job: PreparationJob) -> PlaybackPreparation:
+    def _to_status(
+        self,
+        task_id: str,
+        mode: PlaybackMode,
+        job: PreparationJob,
+    ) -> PlaybackPreparation:
         return PlaybackPreparation(
+            mode=mode,
             state=job.state,
             progress=job.progress,
             strategy=job.strategy,
@@ -396,6 +439,7 @@ class CompatibilityManager:
             message=job.message,
             stream_url=(
                 f"/api/v1/torrents/{task_id}/compatible/stream"
+                + ("?mode=audio_only" if mode == "audio_only" else "")
                 if job.state == "ready"
                 else None
             ),

@@ -7,6 +7,7 @@ import {
   deleteTorrentFile,
   getMediaPage,
   getSources,
+  startCompatiblePlayback,
 } from './api'
 
 afterEach(() => {
@@ -120,4 +121,18 @@ test('deletes one downloaded torrent file without deleting the release', async (
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/torrents/task/files/3')
   expect(init.method).toBe('DELETE')
+})
+
+test('requests the audio-only FFmpeg preparation mode explicitly', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ mode: 'audio_only', state: 'processing', progress: 0.1 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await startCompatiblePlayback('task/id', 'audio_only')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task%2Fid/compatible?mode=audio_only')
+  expect(init.method).toBe('POST')
 })

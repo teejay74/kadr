@@ -51,8 +51,10 @@ season from the pack. The action selects its first episode for playback and
 queues the remaining episodes. The same action is
 available later without changing the episode being watched. Then use «Начать
 просмотр» for Direct Play.
-If its container or codecs are unsupported, wait for the file to finish and
-choose «Совместимая версия»; FFmpeg never starts automatically.
+If video works but audio does not, wait for the file to finish and choose
+«Быстро исправить звук» to copy the video and convert only the first audio
+track. Use «Полная совместимая версия» when the video codec is unsupported;
+FFmpeg never starts automatically.
 See the [qBittorrent setup guide](docs/qbittorrent.md) and
 [streaming guide](docs/streaming.md).
 

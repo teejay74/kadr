@@ -9,7 +9,7 @@ import {
   startCompatiblePlayback,
   updateHistory,
 } from '../services/api'
-import type { MediaKind, PlaybackPreparation } from '../types/media'
+import type { MediaKind, PlaybackMode, PlaybackPreparation } from '../types/media'
 
 const props = withDefaults(defineProps<{
   taskId: string
@@ -22,6 +22,7 @@ const props = withDefaults(defineProps<{
   downloadProgress?: number
   downloadState?: string
   downloadSpeedBytes?: number
+  directStreamUrl?: string
 }>(), {
   selectionLabel: '',
   fileName: '',
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<{
   downloadProgress: 0,
   downloadState: '',
   downloadSpeedBytes: 0,
+  directStreamUrl: '',
 })
 
 const active = ref(false)
@@ -42,6 +44,7 @@ const video = ref<HTMLVideoElement | null>(null)
 const resumeAt = ref(0)
 const streamAttempt = ref(0)
 const compatible = ref<PlaybackPreparation | null>(null)
+const compatibleMode = ref<PlaybackMode>('compatible')
 const usingCompatible = ref(false)
 let lastSavedSecond = -1
 let playbackEnded = false
@@ -51,9 +54,13 @@ let preparationId = 0
 
 const streamUrl = computed(() => {
   const base = usingCompatible.value
-    ? `/api/v1/torrents/${encodeURIComponent(props.taskId)}/compatible/stream`
-    : `/api/v1/torrents/${encodeURIComponent(props.taskId)}/stream`
-  return streamAttempt.value === 0 ? base : `${base}?attempt=${streamAttempt.value}`
+    ? compatible.value?.stream_url
+      ?? `/api/v1/torrents/${encodeURIComponent(props.taskId)}/compatible/stream`
+    : props.directStreamUrl
+      || `/api/v1/torrents/${encodeURIComponent(props.taskId)}/stream`
+  if (streamAttempt.value === 0) return base
+  const separator = base.includes('?') ? '&' : '?'
+  return `${base}${separator}attempt=${streamAttempt.value}`
 })
 const storageKey = computed(() => `kadr:playback:${props.taskId}`)
 const downloadPercent = computed(() => Math.round(props.downloadProgress * 100))
@@ -133,10 +140,13 @@ async function activate(): Promise<void> {
   usingCompatible.value = false
   preparationId += 1
   try {
-    const existing = await getCompatiblePlayback(props.taskId)
-    if (existing.state === 'ready') {
-      await handleCompatibility(existing)
-      return
+    for (const mode of ['compatible', 'audio_only'] as const) {
+      const existing = await getCompatiblePlayback(props.taskId, mode)
+      if (existing.state === 'ready') {
+        compatibleMode.value = mode
+        await handleCompatibility(existing)
+        return
+      }
     }
   } catch {
     // Direct Play remains available when no compatible artifact exists yet.
@@ -145,6 +155,14 @@ async function activate(): Promise<void> {
 }
 
 async function prepareCompatible(): Promise<void> {
+  await startPreparation('compatible')
+}
+
+async function prepareAudioOnly(): Promise<void> {
+  await startPreparation('audio_only')
+}
+
+async function startPreparation(mode: PlaybackMode): Promise<void> {
   preparationId += 1
   if (readinessTimer) clearTimeout(readinessTimer)
   if (compatibilityTimer) clearTimeout(compatibilityTimer)
@@ -152,8 +170,9 @@ async function prepareCompatible(): Promise<void> {
   streamReady.value = false
   waiting.value = false
   error.value = ''
+  compatibleMode.value = mode
   try {
-    await handleCompatibility(await startCompatiblePlayback(props.taskId))
+    await handleCompatibility(await startCompatiblePlayback(props.taskId, mode))
   } catch (reason) {
     error.value = friendlyApiError(reason)
   }
@@ -161,7 +180,7 @@ async function prepareCompatible(): Promise<void> {
 
 async function pollCompatibility(): Promise<void> {
   try {
-    await handleCompatibility(await getCompatiblePlayback(props.taskId))
+    await handleCompatibility(await getCompatiblePlayback(props.taskId, compatibleMode.value))
   } catch (reason) {
     error.value = friendlyApiError(reason)
   }
@@ -189,6 +208,12 @@ async function prepareStream(id = ++preparationId): Promise<void> {
   waiting.value = true
   if (readinessTimer) clearTimeout(readinessTimer)
   if (compatibilityTimer) clearTimeout(compatibilityTimer)
+  if (props.directStreamUrl) {
+    bufferProgress.value = 1
+    streamReady.value = true
+    await startVideoElement()
+    return
+  }
   try {
     const readiness = await getStreamReadiness(props.taskId)
     if (!active.value || id !== preparationId) return
@@ -335,7 +360,8 @@ onBeforeUnmount(stopPlayback)
     <div v-if="!active" class="player-launch">
       <div class="player-launch-copy">
         <h3>Смотреть выбранное видео</h3>
-        <p>Просмотр можно начать до завершения загрузки — KADR сам подготовит начальный буфер.</p>
+        <p v-if="directStreamUrl">Видео сохранено локально и доступно без повторной загрузки.</p>
+        <p v-else>Просмотр можно начать до завершения загрузки — KADR сам подготовит начальный буфер.</p>
         <strong v-if="selectionLabel" class="player-selection-label">{{ selectionLabel }}</strong>
         <small>{{ fileName || title }}</small>
         <span class="player-download-status" :class="{ complete: downloadProgress >= 1 }">
@@ -348,10 +374,15 @@ onBeforeUnmount(stopPlayback)
         </button>
         <details class="compatibility-help">
           <summary>Если нет изображения или звука</summary>
-          <p>FFmpeg подготовит отдельную совместимую копию после полной загрузки файла.</p>
-          <button class="button secondary focus-ring" type="button" @click="prepareCompatible">
-            Подготовить совместимую версию
-          </button>
+          <p>Если изображение уже есть, быстрый режим сохранит видео и преобразует только звук.</p>
+          <div class="compatibility-actions">
+            <button class="button secondary focus-ring" type="button" @click="prepareAudioOnly">
+              Быстро исправить звук
+            </button>
+            <button class="button secondary focus-ring" type="button" @click="prepareCompatible">
+              Полная совместимая версия
+            </button>
+          </div>
         </details>
       </div>
     </div>
@@ -403,7 +434,9 @@ onBeforeUnmount(stopPlayback)
           class="player-status"
           role="status"
         >
-          FFmpeg: {{ compatible.state === 'probing' ? 'анализ' : 'подготовка' }}…
+          FFmpeg: {{ compatible.state === 'probing'
+            ? 'анализ'
+            : compatible.mode === 'audio_only' ? 'исправляем звук' : 'подготовка' }}…
           {{ Math.round(compatible.progress * 100) }}%
         </p>
       </div>
@@ -418,7 +451,10 @@ onBeforeUnmount(stopPlayback)
           Повторить
         </button>
         <button class="button primary focus-ring" type="button" @click="prepareCompatible">
-          Подготовить совместимую версию
+          Полная совместимая версия
+        </button>
+        <button class="button secondary focus-ring" type="button" @click="prepareAudioOnly">
+          Быстро исправить звук
         </button>
       </div>
     </div>

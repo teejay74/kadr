@@ -149,3 +149,20 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 - Release-title parsing remains conservative; after torrent metadata arrives,
   recognized file paths are treated as the stronger season identity.
 - Inspect live service health after this follow-up is deployed.
+
+## Fast audio repair and idempotent library save — 2026-10-26
+
+### Completed work
+
+- Added an explicit fast FFmpeg mode that copies an already playable video
+  stream and converts only its first audio track to AAC stereo.
+- Kept fast and fully compatible artifacts separate and tagged copied HEVC as
+  `hvc1` for MP4 playback.
+- Made concurrent duplicate library inserts return the existing media item
+  instead of leaking a database uniqueness error as HTTP 500.
+- Stopped the user-authorized test FFmpeg process on the Debian host and
+  confirmed that the KADR API remained healthy.
+
+### Checks
+
+- Pending full backend/frontend verification.

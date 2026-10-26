@@ -10,6 +10,7 @@ import type {
   MediaKind,
   MediaPage,
   PlaybackPreparation,
+  PlaybackMode,
   SortOrder,
   StreamReadiness,
   SourceResults,
@@ -169,14 +170,24 @@ export function getStreamReadiness(taskId: string): Promise<StreamReadiness> {
   return request<StreamReadiness>(`/api/v1/torrents/${encodeURIComponent(taskId)}/stream/readiness`)
 }
 
-export function startCompatiblePlayback(taskId: string): Promise<PlaybackPreparation> {
-  return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible`, {
+export function startCompatiblePlayback(
+  taskId: string,
+  mode: PlaybackMode = 'compatible',
+): Promise<PlaybackPreparation> {
+  const query = mode === 'audio_only' ? '?mode=audio_only' : ''
+  return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible${query}`, {
     method: 'POST',
   })
 }
 
-export function getCompatiblePlayback(taskId: string): Promise<PlaybackPreparation> {
-  return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible`)
+export function getCompatiblePlayback(
+  taskId: string,
+  mode: PlaybackMode = 'compatible',
+): Promise<PlaybackPreparation> {
+  const query = mode === 'audio_only' ? '?mode=audio_only' : ''
+  return request<PlaybackPreparation>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}/compatible${query}`,
+  )
 }
 
 export async function getHealth(): Promise<HealthResponse> {

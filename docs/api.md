@@ -208,14 +208,18 @@ torrent paths or credentials.
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /torrents/{task_id}/compatible` | Explicitly start or reuse preparation |
-| `GET /torrents/{task_id}/compatible` | Read probe/conversion progress and strategy |
-| `GET /torrents/{task_id}/compatible/stream` | Stream the ready MP4 with byte ranges |
+| `POST /torrents/{task_id}/compatible?mode=…` | Explicitly start or reuse preparation |
+| `GET /torrents/{task_id}/compatible?mode=…` | Read probe/conversion progress and strategy |
+| `GET /torrents/{task_id}/compatible/stream?mode=…` | Stream the ready MP4 with byte ranges |
 
 Preparation requires a selected, fully downloaded video. A `202` response has
 `state` (`probing`, `processing`, `ready`, or `failed`), normalized progress,
 the chosen `strategy` (`remux`, `audio_transcode`, or `transcode`), detected
 video/audio codecs, an optional message, and a stream URL only when ready.
+The default `mode=compatible` selects the safest remux/transcode strategy.
+`mode=audio_only` preserves the video stream and converts only the first audio
+track to AAC stereo; it is intended for a source whose image already works in
+the current browser. The two modes use separate cached artifacts.
 
 Only the POST starts FFmpeg; GET is read-only. One preparation runs at a time
 by default. Errors use `playback_preparation_failed` or
@@ -242,7 +246,8 @@ returns `playback_artifact_not_ready` (409).
 
 Saving requires a task whose selected video is fully downloaded. KADR creates
 an atomic hard link when possible and otherwise copies to the configured
-library root. API responses never expose filesystem paths. Library streaming
+library root. Repeated or concurrent save requests are idempotent and return
+the existing library item. API responses never expose filesystem paths. Library streaming
 supports the same single-range `200`/`206`/`416` contract. Deleting an active
 library stream returns `409 library_conflict`; unsafe or unavailable storage
 returns `507 library_storage`.

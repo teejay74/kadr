@@ -164,6 +164,7 @@ test('explicitly prepares and opens a compatible FFmpeg version', async () => {
     const url = String(input)
     if (url.endsWith('/compatible')) {
       return new Response(JSON.stringify({
+        mode: 'compatible',
         state: 'ready',
         progress: 1,
         strategy: 'audio_transcode',
@@ -178,11 +179,39 @@ test('explicitly prepares and opens a compatible FFmpeg version', async () => {
   render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
 
   await fireEvent.click(screen.getByText('Если нет изображения или звука'))
-  await fireEvent.click(screen.getByRole('button', { name: 'Подготовить совместимую версию' }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Полная совместимая версия' }))
 
   await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
   expect(document.querySelector('video')?.getAttribute('src')).toBe(
     '/api/v1/torrents/task-id/compatible/stream?attempt=1',
+  )
+})
+
+test('quickly fixes audio without requesting a full video transcode', async () => {
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/compatible?mode=audio_only') && init?.method === 'POST') {
+      return new Response(JSON.stringify({
+        mode: 'audio_only',
+        state: 'ready',
+        progress: 1,
+        strategy: 'audio_transcode',
+        video_codec: 'hevc',
+        audio_codec: 'eac3',
+        message: null,
+        stream_url: '/api/v1/torrents/task-id/compatible/stream?mode=audio_only',
+      }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
+
+  await fireEvent.click(screen.getByText('Если нет изображения или звука'))
+  await fireEvent.click(screen.getByRole('button', { name: 'Быстро исправить звук' }))
+
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  expect(document.querySelector('video')?.getAttribute('src')).toBe(
+    '/api/v1/torrents/task-id/compatible/stream?mode=audio_only&attempt=1',
   )
 })
 
@@ -191,6 +220,7 @@ test('automatically reuses a compatible version on the next playback attempt', a
     const url = String(input)
     if (url.endsWith('/compatible')) {
       return new Response(JSON.stringify({
+        mode: 'compatible',
         state: 'ready',
         progress: 1,
         strategy: 'audio_transcode',

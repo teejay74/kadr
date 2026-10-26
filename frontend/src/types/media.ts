@@ -137,9 +137,11 @@ export interface StreamReadiness {
 }
 
 export type PlaybackPreparationState = 'idle' | 'probing' | 'processing' | 'ready' | 'failed'
+export type PlaybackMode = 'compatible' | 'audio_only'
 export type PlaybackStrategy = 'remux' | 'audio_transcode' | 'transcode'
 
 export interface PlaybackPreparation {
+  mode: PlaybackMode
   state: PlaybackPreparationState
   progress: number
   strategy: PlaybackStrategy | null

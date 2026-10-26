@@ -101,6 +101,45 @@ async def test_save_stream_and_delete_library_item(session: AsyncSession, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_duplicate_library_insert_returns_existing_item(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    _, _, task = await make_manager(session, tmp_path)
+    repository = LibraryRepository(session)
+    first = LibraryItem(
+        id="00000000-0000-0000-0000-000000000010",
+        task_id=task.id,
+        media_id=42,
+        media_kind="movie",
+        title="Example",
+        original_title="",
+        poster_url=None,
+        backdrop_url=None,
+        file_path="/library/movies/42/video.mp4",
+        size_bytes=8,
+    )
+    duplicate = LibraryItem(
+        id="00000000-0000-0000-0000-000000000011",
+        task_id=task.id,
+        media_id=42,
+        media_kind="movie",
+        title="Example duplicate",
+        original_title="",
+        poster_url=None,
+        backdrop_url=None,
+        file_path="/library/movies/42/video-copy.mp4",
+        size_bytes=8,
+    )
+
+    saved = await repository.add_library(first)
+    repeated = await repository.add_library(duplicate)
+
+    assert repeated.id == saved.id
+    assert len(await repository.list_library()) == 1
+
+
+@pytest.mark.asyncio
 async def test_save_requires_complete_selected_file(session: AsyncSession, tmp_path: Path) -> None:
     manager, _, task = await make_manager(session, tmp_path, progress=0.5)
     with pytest.raises(LibraryConflictError):

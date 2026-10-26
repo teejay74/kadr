@@ -228,6 +228,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .compatibility-help { max-width: 23rem; color: var(--text-secondary); font-size: .78rem; text-align: right; }
 .compatibility-help summary { cursor: pointer; }
 .compatibility-help p { margin: .55rem 0 !important; }
+.compatibility-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .55rem; }
 .player-active { display: grid; gap: .8rem; padding: 1rem; }
 .player-toolbar-title { display: grid; min-width: 0; gap: .2rem; }
 .player-toolbar-title small { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
@@ -281,6 +282,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
   .player-launch, .player-toolbar, .player-error { align-items: stretch; flex-direction: column; }
   .player-launch-actions { justify-items: stretch; }
   .compatibility-help { max-width: none; text-align: left; }
+  .compatibility-actions { justify-content: flex-start; }
   .torrent-file { grid-template-columns: 1fr; }
   .torrent-file strong { grid-column: 1; grid-row: auto; }
   .library-save-row { align-items: stretch; flex-direction: column; }

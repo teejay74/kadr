@@ -2,7 +2,7 @@ from pathlib import Path, PurePosixPath
 
 from app.core.config import Settings
 from app.repositories.torrent_tasks import TorrentTaskRepository
-from app.schemas.playback import PlaybackPreparation
+from app.schemas.playback import PlaybackMode, PlaybackPreparation
 from app.services.playback.exceptions import (
     PlaybackArtifactNotReadyError,
     PlaybackPreparationError,
@@ -26,7 +26,11 @@ class PlaybackPreparationService:
         self._repository = repository
         self._settings = settings
 
-    async def prepare(self, task_id: str) -> PlaybackPreparation:
+    async def prepare(
+        self,
+        task_id: str,
+        mode: PlaybackMode = "compatible",
+    ) -> PlaybackPreparation:
         task = await self._repository.get(task_id)
         if (
             task is None
@@ -50,17 +54,22 @@ class PlaybackPreparationService:
         source = self._safe_source(task.storage_path, task.selected_file_path)
         if not source.is_file():
             raise PlaybackPreparationError("The selected video file is unavailable")
-        return await self._manager.start(task_id, task.selected_file_id, source)
+        return await self._manager.start(task_id, task.selected_file_id, source, mode)
 
-    async def status(self, task_id: str) -> PlaybackPreparation:
+    async def status(
+        self,
+        task_id: str,
+        mode: PlaybackMode = "compatible",
+    ) -> PlaybackPreparation:
         task = await self._repository.get(task_id)
         if task is None or task.selected_file_id is None:
-            return PlaybackPreparation(state="idle", progress=0)
-        return self._manager.status(task_id, task.selected_file_id)
+            return PlaybackPreparation(mode=mode, state="idle", progress=0)
+        return self._manager.status(task_id, task.selected_file_id, mode)
 
     async def open(
         self,
         task_id: str,
+        mode: PlaybackMode,
         range_header: str | None,
         registry: StreamRegistry,
     ) -> PreparedStream:
@@ -72,6 +81,7 @@ class PlaybackPreparationService:
         return await self._manager.open(
             task_id,
             task.selected_file_id,
+            mode,
             range_header,
             registry,
         )

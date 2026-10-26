@@ -1,13 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.dependencies import (
     PlaybackPreparationServiceDependency,
 )
-from app.schemas.playback import PlaybackPreparation
+from app.schemas.playback import PlaybackMode, PlaybackPreparation
 
 router = APIRouter()
 
@@ -20,8 +20,9 @@ router = APIRouter()
 async def prepare_compatible_playback(
     service: PlaybackPreparationServiceDependency,
     task_id: str,
+    mode: Annotated[PlaybackMode, Query()] = "compatible",
 ) -> PlaybackPreparation:
-    return await service.prepare(task_id)
+    return await service.prepare(task_id, mode)
 
 
 @router.get(
@@ -31,8 +32,9 @@ async def prepare_compatible_playback(
 async def compatible_playback_status(
     service: PlaybackPreparationServiceDependency,
     task_id: str,
+    mode: Annotated[PlaybackMode, Query()] = "compatible",
 ) -> PlaybackPreparation:
-    return await service.status(task_id)
+    return await service.status(task_id, mode)
 
 
 @router.get(
@@ -44,9 +46,11 @@ async def stream_compatible_playback(
     service: PlaybackPreparationServiceDependency,
     task_id: str,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
+    mode: Annotated[PlaybackMode, Query()] = "compatible",
 ) -> StreamingResponse:
     prepared = await service.open(
         task_id,
+        mode,
         range_header,
         request.app.state.stream_registry,
     )
