@@ -105,3 +105,43 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 - Indexer quality still determines whether a matching seasonal release exists;
   an empty season remains visible with an explicit no-results message.
 - Inspect live service health/logs after deploying this follow-up.
+
+## Multi-season and playback-status follow-up — 2026-10-26
+
+### Completed work
+
+- Added conservative source-title parsing for single seasons, explicit lists,
+  and ranges including `S01-05`, `S01-S05`, episode-spanning ranges, English,
+  and Russian season labels.
+- Separated release coverage from the season-specific search context, grouped
+  multi-season packs independently, and deduplicated the same opaque source
+  across seasonal searches.
+- Added a season picker for multi-season packs and validation against torrent
+  file names before queuing the selected season.
+- Kept the player frame visible while the initial buffer is pending and added
+  explicit selected-file download percentage, torrent state, speed, buffer
+  progress, polling explanation, and browser autoplay errors.
+
+### Changed files
+
+- Backend source schema, release parser, search normalization, and parser tests.
+- Frontend source grouping/download controls, player state UI, styles, types,
+  and component tests.
+- `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/streaming.md`, and
+  this report.
+
+### Checks
+
+- Backend Pytest: 72 passed.
+- Frontend Vitest: 33 passed across 6 files.
+- Ruff passed; TypeScript checking and the production Vite build passed.
+- Compose configuration validation passed.
+- Server logs confirmed that the playback action reached the readiness API;
+  the selected torrent was still waiting for its initial stream buffer and no
+  stream request had started yet.
+
+### Known issues and next actions
+
+- Release-title parsing remains conservative; after torrent metadata arrives,
+  recognized file paths are treated as the stronger season identity.
+- Inspect live service health after this follow-up is deployed.

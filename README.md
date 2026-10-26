@@ -45,8 +45,10 @@ qBittorrent's administration port is also loopback-only. New magnets stop as
 soon as metadata arrives. Choose a film or episode with the single
 «Выбрать и скачать» action; KADR selects only that file and starts it. KADR
 searches every known series season separately and shows the season groups
-collapsed by default. «Скачать сезон» on a seasonal release selects its first
-episode for playback and queues the remaining episodes. The same action is
+collapsed by default. Multi-season packs such as `S01-05` are deduplicated and
+shown in their own range group; «Скачать сезон» lets the viewer choose one
+season from the pack. The action selects its first episode for playback and
+queues the remaining episodes. The same action is
 available later without changing the episode being watched. Then use «Начать
 просмотр» for Direct Play.
 If its container or codecs are unsupported, wait for the file to finish and

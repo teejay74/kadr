@@ -19,12 +19,18 @@ const props = withDefaults(defineProps<{
   mediaId?: number
   mediaKind?: MediaKind
   posterUrl?: string | null
+  downloadProgress?: number
+  downloadState?: string
+  downloadSpeedBytes?: number
 }>(), {
   selectionLabel: '',
   fileName: '',
   mediaId: 0,
   mediaKind: 'movie',
   posterUrl: null,
+  downloadProgress: 0,
+  downloadState: '',
+  downloadSpeedBytes: 0,
 })
 
 const active = ref(false)
@@ -50,6 +56,25 @@ const streamUrl = computed(() => {
   return streamAttempt.value === 0 ? base : `${base}?attempt=${streamAttempt.value}`
 })
 const storageKey = computed(() => `kadr:playback:${props.taskId}`)
+const downloadPercent = computed(() => Math.round(props.downloadProgress * 100))
+const downloadStateLabel = computed(() => {
+  if (props.downloadProgress >= 1) return 'файл загружен полностью'
+  if (['downloading', 'forcedDL'].includes(props.downloadState)) return 'эпизод загружается'
+  if (['queuedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'].includes(props.downloadState)) {
+    return 'ожидаем данные от источников'
+  }
+  if (['stoppedDL', 'pausedDL'].includes(props.downloadState)) return 'загрузка приостановлена'
+  if (props.downloadState === 'error' || props.downloadState === 'missingFiles') {
+    return 'ошибка загрузки'
+  }
+  return 'проверяем состояние загрузки'
+})
+const downloadStatus = computed(() => {
+  const speed = props.downloadSpeedBytes > 0
+    ? ` · ${formatBytes(props.downloadSpeedBytes)}/с`
+    : ''
+  return `Скачано ${downloadPercent.value}% · ${downloadStateLabel.value}${speed}`
+})
 
 function readSavedPosition(): number {
   try {
@@ -68,6 +93,25 @@ function formatTime(seconds: number): string {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
     : `${minutes}:${String(remainder).padStart(2, '0')}`
+}
+
+function formatBytes(bytes: number): string {
+  const units = ['Б', 'КБ', 'МБ', 'ГБ']
+  const unit = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), units.length - 1)
+  return `${(bytes / 1024 ** unit).toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`
+}
+
+async function startVideoElement(): Promise<void> {
+  await nextTick()
+  const element = video.value
+  if (!element) return
+  element.focus()
+  try {
+    await element.play()
+  } catch {
+    waiting.value = false
+    error.value = 'Буфер готов, но браузер заблокировал автоматический запуск. Нажмите ▶ в плеере.'
+  }
 }
 
 async function activate(): Promise<void> {
@@ -137,8 +181,7 @@ async function handleCompatibility(status: PlaybackPreparation): Promise<void> {
   streamReady.value = true
   waiting.value = true
   streamAttempt.value += 1
-  await nextTick()
-  video.value?.focus()
+  await startVideoElement()
 }
 
 async function prepareStream(id = ++preparationId): Promise<void> {
@@ -155,8 +198,7 @@ async function prepareStream(id = ++preparationId): Promise<void> {
       return
     }
     streamReady.value = true
-    await nextTick()
-    video.value?.focus()
+    await startVideoElement()
   } catch {
     if (!active.value || id !== preparationId) return
     waiting.value = false
@@ -296,6 +338,9 @@ onBeforeUnmount(stopPlayback)
         <p>Просмотр можно начать до завершения загрузки — KADR сам подготовит начальный буфер.</p>
         <strong v-if="selectionLabel" class="player-selection-label">{{ selectionLabel }}</strong>
         <small>{{ fileName || title }}</small>
+        <span class="player-download-status" :class="{ complete: downloadProgress >= 1 }">
+          {{ downloadStatus }}
+        </span>
       </div>
       <div class="player-launch-actions">
         <button class="button primary focus-ring" type="button" @click="activate">
@@ -315,6 +360,9 @@ onBeforeUnmount(stopPlayback)
         <div class="player-toolbar-title">
           <strong>{{ selectionLabel || title }}</strong>
           <small v-if="selectionLabel">{{ fileName || title }}</small>
+          <span class="player-download-status" :class="{ complete: downloadProgress >= 1 }">
+            {{ downloadStatus }}
+          </span>
         </div>
         <button class="button secondary focus-ring" type="button" @click="stopPlayback">
           Закрыть плеер
@@ -339,9 +387,17 @@ onBeforeUnmount(stopPlayback)
         >
           Ваш браузер не поддерживает воспроизведение видео.
         </video>
-        <p v-if="waiting" class="player-status" role="status">
-          Подготавливаем буфер… {{ Math.round(bufferProgress * 100) }}%
-        </p>
+        <div v-if="waiting" class="player-status" role="status">
+          <strong>
+            {{ streamReady
+              ? 'Буфер готов — открываем видео…'
+              : `Подготавливаем начальный буфер… ${Math.round(bufferProgress * 100)}%` }}
+          </strong>
+          <span>{{ downloadStatus }}</span>
+          <small v-if="!streamReady">
+            KADR автоматически проверяет готовность потока каждые 5 секунд.
+          </small>
+        </div>
         <p
           v-else-if="compatible && ['probing', 'processing'].includes(compatible.state)"
           class="player-status"

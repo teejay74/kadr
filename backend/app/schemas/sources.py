@@ -26,6 +26,7 @@ class SourceRelease(ReleaseCharacteristics):
     peers: int | None = Field(default=None, ge=0)
     published_at: str | None = None
     season_number: int | None = Field(default=None, ge=1, le=100)
+    season_numbers: list[int] = Field(default_factory=list, max_length=100)
     protocol: Literal["torrent"] = "torrent"
 
 

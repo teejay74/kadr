@@ -12,7 +12,7 @@ from app.main import app
 from app.schemas.media import MediaDetails, MediaKind
 from app.services.sources.exceptions import IndexerNotConfiguredError
 from app.services.sources.prowlarr import ProwlarrClient
-from app.services.sources.release_parser import parse_release_title
+from app.services.sources.release_parser import parse_release_seasons, parse_release_title
 from app.services.sources.search import SourceSearchService
 
 
@@ -107,6 +107,26 @@ def test_release_parser_is_conservative(title: str, expected: dict[str, object])
         assert getattr(parsed, field) == value
 
 
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Breaking Bad [S01-05] BDRip", [1, 2, 3, 4, 5]),
+        ("Breaking.Bad.S01-S05.Complete", [1, 2, 3, 4, 5]),
+        ("Show.S01E01-S05E16.1080p", [1, 2, 3, 4, 5]),
+        ("Show Seasons 2-4 WEB-DL", [2, 3, 4]),
+        ("Show 2-4 сезоны WEB-DL", [2, 3, 4]),
+        ("Show [S01, S03, S05]", [1, 3, 5]),
+        ("Show Season 2", [2]),
+        ("Movie.2025.1080p", []),
+    ],
+)
+def test_release_season_parser_detects_single_lists_and_ranges(
+    title: str,
+    expected: list[int],
+) -> None:
+    assert parse_release_seasons(title) == expected
+
+
 async def test_source_service_normalizes_filters_and_sorts() -> None:
     provider = FakeIndexerProvider()
     service = SourceSearchService(FakeCatalog(), provider)
@@ -119,6 +139,7 @@ async def test_source_service_normalizes_filters_and_sorts() -> None:
     assert result.items[0].release_type == "REMUX"
     assert result.items[0].hdr_format == "HDR10"
     assert result.items[1].language == "RU"
+    assert result.items[0].season_numbers == []
     assert "download" not in result.items[0].model_dump_json().lower()
 
 

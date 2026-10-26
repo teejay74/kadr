@@ -102,6 +102,7 @@ source can be resolved safely later.
       "peers": 3,
       "published_at": "2026-10-20T12:00:00Z",
       "season_number": null,
+      "season_numbers": [],
       "protocol": "torrent",
       "resolution": "2160p",
       "source": "WEB-DL",
@@ -119,6 +120,10 @@ source can be resolved safely later.
 Unknown title characteristics are `null`; absence of an explicit HDR marker is
 reported as `false`. Usenet results are excluded. Raw Prowlarr payloads,
 download URLs, magnet links, and API keys are never returned.
+`season_number` is the season-specific search context used to resolve the
+opaque source again. `season_numbers` is the independently parsed release
+coverage used for grouping and may contain a single season, a list, or an
+expanded range.
 
 ### `GET /api/v1/indexers`
 

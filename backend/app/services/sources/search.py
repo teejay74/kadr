@@ -12,7 +12,7 @@ from app.schemas.sources import (
     SourceResults,
     SourceSort,
 )
-from app.services.sources.release_parser import parse_release_title
+from app.services.sources.release_parser import parse_release_seasons, parse_release_title
 
 
 class MediaCatalog(Protocol):
@@ -151,6 +151,7 @@ class SourceSearchService:
             peers=self._optional_non_negative_integer(payload.get("leechers")),
             published_at=self._optional_text(payload.get("publishDate")),
             season_number=season_number,
+            season_numbers=parse_release_seasons(title),
             **parsed.model_dump(),
         )
 

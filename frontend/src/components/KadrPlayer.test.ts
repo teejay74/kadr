@@ -48,6 +48,7 @@ test('opens the stream only after an explicit user action and closes it', async 
   const player = document.querySelector('video')
   expect(player?.getAttribute('src')).toBe('/api/v1/torrents/task%2Fid/stream')
   expect(player?.controls).toBe(true)
+  expect(player?.play).toHaveBeenCalled()
 
   await fireEvent.click(screen.getByRole('button', { name: 'Закрыть плеер' }))
   expect(document.querySelector('video')).toBeNull()
@@ -127,12 +128,35 @@ test('waits for the startup buffer before attaching the video stream', async () 
 
   await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
 
-  await screen.findByText('Подготавливаем буфер… 25%')
+  await screen.findByText('Подготавливаем начальный буфер… 25%')
+  expect(screen.getAllByText(/Скачано 0%/).length).toBeGreaterThan(0)
+  expect(screen.getByText('KADR автоматически проверяет готовность потока каждые 5 секунд.')).toBeTruthy()
   expect(document.querySelector('video')).toBeNull()
   expect(fetch).toHaveBeenCalledWith(
     '/api/v1/torrents/task-id/stream/readiness',
     expect.anything(),
   )
+})
+
+test('explains when the browser blocks automatic playback', async () => {
+  vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error('blocked'))
+  render(KadrPlayer, {
+    props: {
+      taskId: 'task-id',
+      title: 'Video.mp4',
+      downloadProgress: 0.4,
+      downloadState: 'downloading',
+      downloadSpeedBytes: 1_048_576,
+    },
+  })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
+
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'браузер заблокировал автоматический запуск',
+  )
+  expect(screen.getByText('Скачано 40% · эпизод загружается · 1.0 МБ/с')).toBeTruthy()
+  expect(document.querySelector('video')).not.toBeNull()
 })
 
 test('explicitly prepares and opens a compatible FFmpeg version', async () => {

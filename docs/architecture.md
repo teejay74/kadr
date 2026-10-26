@@ -88,8 +88,12 @@ The series source view uses the trusted metadata season list to issue bounded
 season-specific searches with `S01`-style markers. Every regular season gets a
 collapsed group, including an explicit empty state when no release was found.
 The requested season travels with the opaque release ID so resolution repeats
-the same search. A direct whole-season action selects the first episode and
-queues the remaining video files after metadata arrives. Generic fallback
+the same search. Separately parsed release coverage recognizes single seasons,
+lists, and ranges such as `S01-05`; duplicate packs returned by several searches
+are collapsed into one result. A direct whole-season action lets the viewer
+choose a season from a multi-season pack, validates it against torrent file
+names, selects the first episode, and queues the remaining video files after
+metadata arrives. Generic fallback
 searches still group normalized results by release-title season markers and
 keep ambiguous results visible. Prowlarr persists its own configuration in `data/prowlarr`
 and exposes its administrative UI only on host loopback. It is not a dependency of API health:

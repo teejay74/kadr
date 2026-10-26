@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/vue'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
@@ -117,18 +117,30 @@ test('groups series sources by season without hiding ambiguous releases', async 
       { ...baseRelease, id: 's2', title: 'Example.Show.S02.1080p' },
       { ...baseRelease, id: 'other', title: 'Example.Show.Specials.1080p' },
       { ...baseRelease, id: 's1', title: 'Example.Show.S01.1080p' },
-      { ...baseRelease, id: 'range', title: 'Example.Show.S01-S03.Complete' },
+      {
+        ...baseRelease,
+        id: 'range',
+        title: 'Example.Show.S01-S03.Complete',
+        season_number: 1,
+        season_numbers: [1, 2, 3],
+      },
     ],
   })
 
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series' } })
   await fireEvent.click(screen.getByRole('button', { name: 'Найти источники' }))
 
-  expect(await screen.findByText('Сезон 1')).toBeTruthy()
+  expect((await screen.findAllByText('Сезон 1')).length).toBeGreaterThan(0)
   expect(screen.getByText('Сезоны 1–3')).toBeTruthy()
-  expect(screen.getByText('Сезон 2')).toBeTruthy()
+  expect(screen.getAllByText('Сезон 2').length).toBeGreaterThan(0)
   expect(screen.getByText('Другие релизы')).toBeTruthy()
   expect(screen.getByText('Example.Show.Specials.1080p')).toBeTruthy()
+  const rangeRelease = screen.getByText('Example.Show.S01-S03.Complete').closest('article')
+  expect(rangeRelease).not.toBeNull()
+  await fireEvent.click(within(rangeRelease as HTMLElement).getByText('Скачать сезон'))
+  expect(within(rangeRelease as HTMLElement).getByRole('button', { name: 'Сезон 1' })).toBeTruthy()
+  expect(within(rangeRelease as HTMLElement).getByRole('button', { name: 'Сезон 2' })).toBeTruthy()
+  expect(within(rangeRelease as HTMLElement).getByRole('button', { name: 'Сезон 3' })).toBeTruthy()
   const groups = document.querySelectorAll<HTMLDetailsElement>('.source-season-group')
   expect(groups.length).toBe(4)
   expect([...groups].every((group) => !group.open)).toBe(true)
@@ -184,6 +196,58 @@ test('searches every known season and shows seasons without releases', async () 
   expect(api.getSources).toHaveBeenNthCalledWith(2, 42, 'series', 'seeders', 'desc', 2)
   expect(await screen.findByText('Сезон 2')).toBeTruthy()
   expect(screen.getByText('Для этого сезона источники не найдены.')).toBeTruthy()
+})
+
+test('deduplicates one multi-season pack returned by several season searches', async () => {
+  api.getSources.mockImplementation((
+    _mediaId: number,
+    _kind: string,
+    _sort: string,
+    _order: string,
+    seasonNumber?: number,
+  ) => Promise.resolve({
+    media_id: 42,
+    media_kind: 'series',
+    query: `Example Show S0${seasonNumber}`,
+    total: 1,
+    items: [{
+      id: 'same-pack',
+      title: 'Example.Show.[S01-02].Complete',
+      indexer: 'Example Indexer',
+      size_bytes: 2_000,
+      seeders: 5,
+      peers: 1,
+      published_at: null,
+      season_number: seasonNumber,
+      season_numbers: [1, 2],
+      protocol: 'torrent',
+      resolution: '1080p',
+      source: 'WEB-DL',
+      codec: 'H264',
+      hdr: false,
+      hdr_format: null,
+      audio: null,
+      language: null,
+      release_type: 'web',
+    }],
+  }))
+
+  render(SourcesPanel, {
+    props: {
+      mediaId: 42,
+      kind: 'series',
+      title: 'Example Show',
+      seasons: [
+        { id: 1, number: 1, name: 'Season 1', episode_count: 10, air_date: null, poster_url: null },
+        { id: 2, number: 2, name: 'Season 2', episode_count: 10, air_date: null, poster_url: null },
+      ],
+    },
+  })
+  await fireEvent.click(screen.getByRole('button', { name: 'Найти источники' }))
+
+  expect(await screen.findByText('Сезоны 1–2')).toBeTruthy()
+  expect(screen.getAllByText('Example.Show.[S01-02].Complete')).toHaveLength(1)
+  expect(screen.getByText(/Найдено: 1/)).toBeTruthy()
 })
 
 test('downloads a whole season directly from a seasonal source', async () => {

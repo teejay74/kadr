@@ -4,9 +4,45 @@ import re
 
 from app.schemas.sources import ReleaseCharacteristics
 
+MAX_SEASON_NUMBER = 100
+
 
 def _matches(title: str, *patterns: str) -> bool:
     return any(re.search(pattern, title, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def parse_release_seasons(title: str) -> list[int]:
+    range_patterns = (
+        r"(?:^|[^a-z0-9])s(\d{1,2})(?:e\d{1,3})?\s*[-–—]\s*s?(\d{1,2})(?:e\d{1,3})?(?:[^a-z0-9]|$)",
+        r"(?:seasons?|сезоны?)\s*(\d{1,2})\s*[-–—]\s*(\d{1,2})",
+        r"(?:^|[^0-9])(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*(?:seasons?|сезоны?)(?:[^a-zа-яё0-9]|$)",
+    )
+    for pattern in range_patterns:
+        match = re.search(pattern, title, flags=re.IGNORECASE)
+        if match:
+            first, last = sorted((int(match.group(1)), int(match.group(2))))
+            if first >= 1 and last <= MAX_SEASON_NUMBER:
+                return list(range(first, last + 1))
+
+    season_markers = {
+        int(value)
+        for value in re.findall(r"(?:^|[^a-z0-9])s(\d{1,2})(?:e\d{1,3})?", title, re.IGNORECASE)
+    }
+    word_markers = {
+        int(value)
+        for match in re.findall(
+            r"(?:seasons?|сезоны?)\s*(\d{1,2})|(?:^|[^0-9])(\d{1,2})\s*(?:season|сезон)",
+            title,
+            re.IGNORECASE,
+        )
+        for value in match
+        if value
+    }
+    return sorted(
+        number
+        for number in season_markers | word_markers
+        if 1 <= number <= MAX_SEASON_NUMBER
+    )
 
 
 def parse_release_title(title: str) -> ReleaseCharacteristics:

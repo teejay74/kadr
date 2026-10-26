@@ -71,8 +71,12 @@ and any supported embedded track controls. KADR stores the last meaningful
 position in that browser's local storage and offers to continue on the next
 opening. Before attaching the media source, the player displays real startup
 buffer readiness and waits automatically instead of turning a preparation
-timeout into a browser format error. Closing the player cancels readiness
-polling and removes its media source. KADR sends explicit video MIME types even
+timeout into a browser format error. The visible player frame reports the
+selected-file download percentage, torrent state, speed, buffer progress, and
+five-second retry behavior. Once ready, KADR attempts playback and reports an
+explicit browser autoplay block instead of leaving an empty player area.
+Closing the player cancels readiness polling and removes its media source.
+KADR sends explicit video MIME types even
 when the minimal container image lacks a system MIME database. Container and
 codec support still depends on the browser/TV; an unsupported file produces a
 codec-specific player error. The retry action creates a fresh media request,

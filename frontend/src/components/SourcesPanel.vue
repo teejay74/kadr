@@ -52,6 +52,7 @@ const prefetchCount = ref(2)
 const deleteCandidateId = ref<number | null>(null)
 const deletedFileIds = ref<Set<number>>(new Set())
 const pendingSeasonDownload = ref<number | null>(null)
+const pendingSeasonRequiresMatch = ref(false)
 const seasonQueueBusy = ref(false)
 let torrentTimer: ReturnType<typeof setTimeout> | undefined
 const dismissedTask = 'dismissed'
@@ -122,13 +123,7 @@ const sourceGroups = computed(() => {
     })
   }
   for (const item of items.value) {
-    const identity = item.season_number == null
-      ? releaseSeasonIdentity(item.title)
-      : {
-          key: `season-${item.season_number}`,
-          label: `Сезон ${item.season_number}`,
-          sortOrder: item.season_number,
-        }
+    const identity = releaseGroupIdentity(item)
     const group = groups.get(identity.key) ?? { ...identity, items: [] }
     group.items.push(item)
     groups.set(identity.key, group)
@@ -178,16 +173,80 @@ function releaseSeasonIdentity(title: string): {
   return { key: 'other', label: 'Другие релизы', sortOrder: 20_000 }
 }
 
-function releaseMatchesRequestedSeason(item: SourceRelease): boolean {
-  if (item.season_number == null) return true
+function explicitReleaseSeasonNumbers(item: SourceRelease): number[] {
+  if (Array.isArray(item.season_numbers) && item.season_numbers.length) {
+    return [...new Set(item.season_numbers)].sort((left, right) => left - right)
+  }
   const identity = releaseSeasonIdentity(item.title)
   const singleSeason = identity.key.match(/^season-(\d+)$/)
-  if (singleSeason) return Number(singleSeason[1]) === item.season_number
+  if (singleSeason) return [Number(singleSeason[1])]
   const range = identity.key.match(/^range-(\d+)-(\d+)$/)
   if (range) {
-    return item.season_number >= Number(range[1]) && item.season_number <= Number(range[2])
+    const first = Number(range[1])
+    const last = Number(range[2])
+    return Array.from({ length: last - first + 1 }, (_, index) => first + index)
   }
-  return true
+  return []
+}
+
+function downloadableSeasonNumbers(item: SourceRelease): number[] {
+  const explicit = explicitReleaseSeasonNumbers(item)
+  if (explicit.length) return explicit
+  if (releaseSeasonIdentity(item.title).key === 'complete') return knownSeasonNumbers.value
+  return item.season_number == null ? [] : [item.season_number]
+}
+
+function releaseGroupIdentity(item: SourceRelease): {
+  key: string
+  label: string
+  sortOrder: number
+} {
+  if (releaseSeasonIdentity(item.title).key === 'complete') {
+    return { key: 'complete', label: 'Все сезоны', sortOrder: 10_000 }
+  }
+  const seasons = explicitReleaseSeasonNumbers(item)
+  if (seasons.length === 1) {
+    return {
+      key: `season-${seasons[0]}`,
+      label: `Сезон ${seasons[0]}`,
+      sortOrder: seasons[0],
+    }
+  }
+  if (seasons.length > 1) {
+    const consecutive = seasons.every((season, index) => (
+      index === 0 || season === seasons[index - 1] + 1
+    ))
+    const suffix = consecutive
+      ? `${seasons[0]}–${seasons[seasons.length - 1]}`
+      : seasons.join(', ')
+    return {
+      key: `seasons-${seasons.join('-')}`,
+      label: `Сезоны ${suffix}`,
+      sortOrder: seasons[0],
+    }
+  }
+  if (item.season_number != null) {
+    return {
+      key: `season-${item.season_number}`,
+      label: `Сезон ${item.season_number}`,
+      sortOrder: item.season_number,
+    }
+  }
+  return releaseSeasonIdentity(item.title)
+}
+
+function releaseMatchesRequestedSeason(item: SourceRelease): boolean {
+  if (item.season_number == null) return true
+  const seasons = explicitReleaseSeasonNumbers(item)
+  return seasons.length === 0 || seasons.includes(item.season_number)
+}
+
+function deduplicateSources(releases: SourceRelease[]): SourceRelease[] {
+  const unique = new Map<string, SourceRelease>()
+  for (const release of releases) {
+    if (!unique.has(release.id)) unique.set(release.id, release)
+  }
+  return [...unique.values()]
 }
 
 function parseEpisodeIdentity(filename: string): { season: number, episode: number } | null {
@@ -202,6 +261,15 @@ function parseEpisodeIdentity(filename: string): { season: number, episode: numb
   }
 
   return null
+}
+
+function fileSeasonNumber(filename: string): number | null {
+  const episode = parseEpisodeIdentity(filename)
+  if (episode) return episode.season
+  const directory = filename.match(
+    /(?:^|[\\/._ -])(?:season|сезон)[ ._-]?(\d{1,2})(?:[\\/._ -]|$)/i,
+  )
+  return directory ? Number(directory[1]) : null
 }
 
 function describeVideoFile(filename: string): string {
@@ -269,23 +337,26 @@ function dismissTask(): void {
 
 async function addSource(
   sourceId: string,
-  seasonNumber: number | null = null,
-  downloadSeason = false,
+  searchSeasonNumber: number | null = null,
+  downloadSeasonNumber: number | null = null,
+  requireSeasonMatch = false,
 ): Promise<void> {
   torrentBusy.value = true
   torrentError.value = ''
   torrentNotice.value = ''
-  pendingSeasonDownload.value = downloadSeason ? seasonNumber : null
+  pendingSeasonDownload.value = downloadSeasonNumber
+  pendingSeasonRequiresMatch.value = requireSeasonMatch
   try {
-    torrent.value = seasonNumber === null
+    torrent.value = searchSeasonNumber === null
       ? await addTorrent(props.mediaId, props.kind, sourceId)
-      : await addTorrent(props.mediaId, props.kind, sourceId, seasonNumber)
+      : await addTorrent(props.mediaId, props.kind, sourceId, searchSeasonNumber)
     rememberTask(torrent.value.id)
     await refreshFiles()
     await queuePendingSeason()
     scheduleTorrentRefresh()
   } catch (caught) {
     pendingSeasonDownload.value = null
+    pendingSeasonRequiresMatch.value = false
     torrentError.value = friendlyApiError(caught)
   } finally {
     torrentBusy.value = false
@@ -296,11 +367,16 @@ async function queuePendingSeason(): Promise<void> {
   const seasonNumber = pendingSeasonDownload.value
   if (seasonNumber === null || !torrent.value || seasonQueueBusy.value) return
   const matchingFiles = videoFiles.value.filter(
-    (file) => parseEpisodeIdentity(file.name)?.season === seasonNumber,
+    (file) => fileSeasonNumber(file.name) === seasonNumber,
   )
-  const identifiedFiles = videoFiles.value.filter((file) => parseEpisodeIdentity(file.name))
-  if (!matchingFiles.length && identifiedFiles.length) {
+  const identifiedFiles = videoFiles.value.filter((file) => fileSeasonNumber(file.name) !== null)
+  if (
+    videoFiles.value.length
+    && !matchingFiles.length
+    && (identifiedFiles.length || pendingSeasonRequiresMatch.value)
+  ) {
     pendingSeasonDownload.value = null
+    pendingSeasonRequiresMatch.value = false
     torrentError.value = `В выбранном релизе не найден сезон ${seasonNumber}. Выберите другой источник.`
     return
   }
@@ -323,10 +399,12 @@ async function queuePendingSeason(): Promise<void> {
       .map((file) => file.id)
     torrent.value = await configureTorrentPrefetch(torrent.value.id, remainingIds)
     pendingSeasonDownload.value = null
+    pendingSeasonRequiresMatch.value = false
     await refreshFiles()
     torrentNotice.value = `Сезон ${seasonNumber} добавлен в загрузку. Эпизодов: ${candidates.length}.`
   } catch (caught) {
     pendingSeasonDownload.value = null
+    pendingSeasonRequiresMatch.value = false
     torrentError.value = friendlyApiError(caught)
   } finally {
     seasonQueueBusy.value = false
@@ -498,6 +576,7 @@ function chooseAnotherSource(): void {
   deleteCandidateId.value = null
   deletedFileIds.value = new Set()
   pendingSeasonDownload.value = null
+  pendingSeasonRequiresMatch.value = false
   librarySaved.value = false
 }
 
@@ -556,9 +635,11 @@ async function loadSources(): Promise<void> {
           seasonNumber,
         ))))
       }
-      items.value = results
-        .flatMap((result) => result.items)
-        .filter(releaseMatchesRequestedSeason)
+      items.value = deduplicateSources(
+        results
+          .flatMap((result) => result.items)
+          .filter(releaseMatchesRequestedSeason),
+      )
       query.value = `${props.title || props.originalTitle} · сезонов: ${knownSeasonNumbers.value.length}`
     }
   } catch (caught) {
@@ -581,6 +662,7 @@ watch(taskStorageKey, () => {
   deleteCandidateId.value = null
   deletedFileIds.value = new Set()
   pendingSeasonDownload.value = null
+  pendingSeasonRequiresMatch.value = false
   items.value = []
   searched.value = false
   void restoreTask()
@@ -676,14 +758,36 @@ onBeforeUnmount(clearTorrentTimer)
               Выбрать релиз
             </button>
             <button
-              v-if="item.season_number != null"
+              v-if="downloadableSeasonNumbers(item).length === 1"
               class="button primary focus-ring"
               type="button"
               :disabled="torrentBusy || seasonQueueBusy || torrent !== null"
-              @click="addSource(item.id, item.season_number, true)"
+              @click="addSource(
+                item.id,
+                item.season_number,
+                downloadableSeasonNumbers(item)[0],
+              )"
             >
               Скачать сезон
             </button>
+            <details
+              v-else-if="downloadableSeasonNumbers(item).length > 1"
+              class="source-season-picker"
+            >
+              <summary class="button primary focus-ring">Скачать сезон</summary>
+              <div class="source-season-picker-menu">
+                <button
+                  v-for="seasonNumber in downloadableSeasonNumbers(item)"
+                  :key="seasonNumber"
+                  class="button secondary focus-ring"
+                  type="button"
+                  :disabled="torrentBusy || seasonQueueBusy || torrent !== null"
+                  @click="addSource(item.id, item.season_number, seasonNumber, true)"
+                >
+                  Сезон {{ seasonNumber }}
+                </button>
+              </div>
+            </details>
           </div>
         </article>
       </details>
@@ -913,6 +1017,9 @@ onBeforeUnmount(clearTorrentTimer)
           :media-id="mediaId"
           :media-kind="kind"
           :poster-url="posterUrl"
+          :download-progress="selectedFile?.progress ?? torrent.progress"
+          :download-state="torrent.state"
+          :download-speed-bytes="torrent.download_speed_bytes"
         />
         <div v-if="torrent.progress >= 1" class="library-save-row">
           <p>{{ librarySaved ? 'Видео сохранено в библиотеке.' : 'Сохраните готовый файл для просмотра без повторной загрузки.' }}</p>
