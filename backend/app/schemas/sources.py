@@ -25,6 +25,7 @@ class SourceRelease(ReleaseCharacteristics):
     seeders: int | None = Field(default=None, ge=0)
     peers: int | None = Field(default=None, ge=0)
     published_at: str | None = None
+    season_number: int | None = Field(default=None, ge=1, le=100)
     protocol: Literal["torrent"] = "torrent"
 
 

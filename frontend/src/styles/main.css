@@ -122,8 +122,10 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .source-summary { margin: 0 0 .5rem; font-size: .85rem; }
 .source-season-group { display: grid; gap: .75rem; }
 .source-season-group + .source-season-group { margin-top: .75rem; }
-.source-season-heading { display: flex; align-items: center; gap: .55rem; margin: 0; font-size: 1.05rem; }
+.source-season-heading { display: flex; align-items: center; gap: .55rem; margin: 0; padding: .8rem 0; cursor: pointer; font-size: 1.05rem; }
+.source-season-heading::marker { color: var(--accent); }
 .source-season-heading small { display: grid; min-width: 1.5rem; height: 1.5rem; padding: 0 .35rem; place-items: center; color: var(--text-secondary); border-radius: 999px; background: rgb(255 255 255 / .08); font-size: .72rem; }
+.source-season-empty { margin: 0; padding: 1rem 1.25rem; color: var(--text-secondary); border: 1px dashed var(--border-color); border-radius: 1rem; }
 .source-release { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1.5rem; align-items: center; padding: 1.15rem 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(32 34 43 / .65); }
 .source-release h3 { margin: 0; overflow-wrap: anywhere; font-size: 1rem; }
 .source-release-main > p { margin: .42rem 0 .7rem; color: var(--text-secondary); font-size: .84rem; }
@@ -135,6 +137,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .source-health dd { margin: .2rem 0 0; font-weight: 800; }
 .source-stage-note { margin: .5rem 0 0; font-size: .8rem; }
 .source-add { justify-self: end; }
+.source-actions { display: grid; gap: .55rem; justify-items: stretch; }
 .torrent-panel { display: grid; gap: 1rem; margin-top: 1.5rem; padding: 1.25rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(17 24 39 / .72); }
 .torrent-panel h3, .torrent-panel p { margin: 0; }
 .torrent-panel progress { width: 100%; height: .8rem; accent-color: var(--accent-primary); }

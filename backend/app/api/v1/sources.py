@@ -16,8 +16,9 @@ async def media_sources(
     kind: Annotated[MediaKind, Query()],
     sort: SourceSort = "seeders",
     order: SortOrder = "desc",
+    season_number: Annotated[int | None, Query(ge=1, le=100)] = None,
 ) -> SourceResults:
-    return await service.search(media_id, kind, sort, order)
+    return await service.search(media_id, kind, sort, order, season_number)
 
 
 @router.get("/indexers", response_model=list[IndexerSummary])

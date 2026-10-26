@@ -103,10 +103,20 @@ export function updateHistory(
   })
 }
 
-export function addTorrent(mediaId: number, mediaKind: MediaKind, sourceId: string): Promise<TorrentStatus> {
+export function addTorrent(
+  mediaId: number,
+  mediaKind: MediaKind,
+  sourceId: string,
+  seasonNumber?: number | null,
+): Promise<TorrentStatus> {
+  const body: { media_kind: MediaKind, source_id: string, season_number?: number } = {
+    media_kind: mediaKind,
+    source_id: sourceId,
+  }
+  if (seasonNumber !== null && seasonNumber !== undefined) body.season_number = seasonNumber
   return request<TorrentStatus>(`/api/v1/media/${mediaId}/torrents`, {
     method: 'POST',
-    body: JSON.stringify({ media_kind: mediaKind, source_id: sourceId }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -200,8 +210,10 @@ export function getSources(
   kind: MediaKind,
   sort: SourceSort = 'seeders',
   order: SortOrder = 'desc',
+  seasonNumber?: number,
 ): Promise<SourceResults> {
   const params = new URLSearchParams({ kind, sort, order })
+  if (seasonNumber !== undefined) params.set('season_number', String(seasonNumber))
   return request<SourceResults>(`/api/v1/media/${mediaId}/sources?${params}`)
 }
 

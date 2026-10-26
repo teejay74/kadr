@@ -180,3 +180,35 @@ async def test_source_service_prefers_localized_title_and_falls_back() -> None:
         ("Dune: Part Two 2024", "movie"),
     ]
     assert result.query == "Dune: Part Two 2024"
+
+
+async def test_source_service_searches_and_resolves_a_specific_series_season() -> None:
+    provider = FakeIndexerProvider()
+    service = SourceSearchService(FakeCatalog(), provider)
+
+    result = await service.search(42, "series", "seeders", "desc", season_number=2)
+    resolved = await service.resolve(42, "series", result.items[0].id, season_number=2)
+
+    assert provider.calls == [
+        ("Дюна: Часть вторая 2024 S02", "series"),
+        ("Дюна: Часть вторая 2024 S02", "series"),
+    ]
+    assert result.query == "Дюна: Часть вторая 2024 S02"
+    assert all(item.season_number == 2 for item in result.items)
+    assert resolved is not None
+    assert resolved.release.season_number == 2
+
+
+async def test_sources_endpoint_accepts_a_season_number(client: AsyncClient) -> None:
+    provider = FakeIndexerProvider()
+    service = SourceSearchService(FakeCatalog(), provider)
+    app.dependency_overrides[get_source_search_service] = lambda: service
+
+    response = await client.get(
+        "/api/v1/media/42/sources",
+        params={"kind": "series", "season_number": 2},
+    )
+
+    assert response.status_code == 200
+    assert provider.calls == [("Дюна: Часть вторая 2024 S02", "series")]
+    assert response.json()["items"][0]["season_number"] == 2

@@ -74,6 +74,7 @@ export interface SourceRelease {
   seeders: number | null
   peers: number | null
   published_at: string | null
+  season_number: number | null
   protocol: 'torrent'
   resolution: string | null
   source: string | null

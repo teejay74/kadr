@@ -47,10 +47,13 @@ class SourceSearchService:
         media_kind: MediaKind,
         sort: SourceSort,
         order: SortOrder,
+        season_number: int | None = None,
     ) -> SourceResults:
-        query, raw_items = await self._search_raw(media_id, media_kind)
+        query, raw_items = await self._search_raw(media_id, media_kind, season_number)
         items = [
-            release for payload in raw_items if (release := self._normalize(payload)) is not None
+            release
+            for payload in raw_items
+            if (release := self._normalize(payload, season_number)) is not None
         ]
         items.sort(key=self._sort_key(sort), reverse=order == "desc")
         return SourceResults(
@@ -66,10 +69,11 @@ class SourceSearchService:
         media_id: int,
         media_kind: MediaKind,
         source_id: str,
+        season_number: int | None = None,
     ) -> ResolvedSource | None:
-        _, raw_items = await self._search_raw(media_id, media_kind)
+        _, raw_items = await self._search_raw(media_id, media_kind, season_number)
         for payload in raw_items:
-            release = self._normalize(payload)
+            release = self._normalize(payload, season_number)
             if release is None or release.id != source_id:
                 continue
             uri = self._optional_text(payload.get("magnetUrl")) or self._optional_text(
@@ -88,19 +92,25 @@ class SourceSearchService:
         self,
         media_id: int,
         media_kind: MediaKind,
+        season_number: int | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         media = await self._catalog.details(media_kind, media_id)
         title = media.title or media.original_title
-        query = self._query(title, media.year)
+        query = self._query(title, media.year, season_number)
         raw_items = await self._provider.search(query, media_kind)
         if not raw_items and media.original_title and media.original_title != title:
-            query = self._query(media.original_title, media.year)
+            query = self._query(media.original_title, media.year, season_number)
             raw_items = await self._provider.search(query, media_kind)
         return query, raw_items
 
     @staticmethod
-    def _query(title: str, year: int | None) -> str:
-        return f"{title} {year}" if year else title
+    def _query(title: str, year: int | None, season_number: int | None = None) -> str:
+        parts = [title]
+        if year:
+            parts.append(str(year))
+        if season_number is not None:
+            parts.append(f"S{season_number:02d}")
+        return " ".join(parts)
 
     async def indexers(self) -> list[IndexerSummary]:
         raw_items = await self._provider.list_indexers()
@@ -116,7 +126,11 @@ class SourceSearchService:
             if item.get("id") is not None
         ]
 
-    def _normalize(self, payload: dict[str, Any]) -> SourceRelease | None:
+    def _normalize(
+        self,
+        payload: dict[str, Any],
+        season_number: int | None = None,
+    ) -> SourceRelease | None:
         if str(payload.get("protocol") or "").lower() != "torrent":
             return None
         title = self._optional_text(payload.get("title"))
@@ -136,6 +150,7 @@ class SourceSearchService:
             seeders=self._optional_non_negative_integer(payload.get("seeders")),
             peers=self._optional_non_negative_integer(payload.get("leechers")),
             published_at=self._optional_text(payload.get("publishDate")),
+            season_number=season_number,
             **parsed.model_dump(),
         )
 

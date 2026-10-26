@@ -66,3 +66,42 @@ adaptation, and a measured Android TV / Google TV compatibility matrix.
 - Compose configuration validation passed. The application stack was not
   running during this local verification, so no live health or log check was
   performed.
+
+## Seasonal source follow-up — 2026-10-26
+
+### Completed work
+
+- Replaced the single generic series search with bounded, season-specific
+  searches using the TMDB season list and `S01`-style query markers.
+- Seeded the results view with every known regular season, including seasons
+  for which an indexer returned no releases.
+- Made all series source groups collapsed by default.
+- Added «Скачать сезон» directly to each seasonal release. It selects the
+  first episode for playback and queues the remaining video files once torrent
+  metadata arrives.
+- Preserved the requested season through opaque source resolution so no raw
+  provider URL or magnet is exposed to the browser.
+
+### Changed files
+
+- Backend source schemas, endpoint, search service, and torrent add flow.
+- Frontend API client, media details integration, source panel, styles, and
+  focused component/API tests.
+- `README.md`, `docs/api.md`, and this stage report.
+
+### Checks
+
+- Backend Pytest: 64 passed.
+- Frontend Vitest: 31 passed across 6 files.
+- Ruff passed with its cache disabled because the test container filesystem is
+  read-only; TypeScript production build passed.
+- Compose configuration validation passed.
+- `docker compose ps` confirmed that the local application stack was not
+  running, so no local service logs or live health endpoint were available to
+  inspect.
+
+### Known issues and next actions
+
+- Indexer quality still determines whether a matching seasonal release exists;
+  an empty season remains visible with an explicit no-results message.
+- Inspect live service health/logs after deploying this follow-up.

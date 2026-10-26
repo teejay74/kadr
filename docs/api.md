@@ -81,7 +81,10 @@ metadata_unavailable`, and `503 metadata_not_configured`.
 
 Runs a user-triggered Prowlarr search. Required query parameter `kind` is
 `movie` or `series`. Optional `sort` values are `seeders`, `size`,
-`resolution`, `source`, and `title`; `order` is `asc` or `desc`.
+`resolution`, `source`, and `title`; `order` is `asc` or `desc`. Series clients
+can pass `season_number` from 1 to 100. The server adds an `S01`-style marker
+to that search and returns the same number in each normalized release so the
+source can be resolved safely later.
 
 ```json
 {
@@ -98,6 +101,7 @@ Runs a user-triggered Prowlarr search. Required query parameter `kind` is
       "seeders": 24,
       "peers": 3,
       "published_at": "2026-10-20T12:00:00Z",
+      "season_number": null,
       "protocol": "torrent",
       "resolution": "2160p",
       "source": "WEB-DL",
@@ -139,7 +143,10 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 | `POST /torrents/{task_id}/start` | Start after selection and safety checks |
 | `POST /torrents/{task_id}/stop` | Stop without deleting data |
 
-The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`;
+The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`.
+For a release found by a season-specific search it also includes
+`"season_number":2`; this makes opaque source resolution repeat the same
+search.
 selection uses `{"file_id":0}`. Episode prefetch uses
 `{"file_ids":[1,2,3]}` (up to 100 supported video files, including an explicitly
 selected whole season); an empty list cancels

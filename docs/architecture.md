@@ -84,9 +84,14 @@ to a separate library root with hard-link-first/copy fallback and atomic
 publication. Saved-file Range streams use registry keys, so active items
 cannot be deleted. Favorites and watch history are persistent SQLite records.
 
-The series source view groups normalized results by season markers found in
-release titles, including season ranges, and keeps ambiguous results visible in
-a separate group. Prowlarr persists its own configuration in `data/prowlarr`
+The series source view uses the trusted metadata season list to issue bounded
+season-specific searches with `S01`-style markers. Every regular season gets a
+collapsed group, including an explicit empty state when no release was found.
+The requested season travels with the opaque release ID so resolution repeats
+the same search. A direct whole-season action selects the first episode and
+queues the remaining video files after metadata arrives. Generic fallback
+searches still group normalized results by release-title season markers and
+keep ambiguous results visible. Prowlarr persists its own configuration in `data/prowlarr`
 and exposes its administrative UI only on host loopback. It is not a dependency of API health:
 catalogue browsing continues when Prowlarr or an indexer is unavailable.
 

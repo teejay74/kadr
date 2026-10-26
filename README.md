@@ -43,9 +43,11 @@ host port and cannot overcome a hard IP block.
 
 qBittorrent's administration port is also loopback-only. New magnets stop as
 soon as metadata arrives. Choose a film or episode with the single
-«Выбрать и скачать» action; KADR selects only that file and starts it. Series
-sources are grouped by season, and an explicit action can queue the whole
-selected season without changing the episode being watched. Then use «Начать
+«Выбрать и скачать» action; KADR selects only that file and starts it. KADR
+searches every known series season separately and shows the season groups
+collapsed by default. «Скачать сезон» on a seasonal release selects its first
+episode for playback and queues the remaining episodes. The same action is
+available later without changing the episode being watched. Then use «Начать
 просмотр» for Direct Play.
 If its container or codecs are unsupported, wait for the file to finish and
 choose «Совместимая версия»; FFmpeg never starts automatically.

@@ -110,6 +110,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       :original-title="media.original_title"
       :poster-url="media.poster_url"
       :backdrop-url="media.backdrop_url"
+      :seasons="media.seasons"
     />
 
     <section v-if="media.cast.length" class="details-section">

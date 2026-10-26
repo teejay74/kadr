@@ -49,8 +49,19 @@ class TorrentManager:
         self._repository = repository
         self._settings = settings
 
-    async def add(self, media_id: int, media_kind: MediaKind, source_id: str) -> TorrentStatus:
-        source = await self._sources.resolve(media_id, media_kind, source_id)
+    async def add(
+        self,
+        media_id: int,
+        media_kind: MediaKind,
+        source_id: str,
+        season_number: int | None = None,
+    ) -> TorrentStatus:
+        source = await self._sources.resolve(
+            media_id,
+            media_kind,
+            source_id,
+            season_number,
+        )
         if source is None:
             raise TorrentNotFoundError("The selected source is no longer available")
         known_hash = (source.info_hash or "").lower()

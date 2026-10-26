@@ -18,7 +18,13 @@ from app.services.torrents.qbittorrent import QBittorrentClient
 
 
 class FakeSources:
-    async def resolve(self, media_id: int, media_kind: str, source_id: str) -> ResolvedSource:
+    async def resolve(
+        self,
+        media_id: int,
+        media_kind: str,
+        source_id: str,
+        season_number: int | None = None,
+    ) -> ResolvedSource:
         from app.schemas.sources import SourceRelease
 
         return ResolvedSource(

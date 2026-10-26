@@ -56,6 +56,19 @@ test('builds a source search request without provider credentials', async () => 
   expect(new Headers(init.headers).get('Accept')).toBe('application/json')
 })
 
+test('adds a season marker to a series source search', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ media_id: 42, media_kind: 'series', query: 'Show S02', items: [], total: 0 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getSources(42, 'series', 'seeders', 'desc', 2)
+
+  const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/media/42/sources?kind=series&sort=seeders&order=desc&season_number=2')
+})
+
 test('adds a selected source without exposing its provider URL', async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
   vi.stubGlobal('fetch', fetchMock)
@@ -67,6 +80,20 @@ test('adds a selected source without exposing its provider URL', async () => {
   expect(init.method).toBe('POST')
   expect(JSON.parse(String(init.body))).toEqual({ media_kind: 'movie', source_id: 'a'.repeat(24) })
   expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+})
+
+test('keeps the season number when adding a seasonal source', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await addTorrent(42, 'series', 'a'.repeat(24), 2)
+
+  const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(JSON.parse(String(init.body))).toEqual({
+    media_kind: 'series',
+    source_id: 'a'.repeat(24),
+    season_number: 2,
+  })
 })
 
 test('replaces the episode prefetch queue with explicit file ids', async () => {

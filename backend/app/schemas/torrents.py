@@ -8,6 +8,7 @@ from app.schemas.media import MediaKind
 class AddTorrentRequest(BaseModel):
     media_kind: MediaKind
     source_id: str = Field(min_length=24, max_length=24, pattern=r"^[0-9a-f]+$")
+    season_number: int | None = Field(default=None, ge=1, le=100)
 
 
 class SelectTorrentFileRequest(BaseModel):

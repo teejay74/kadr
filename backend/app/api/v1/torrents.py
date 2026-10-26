@@ -22,7 +22,12 @@ async def add_torrent(
     body: AddTorrentRequest,
     media_id: Annotated[int, Path(gt=0)],
 ) -> TorrentStatus:
-    return await manager.add(media_id, body.media_kind, body.source_id)
+    return await manager.add(
+        media_id,
+        body.media_kind,
+        body.source_id,
+        body.season_number,
+    )
 
 
 @router.get("/media/{media_id}/torrents", response_model=TorrentStatus)
