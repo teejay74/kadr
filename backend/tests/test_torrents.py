@@ -166,6 +166,126 @@ async def test_torrent_manager_rejects_non_video_selection() -> None:
         await manager.select_file(task.id, 0)
 
 
+async def test_torrent_manager_prefetches_multiple_episodes_and_can_cancel() -> None:
+    class SeriesTorrentClient(FakeTorrentClient):
+        async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
+            return [
+                {
+                    "name": "Series.S01E01.mkv",
+                    "size": 1000,
+                    "progress": 1,
+                    "priority": 1,
+                },
+                {
+                    "name": "Series.S01E02.mkv",
+                    "size": 1000,
+                    "progress": 0,
+                    "priority": 0,
+                },
+                {
+                    "name": "Series.S01E03.mkv",
+                    "size": 1000,
+                    "progress": 0,
+                    "priority": 0,
+                },
+            ]
+
+    client = SeriesTorrentClient()
+    manager = TorrentManager(
+        client,
+        FakeSources(),
+        FakeRepository(),
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+    task = await manager.add(42, "series", "a" * 24)
+    await manager.files(task.id)
+    await manager.select_file(task.id, 0)
+
+    queued = await manager.configure_prefetch(task.id, [1, 2])
+
+    assert queued.selected_file_id == 0
+    assert client.started is True
+    assert client.priority_calls[-2:] == [([0, 1, 2], 0), ([0, 1, 2], 1)]
+
+    await manager.configure_prefetch(task.id, [])
+
+    assert client.priority_calls[-2:] == [([0, 1, 2], 0), ([0], 1)]
+
+
+async def test_torrent_manager_rejects_invalid_prefetch_selection() -> None:
+    client = FakeTorrentClient()
+    manager = TorrentManager(
+        client,
+        FakeSources(),
+        FakeRepository(),
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+    task = await manager.add(42, "series", "a" * 24)
+    await manager.select_file(task.id, 1)
+
+    with pytest.raises(TorrentFileError):
+        await manager.configure_prefetch(task.id, [0])
+
+    with pytest.raises(TorrentFileError):
+        await manager.configure_prefetch(task.id, [1, 1])
+
+
+async def test_switching_episode_keeps_only_the_forward_prefetch_queue() -> None:
+    class StatefulSeriesClient(FakeTorrentClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.file_items = [
+                {"name": f"Series.S01E{episode:02}.mkv", "size": 1000, "progress": 0,
+                 "priority": 1}
+                for episode in range(1, 4)
+            ]
+
+        async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
+            return self.file_items
+
+        async def set_file_priority(
+            self,
+            torrent_hash: str,
+            file_ids: list[int],
+            priority: int,
+        ) -> None:
+            await super().set_file_priority(torrent_hash, file_ids, priority)
+            for file_id in file_ids:
+                self.file_items[file_id]["priority"] = priority
+
+    client = StatefulSeriesClient()
+    manager = TorrentManager(
+        client,
+        FakeSources(),
+        FakeRepository(),
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+    task = await manager.add(42, "series", "a" * 24)
+    await manager.files(task.id)
+    await manager.select_file(task.id, 0)
+    await manager.configure_prefetch(task.id, [1, 2])
+
+    switched = await manager.select_file(task.id, 1)
+
+    assert switched.selected_file_id == 1
+    assert client.priority_calls[-2:] == [([0, 1, 2], 0), ([1, 2], 1)]
+
+
 async def test_existing_torrent_bypasses_new_download_limit() -> None:
     class LimitReachedClient(FakeTorrentClient):
         async def list(
@@ -335,6 +455,10 @@ async def test_torrent_api_exposes_lifecycle_without_source_uri(client: AsyncCli
     current = await client.get("/api/v1/media/42/torrents?media_kind=movie")
     files = await client.get(f"/api/v1/torrents/{task_id}/files")
     selected = await client.put(f"/api/v1/torrents/{task_id}/selection", json={"file_id": 1})
+    prefetched = await client.put(
+        f"/api/v1/torrents/{task_id}/prefetch",
+        json={"file_ids": []},
+    )
     started = await client.post(f"/api/v1/torrents/{task_id}/start")
     stopped = await client.post(f"/api/v1/torrents/{task_id}/stop")
 
@@ -343,5 +467,6 @@ async def test_torrent_api_exposes_lifecycle_without_source_uri(client: AsyncCli
     assert files.status_code == 200
     assert files.json()[1]["is_video"] is True
     assert selected.json()["selected_file_path"] == "Sintel.mp4"
+    assert prefetched.status_code == 200
     assert started.json()["state"] == "downloading"
     assert stopped.json()["state"] == "stoppedDL"

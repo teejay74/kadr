@@ -122,6 +122,13 @@ export interface TorrentStatus {
   can_stop: boolean
 }
 
+export interface CacheFileDeletion {
+  task_id: string
+  file_id: number
+  reclaimed_bytes: number
+  selected_file_cleared: boolean
+}
+
 export interface StreamReadiness {
   ready: boolean
   buffer_progress: number

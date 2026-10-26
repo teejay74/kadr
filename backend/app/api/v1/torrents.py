@@ -2,10 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from app.api.dependencies import TorrentManagerDependency
+from app.api.dependencies import CacheManagerDependency, TorrentManagerDependency
+from app.schemas.library import CacheFileDeletionResponse
 from app.schemas.media import MediaKind
 from app.schemas.torrents import (
     AddTorrentRequest,
+    PrefetchTorrentFilesRequest,
     SelectTorrentFileRequest,
     TorrentFile,
     TorrentStatus,
@@ -48,6 +50,18 @@ async def torrent_files(
     return await manager.files(task_id)
 
 
+@router.delete(
+    "/torrents/{task_id}/files/{file_id}",
+    response_model=CacheFileDeletionResponse,
+)
+async def delete_torrent_file(
+    manager: CacheManagerDependency,
+    task_id: str,
+    file_id: Annotated[int, Path(ge=0)],
+) -> CacheFileDeletionResponse:
+    return await manager.delete_file(task_id, file_id)
+
+
 @router.put("/torrents/{task_id}/selection", response_model=TorrentStatus)
 async def select_torrent_file(
     manager: TorrentManagerDependency,
@@ -55,6 +69,15 @@ async def select_torrent_file(
     body: SelectTorrentFileRequest,
 ) -> TorrentStatus:
     return await manager.select_file(task_id, body.file_id)
+
+
+@router.put("/torrents/{task_id}/prefetch", response_model=TorrentStatus)
+async def prefetch_torrent_files(
+    manager: TorrentManagerDependency,
+    task_id: str,
+    body: PrefetchTorrentFilesRequest,
+) -> TorrentStatus:
+    return await manager.configure_prefetch(task_id, body.file_ids)
 
 
 @router.post("/torrents/{task_id}/start", response_model=TorrentStatus)

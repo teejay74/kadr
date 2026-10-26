@@ -147,6 +147,7 @@ def get_cache_manager(
         LibraryRepository(session),
         QBittorrentClient(request.app.state.torrent_http_client, settings),
         request.app.state.stream_registry,
+        request.app.state.compatibility_manager,
         settings,
     )
 

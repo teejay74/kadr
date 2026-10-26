@@ -133,12 +133,16 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 | `GET /media/{id}/torrents?media_kind=movie` | Restore the latest task for this title |
 | `GET /torrents/{task_id}` | Read real progress, speed, peers, and state |
 | `GET /torrents/{task_id}/files` | List torrent files and priorities |
+| `DELETE /torrents/{task_id}/files/{file_id}` | Delete one completed cached video |
 | `PUT /torrents/{task_id}/selection` | Prioritize one supported video |
+| `PUT /torrents/{task_id}/prefetch` | Replace the background episode prefetch queue |
 | `POST /torrents/{task_id}/start` | Start after selection and safety checks |
 | `POST /torrents/{task_id}/stop` | Stop without deleting data |
 
 The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`;
-selection uses `{"file_id":0}`. Responses include task ID, media identity,
+selection uses `{"file_id":0}`. Episode prefetch uses
+`{"file_ids":[1,2,3]}` (up to 20 supported video files); an empty list cancels
+all queued files except the episode currently selected for playback. Responses include task ID, media identity,
 state, progress, byte counts, speeds, peers/seeds, ETA, selected file, and
 allowed actions. Source URIs, hashes, credentials, and raw qBittorrent data are
 not public API fields.
@@ -146,8 +150,14 @@ not public API fields.
 Torrent errors use `torrent_not_configured` (503), `torrent_unavailable` (502),
 `torrent_not_found` (404), `torrent_limit_reached` (409),
 `invalid_torrent_file` (422), or `torrent_storage_unavailable` (507).
-Torrent deletion is internal to the guarded cache lifecycle; it is not exposed
-as an arbitrary public torrent-delete endpoint.
+Individual cached-video deletion never removes the whole torrent task. It is
+allowed only for a completed supported video inside KADR's configured download
+root. KADR refuses deletion while the task is streaming, while FFmpeg is
+preparing that file, or while the task backs a saved library item. A successful
+response reports the reclaimed bytes and whether the current player selection
+was cleared. Errors use `cache_file_not_found` (404),
+`cache_delete_conflict` (409), or `cache_storage_error` (500). There is no
+arbitrary whole-torrent delete endpoint.
 
 ## Streaming endpoint
 

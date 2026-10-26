@@ -14,6 +14,7 @@ from app.schemas.library import FavoriteRequest, HistoryUpdateRequest, SaveLibra
 from app.services.cache.manager import CacheManager
 from app.services.library.exceptions import LibraryConflictError, LibraryStorageError
 from app.services.library.manager import LibraryManager
+from app.services.playback.manager import CompatibilityManager
 from app.services.streaming.registry import StreamRegistry
 
 
@@ -172,6 +173,7 @@ async def test_cache_cleanup_protects_saved_items(session: AsyncSession, tmp_pat
         LibraryRepository(session),
         client,  # type: ignore[arg-type]
         StreamRegistry(2),
+        CompatibilityManager(Settings(cache_ttl_hours=24)),
         Settings(cache_ttl_hours=24),
     )
     result = await cache.cleanup()
@@ -212,6 +214,7 @@ async def test_cache_cleanup_removes_only_expired_stopped_unsaved_task(
         LibraryRepository(session),
         client,  # type: ignore[arg-type]
         StreamRegistry(2),
+        CompatibilityManager(Settings(cache_ttl_hours=24)),
         Settings(cache_ttl_hours=24),
     )
     result = await cache.cleanup()

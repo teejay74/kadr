@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import {
   addTorrent,
+  configureTorrentPrefetch,
+  deleteTorrentFile,
   friendlyApiError,
   getMediaTorrent,
   getSources,
@@ -36,7 +38,11 @@ const torrent = ref<TorrentStatus | null>(null)
 const torrentFiles = ref<TorrentFile[]>([])
 const torrentBusy = ref(false)
 const torrentError = ref('')
+const torrentNotice = ref('')
 const librarySaved = ref(false)
+const prefetchCount = ref(2)
+const deleteCandidateId = ref<number | null>(null)
+const deletedFileIds = ref<Set<number>>(new Set())
 let torrentTimer: ReturnType<typeof setTimeout> | undefined
 const dismissedTask = 'dismissed'
 
@@ -48,8 +54,28 @@ const selectedEpisodeLabel = computed(() => selectedFile.value
   ? describeVideoFile(selectedFile.value.name)
   : '')
 const skippedFileCount = computed(() => torrentFiles.value.length - videoFiles.value.length)
+const downloadedVideoFiles = computed(() => videoFiles.value.filter(
+  (file) => file.progress >= 1 && !deletedFileIds.value.has(file.id),
+))
 const hasSelectedFile = computed(() => torrent.value?.selected_file_id !== null
   && torrent.value?.selected_file_id !== undefined)
+const followingVideoFiles = computed(() => {
+  const selectedIndex = videoFiles.value.findIndex((file) => file.id === selectedFile.value?.id)
+  return selectedIndex >= 0 ? videoFiles.value.slice(selectedIndex + 1) : []
+})
+const prefetchCandidates = computed(() => followingVideoFiles.value.filter(
+  (file) => file.progress < 1,
+))
+const queuedAheadFiles = computed(() => followingVideoFiles.value.filter(
+  (file) => file.priority > 0 && file.progress < 1,
+))
+const effectivePrefetchCount = computed(() => Math.min(
+  prefetchCount.value,
+  prefetchCandidates.value.length,
+))
+const hasPendingDownload = computed(() => torrentFiles.value.some(
+  (file) => file.priority > 0 && file.progress < 1,
+))
 const taskStorageKey = computed(() => `kadr:torrent:${props.kind}:${props.mediaId}`)
 
 function formatBytes(bytes: number): string {
@@ -99,7 +125,11 @@ function clearTorrentTimer(): void {
 function scheduleTorrentRefresh(): void {
   clearTorrentTimer()
   if (!torrent.value) return
-  if (torrent.value.progress >= 1 && torrentFiles.value.length > 0) return
+  if (
+    torrent.value.progress >= 1
+    && torrentFiles.value.length > 0
+    && !hasPendingDownload.value
+  ) return
   if (torrentFiles.value.length > 0 && !hasSelectedFile.value) return
   if (
     torrentFiles.value.length > 0
@@ -127,6 +157,7 @@ function dismissTask(): void {
 async function addSource(sourceId: string): Promise<void> {
   torrentBusy.value = true
   torrentError.value = ''
+  torrentNotice.value = ''
   try {
     torrent.value = await addTorrent(props.mediaId, props.kind, sourceId)
     rememberTask(torrent.value.id)
@@ -142,7 +173,10 @@ async function addSource(sourceId: string): Promise<void> {
 async function refreshFiles(): Promise<void> {
   if (!torrent.value) return
   try {
-    torrentFiles.value = await getTorrentFiles(torrent.value.id)
+    const files = await getTorrentFiles(torrent.value.id)
+    torrentFiles.value = files.map((file) => deletedFileIds.value.has(file.id)
+      ? { ...file, progress: 0, priority: 0 }
+      : file)
   } catch (caught) {
     torrentFiles.value = []
     torrentError.value = friendlyApiError(caught)
@@ -153,6 +187,12 @@ async function chooseFileAndStart(file: TorrentFile): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
   torrentError.value = ''
+  torrentNotice.value = ''
+  if (deletedFileIds.value.has(file.id)) {
+    const nextDeleted = new Set(deletedFileIds.value)
+    nextDeleted.delete(file.id)
+    deletedFileIds.value = nextDeleted
+  }
   try {
     torrent.value = await selectTorrentFile(torrent.value.id, file.id)
     if (file.progress < 1) torrent.value = await startTorrent(torrent.value.id)
@@ -165,10 +205,67 @@ async function chooseFileAndStart(file: TorrentFile): Promise<void> {
   }
 }
 
+async function deleteDownloadedVideo(file: TorrentFile): Promise<void> {
+  if (!torrent.value) return
+  if (deleteCandidateId.value !== file.id) {
+    deleteCandidateId.value = file.id
+    torrentNotice.value = ''
+    torrentError.value = ''
+    return
+  }
+  torrentBusy.value = true
+  torrentError.value = ''
+  torrentNotice.value = ''
+  try {
+    const result = await deleteTorrentFile(torrent.value.id, file.id)
+    deletedFileIds.value = new Set([...deletedFileIds.value, file.id])
+    if (result.selected_file_cleared) {
+      torrent.value = {
+        ...torrent.value,
+        selected_file_id: null,
+        selected_file_path: null,
+        progress: 0,
+      }
+    }
+    await refreshFiles()
+    torrentNotice.value = `${describeVideoFile(file.name)} удалён. Освобождено ${formatBytes(result.reclaimed_bytes)}.`
+    deleteCandidateId.value = null
+    scheduleTorrentRefresh()
+  } catch (caught) {
+    torrentError.value = friendlyApiError(caught)
+  } finally {
+    torrentBusy.value = false
+  }
+}
+
+async function setPrefetch(fileIds: number[]): Promise<void> {
+  if (!torrent.value) return
+  torrentBusy.value = true
+  torrentError.value = ''
+  torrentNotice.value = ''
+  try {
+    torrent.value = await configureTorrentPrefetch(torrent.value.id, fileIds)
+    await refreshFiles()
+    scheduleTorrentRefresh()
+  } catch (caught) {
+    torrentError.value = friendlyApiError(caught)
+  } finally {
+    torrentBusy.value = false
+  }
+}
+
+function prefetchNextEpisodes(): void {
+  const fileIds = prefetchCandidates.value
+    .slice(0, prefetchCount.value)
+    .map((file) => file.id)
+  void setPrefetch(fileIds)
+}
+
 async function applyTorrentAction(action: 'start' | 'stop'): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
   torrentError.value = ''
+  torrentNotice.value = ''
   try {
     torrent.value = action === 'start'
       ? await startTorrent(torrent.value.id)
@@ -209,7 +306,7 @@ async function refreshTorrentState(): Promise<void> {
   }
   try {
     torrent.value = await getTorrent(torrent.value.id)
-    if (torrentFiles.value.length === 0) await refreshFiles()
+    await refreshFiles()
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
   } finally {
@@ -223,6 +320,9 @@ function chooseAnotherSource(): void {
   torrent.value = null
   torrentFiles.value = []
   torrentError.value = ''
+  torrentNotice.value = ''
+  deleteCandidateId.value = null
+  deletedFileIds.value = new Set()
   librarySaved.value = false
 }
 
@@ -284,6 +384,9 @@ watch(taskStorageKey, () => {
   torrent.value = null
   torrentFiles.value = []
   torrentError.value = ''
+  torrentNotice.value = ''
+  deleteCandidateId.value = null
+  deletedFileIds.value = new Set()
   items.value = []
   searched.value = false
   void restoreTask()
@@ -475,6 +578,95 @@ onBeforeUnmount(clearTorrentTimer)
           </div>
         </details>
       </div>
+      <section v-if="downloadedVideoFiles.length" class="downloaded-files" aria-labelledby="downloaded-files-title">
+        <div>
+          <h4 id="downloaded-files-title">Скачанные {{ kind === 'series' ? 'серии' : 'видео' }}</h4>
+          <p>Удаление освободит место. При необходимости файл можно скачать заново.</p>
+        </div>
+        <ul>
+          <li v-for="file in downloadedVideoFiles" :key="file.id">
+            <div>
+              <strong>{{ describeVideoFile(file.name) }}</strong>
+              <span>{{ file.name }}</span>
+              <small>{{ formatBytes(file.size_bytes) }}</small>
+            </div>
+            <div v-if="deleteCandidateId === file.id" class="delete-confirmation">
+              <span>Точно удалить?</span>
+              <button
+                class="button danger focus-ring"
+                type="button"
+                :disabled="torrentBusy"
+                @click="deleteDownloadedVideo(file)"
+              >
+                Да, удалить
+              </button>
+              <button
+                class="button secondary focus-ring"
+                type="button"
+                :disabled="torrentBusy"
+                @click="deleteCandidateId = null"
+              >
+                Отмена
+              </button>
+            </div>
+            <button
+              v-else
+              class="button secondary focus-ring"
+              type="button"
+              :disabled="torrentBusy"
+              @click="deleteDownloadedVideo(file)"
+            >
+              Удалить файл
+            </button>
+          </li>
+        </ul>
+      </section>
+      <section
+        v-if="kind === 'series' && hasSelectedFile && selectedFile && followingVideoFiles.length"
+        class="episode-prefetch"
+        aria-labelledby="episode-prefetch-title"
+      >
+        <div>
+          <h4 id="episode-prefetch-title">Скачать следующие серии заранее</h4>
+          <p>Текущая серия останется выбранной для просмотра. Следующие загрузятся в фоне по порядку.</p>
+        </div>
+        <div v-if="prefetchCandidates.length" class="prefetch-controls">
+          <label>
+            <span>Сколько серий</span>
+            <select v-model.number="prefetchCount" :disabled="torrentBusy">
+              <option v-for="count in [1, 2, 3, 5]" :key="count" :value="count">
+                {{ count }}
+              </option>
+            </select>
+          </label>
+          <button
+            class="button primary focus-ring"
+            type="button"
+            :disabled="torrentBusy || effectivePrefetchCount === 0"
+            @click="prefetchNextEpisodes"
+          >
+            Скачать следующие {{ effectivePrefetchCount }}
+          </button>
+        </div>
+        <p v-else class="prefetch-complete">Все следующие серии уже загружены.</p>
+        <div v-if="queuedAheadFiles.length" class="prefetch-queue">
+          <strong>Загружаются заранее</strong>
+          <ul>
+            <li v-for="file in queuedAheadFiles" :key="file.id">
+              <span>{{ describeVideoFile(file.name) }}</span>
+              <small>{{ Math.round(file.progress * 100) }}%</small>
+            </li>
+          </ul>
+          <button
+            class="button secondary focus-ring"
+            type="button"
+            :disabled="torrentBusy"
+            @click="setPrefetch([])"
+          >
+            Отменить загрузку следующих серий
+          </button>
+        </div>
+      </section>
       <div v-if="hasSelectedFile && torrent.selected_file_path" class="watch-step">
         <p class="workflow-step">Шаг 3 из 3</p>
         <KadrPlayer
@@ -500,6 +692,7 @@ onBeforeUnmount(clearTorrentTimer)
         </div>
       </div>
     </section>
+    <p v-if="torrentNotice" class="torrent-notice" role="status">{{ torrentNotice }}</p>
     <p v-if="torrentError" class="torrent-error" role="alert">{{ torrentError }}</p>
   </section>
 </template>

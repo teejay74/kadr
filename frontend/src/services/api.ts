@@ -1,5 +1,6 @@
 import type {
   CatalogQuery,
+  CacheFileDeletion,
   Genre,
   FavoriteItem,
   HistoryItem,
@@ -122,10 +123,27 @@ export function getTorrentFiles(taskId: string): Promise<TorrentFile[]> {
   return request<TorrentFile[]>(`/api/v1/torrents/${taskId}/files`)
 }
 
+export function deleteTorrentFile(taskId: string, fileId: number): Promise<CacheFileDeletion> {
+  return request<CacheFileDeletion>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}/files/${fileId}`,
+    { method: 'DELETE' },
+  )
+}
+
 export function selectTorrentFile(taskId: string, fileId: number): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}/selection`, {
     method: 'PUT',
     body: JSON.stringify({ file_id: fileId }),
+  })
+}
+
+export function configureTorrentPrefetch(
+  taskId: string,
+  fileIds: number[],
+): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${taskId}/prefetch`, {
+    method: 'PUT',
+    body: JSON.stringify({ file_ids: fileIds }),
   })
 }
 
@@ -229,6 +247,15 @@ export function friendlyApiError(error: unknown): string {
   }
   if (error instanceof ApiError && error.code === 'library_not_found') {
     return 'Запись библиотеки не найдена.'
+  }
+  if (error instanceof ApiError && error.code === 'cache_delete_conflict') {
+    return 'Этот файл сейчас нельзя удалить: закройте просмотр, дождитесь подготовки видео или удалите его из библиотеки.'
+  }
+  if (error instanceof ApiError && error.code === 'cache_file_not_found') {
+    return 'Скачанный файл уже удалён или недоступен.'
+  }
+  if (error instanceof ApiError && error.code === 'cache_storage_error') {
+    return 'Не удалось безопасно удалить файл из хранилища KADR.'
   }
   return 'Каталог временно недоступен. Попробуйте ещё раз позже.'
 }

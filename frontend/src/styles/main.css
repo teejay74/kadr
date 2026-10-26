@@ -157,6 +157,29 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .selected-episode-label { width: fit-content; margin: .15rem 0; padding: .35rem .6rem; color: #ede9fe; border-radius: .55rem; background: rgb(139 92 246 / .2); font-size: .9rem; }
 .change-file-details summary { width: fit-content; color: #c4b5fd; cursor: pointer; font-weight: 700; }
 .torrent-files.compact { margin-top: .85rem; }
+.episode-prefetch { display: grid; gap: .9rem; padding: 1rem; border: 1px solid rgb(139 92 246 / .35); border-radius: .9rem; background: rgb(139 92 246 / .07); }
+.episode-prefetch h4, .episode-prefetch p { margin: 0; }
+.episode-prefetch p, .prefetch-complete { color: var(--text-secondary); font-size: .84rem; }
+.episode-prefetch > div:first-child { display: grid; gap: .3rem; }
+.prefetch-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.prefetch-controls label { display: grid; gap: .3rem; color: var(--text-secondary); font-size: .76rem; }
+.prefetch-controls select { min-width: 7rem; padding: .65rem .75rem; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: .65rem; background: rgb(32 34 43 / .95); }
+.prefetch-queue { display: grid; gap: .65rem; padding-top: .75rem; border-top: 1px solid var(--border-color); }
+.prefetch-queue ul { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+.prefetch-queue li { display: flex; justify-content: space-between; gap: 1rem; }
+.prefetch-queue small { color: var(--text-secondary); }
+.prefetch-queue .button { justify-self: start; }
+.downloaded-files { display: grid; gap: .85rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: .9rem; background: rgb(255 255 255 / .025); }
+.downloaded-files h4, .downloaded-files p { margin: 0; }
+.downloaded-files p { margin-top: .3rem; color: var(--text-secondary); font-size: .84rem; }
+.downloaded-files ul { display: grid; gap: .55rem; margin: 0; padding: 0; list-style: none; }
+.downloaded-files li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem; border: 1px solid var(--border-color); border-radius: .75rem; }
+.downloaded-files li > div:first-child { display: grid; min-width: 0; gap: .2rem; }
+.downloaded-files li span, .downloaded-files li small { overflow-wrap: anywhere; color: var(--text-secondary); font-size: .78rem; }
+.delete-confirmation { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: .5rem; }
+.delete-confirmation > span { width: 100%; color: #fca5a5; text-align: right; font-weight: 700; }
+.button.danger { color: #fff; border-color: #dc2626; background: #b91c1c; }
+.torrent-notice { margin-top: 1rem; color: #86efac; }
 .torrent-error { margin-top: 1rem; color: #fca5a5; }
 .metadata-wait { display: flex; align-items: center; gap: .85rem; padding: 1rem; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: .8rem; }
 .metadata-wait strong { color: var(--text-primary); }
@@ -244,6 +267,9 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
   .torrent-file { grid-template-columns: 1fr; }
   .torrent-file strong { grid-column: 1; grid-row: auto; }
   .library-save-row { align-items: stretch; flex-direction: column; }
+  .downloaded-files li { align-items: stretch; flex-direction: column; }
+  .delete-confirmation { justify-content: start; }
+  .delete-confirmation > span { text-align: left; }
   .saved-card { grid-template-columns: 1fr; }
   .saved-card > img { width: 7rem; }
 }

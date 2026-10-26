@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
   addTorrent: vi.fn(),
+  configureTorrentPrefetch: vi.fn(),
+  deleteTorrentFile: vi.fn(),
   getSources: vi.fn(),
   getMediaTorrent: vi.fn(),
   getTorrent: vi.fn(),
@@ -177,6 +179,104 @@ test('recognizes the alternate season and episode filename format', async () => 
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
 
   expect((await screen.findAllByText('Сезон 1 · Серия 7')).length).toBeGreaterThan(0)
+})
+
+test('queues several following episodes without changing the selected episode', async () => {
+  const selectedTorrent = {
+    ...stoppedTorrent,
+    media_kind: 'series' as const,
+    progress: 1,
+    selected_file_id: 0,
+    selected_file_path: 'Series/S01E01.mkv',
+  }
+  const files = [
+    {
+      id: 0,
+      name: 'Series/S01E01.mkv',
+      size_bytes: 1_000,
+      progress: 1,
+      priority: 1,
+      is_video: true,
+    },
+    {
+      id: 1,
+      name: 'Series/S01E02.mkv',
+      size_bytes: 1_000,
+      progress: 0,
+      priority: 0,
+      is_video: true,
+    },
+    {
+      id: 2,
+      name: 'Series/S01E03.mkv',
+      size_bytes: 1_000,
+      progress: 0,
+      priority: 0,
+      is_video: true,
+    },
+  ]
+  api.getMediaTorrent.mockResolvedValue(selectedTorrent)
+  api.getTorrentFiles
+    .mockResolvedValueOnce(files)
+    .mockResolvedValueOnce(files.map((file) => (
+      file.id === 0 ? file : { ...file, priority: 1 }
+    )))
+    .mockResolvedValueOnce(files)
+  api.configureTorrentPrefetch.mockResolvedValue({
+    ...selectedTorrent,
+    state: 'downloading',
+    progress: 0.4,
+    can_stop: true,
+  })
+
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Скачать следующие 2' }))
+  expect(api.configureTorrentPrefetch).toHaveBeenCalledWith('task-id', [1, 2])
+  expect(await screen.findByText('Загружаются заранее')).toBeTruthy()
+  expect(screen.getByText('Сезон 1 · Серия 2')).toBeTruthy()
+  expect(screen.getByText('Сезон 1 · Серия 3')).toBeTruthy()
+
+  await fireEvent.click(screen.getByRole('button', {
+    name: 'Отменить загрузку следующих серий',
+  }))
+  expect(api.configureTorrentPrefetch).toHaveBeenLastCalledWith('task-id', [])
+})
+
+test('requires confirmation and deletes one downloaded episode', async () => {
+  api.getMediaTorrent.mockResolvedValue({
+    ...stoppedTorrent,
+    media_kind: 'series',
+    progress: 1,
+    selected_file_id: 3,
+    selected_file_path: 'Series/S01E03.mkv',
+  })
+  api.getTorrentFiles.mockResolvedValue([
+    {
+      id: 3,
+      name: 'Series/S01E03.mkv',
+      size_bytes: 2_048,
+      progress: 1,
+      priority: 1,
+      is_video: true,
+    },
+  ])
+  api.deleteTorrentFile.mockResolvedValue({
+    task_id: 'task-id',
+    file_id: 3,
+    reclaimed_bytes: 2_048,
+    selected_file_cleared: true,
+  })
+
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Удалить файл' }))
+  expect(api.deleteTorrentFile).not.toHaveBeenCalled()
+  await fireEvent.click(screen.getByRole('button', { name: 'Да, удалить' }))
+
+  expect(api.deleteTorrentFile).toHaveBeenCalledWith('task-id', 3)
+  expect(await screen.findByText('Сезон 1 · Серия 3 удалён. Освобождено 2 КБ.')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Начать просмотр' })).toBeNull()
 })
 
 test('restores the current media task after a page reload', async () => {

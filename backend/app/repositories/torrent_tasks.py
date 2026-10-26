@@ -46,6 +46,11 @@ class TorrentTaskRepository:
         task.selected_file_path = file_path
         await self._session.commit()
 
+    async def clear_selection(self, task: TorrentTask) -> None:
+        task.selected_file_id = None
+        task.selected_file_path = None
+        await self._session.commit()
+
     async def set_state(self, task: TorrentTask, state: str) -> None:
         task.state = state
         await self._session.commit()

@@ -144,6 +144,25 @@ class CompatibilityManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    def is_preparing(self, task_id: str, selected_file_id: int) -> bool:
+        job = self._jobs.get(self._job_id(task_id, selected_file_id))
+        return job is not None and job.task is not None and not job.task.done()
+
+    async def discard(self, task_id: str, selected_file_id: int) -> None:
+        if self.is_preparing(task_id, selected_file_id):
+            raise PlaybackPreparationError(
+                "Stop compatible playback preparation before deleting this video"
+            )
+        self._jobs.pop(self._job_id(task_id, selected_file_id), None)
+        output = self._output_path(task_id, selected_file_id)
+        temporary = output.with_suffix(".part.mp4")
+        await asyncio.to_thread(output.unlink, missing_ok=True)
+        await asyncio.to_thread(temporary.unlink, missing_ok=True)
+        try:
+            await asyncio.to_thread(output.parent.rmdir)
+        except OSError:
+            pass
+
     async def _run(
         self,
         task_id: str,

@@ -1,6 +1,13 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { addTorrent, ApiError, getMediaPage, getSources } from './api'
+import {
+  addTorrent,
+  ApiError,
+  configureTorrentPrefetch,
+  deleteTorrentFile,
+  getMediaPage,
+  getSources,
+} from './api'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -60,4 +67,30 @@ test('adds a selected source without exposing its provider URL', async () => {
   expect(init.method).toBe('POST')
   expect(JSON.parse(String(init.body))).toEqual({ media_kind: 'movie', source_id: 'a'.repeat(24) })
   expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+})
+
+test('replaces the episode prefetch queue with explicit file ids', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await configureTorrentPrefetch('task', [2, 3, 4])
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/prefetch')
+  expect(init.method).toBe('PUT')
+  expect(JSON.parse(String(init.body))).toEqual({ file_ids: [2, 3, 4] })
+})
+
+test('deletes one downloaded torrent file without deleting the release', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ task_id: 'task', file_id: 3, reclaimed_bytes: 100 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await deleteTorrentFile('task', 3)
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/files/3')
+  expect(init.method).toBe('DELETE')
 })

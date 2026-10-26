@@ -47,7 +47,7 @@ services:
       KADR_CACHE_CLEANUP_INTERVAL_MINUTES: ${KADR_CACHE_CLEANUP_INTERVAL_MINUTES:-60}
     volumes:
       - ./data/database:/data
-      - ./data/downloads:/downloads:ro
+      - ./data/downloads:/downloads
       - ./data/library:/library
       - ./data/playback:/playback
     expose:

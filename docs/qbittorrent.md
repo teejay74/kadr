@@ -24,12 +24,21 @@ address `http://qbittorrent:8080`; the host port is only for local setup.
 
 - A source uses qBittorrent's `MetadataReceived` stop condition. A magnet may
   briefly show `metaDL`, then stops before content download.
-- The user chooses one supported video; all other torrent files receive
-  priority zero and that video receives high priority.
+- The user chooses one supported video; all other torrent files initially
+  receive priority zero. For a series, the user may explicitly queue up to 20
+  following video files for background prefetch without changing the episode
+  selected for playback. Replacing or cancelling that queue never deletes
+  already downloaded bytes.
 - Starting is blocked until a selection exists, the active-torrent limit is
   available, and the configured free-space floor is satisfied.
 - Stop never deletes the torrent or its files.
+- The KADR page can explicitly delete one fully downloaded video or episode.
+  This is a guarded KADR operation because qBittorrent's Web API only deletes
+  an entire torrent with its data. KADR stops the task, validates the canonical
+  path inside its isolated download root, sets that file to priority zero,
+  removes only the selected file, and asks qBittorrent to recheck. Active
+  playback, FFmpeg preparation, and library-protected tasks block deletion.
 - Progress is read from qBittorrent on demand; the UI does not poll rapidly.
 
 Use only content you are authorized to download. Torrent streaming and cache
-deletion are later stages and are deliberately absent here.
+deletion remain isolated to KADR-owned storage.

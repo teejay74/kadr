@@ -61,6 +61,13 @@ class CacheCleanupResponse(BaseModel):
     reclaimed_bytes: int
 
 
+class CacheFileDeletionResponse(BaseModel):
+    task_id: str
+    file_id: int = Field(ge=0)
+    reclaimed_bytes: int = Field(ge=0)
+    selected_file_cleared: bool
+
+
 class StorageResponse(BaseModel):
     library_bytes: int
     library_items: int

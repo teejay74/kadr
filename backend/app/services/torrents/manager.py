@@ -119,20 +119,75 @@ class TorrentManager:
         selected_path = PurePosixPath(selected.name)
         if selected_path.is_absolute() or ".." in selected_path.parts:
             raise TorrentFileError("The selected torrent file has an unsafe path")
-        all_ids = list(range(len(files)))
-        await self._client.set_file_priority(task.torrent_hash, all_ids, 0)
+        preserved_prefetch_ids = []
+        if task.selected_file_id is not None:
+            preserved_prefetch_ids = [
+                index
+                for index, item in enumerate(files)
+                if index > file_id
+                and int(item.get("priority") or 0) > 0
+                and self._to_file(index, item).is_video
+            ]
+        await self._client.set_file_priority(
+            task.torrent_hash,
+            list(range(len(files))),
+            0,
+        )
         # qBittorrent 5.x can abandon sequential piece ordering when the only
         # selected file has maximal priority. Normal priority keeps skipped
         # files disabled while allowing the sequential picker to start at the
         # beginning of the selected video.
-        await self._client.set_file_priority(task.torrent_hash, [file_id], 1)
+        await self._client.set_file_priority(
+            task.torrent_hash,
+            sorted({file_id, *preserved_prefetch_ids}),
+            1,
+        )
         await self._repository.select_file(task, file_id, selected.name)
+        return await self.status(task_id)
+
+    async def configure_prefetch(
+        self,
+        task_id: str,
+        file_ids: list[int],
+    ) -> TorrentStatus:
+        task = await self._task(task_id)
+        if task.selected_file_id is None:
+            raise TorrentFileError("Select a video file before prefetching episodes")
+        if len(file_ids) != len(set(file_ids)):
+            raise TorrentFileError("Episode prefetch selection contains duplicates")
+
+        files = await self._client.files(task.torrent_hash)
+        requested_ids = set(file_ids)
+        for file_id in requested_ids:
+            if file_id < 0 or file_id >= len(files):
+                raise TorrentFileError("A prefetched torrent file does not exist")
+            if not self._to_file(file_id, files[file_id]).is_video:
+                raise TorrentFileError("Only supported video files can be prefetched")
+
+        enabled_ids = sorted(requested_ids | {task.selected_file_id})
+        enabled_files = [self._to_file(file_id, files[file_id]) for file_id in enabled_ids]
+        should_start = any(file.progress < 1 for file in enabled_files)
+        start_required = await self._ensure_start_allowed(task) if should_start else False
+
+        await self._client.set_file_priority(
+            task.torrent_hash,
+            list(range(len(files))),
+            0,
+        )
+        await self._client.set_file_priority(task.torrent_hash, enabled_ids, 1)
+        if start_required:
+            await self._client.start(task.torrent_hash)
         return await self.status(task_id)
 
     async def start(self, task_id: str) -> TorrentStatus:
         task = await self._task(task_id)
         if task.selected_file_id is None:
             raise TorrentFileError("Select a video file before starting the download")
+        if await self._ensure_start_allowed(task):
+            await self._client.start(task.torrent_hash)
+        return await self.status(task_id)
+
+    async def _ensure_start_allowed(self, task: TorrentTask) -> bool:
         await self._ensure_free_space()
         torrents = await self._client.list()
         current = next(
@@ -140,12 +195,11 @@ class TorrentManager:
             None,
         )
         if current is not None and self._is_active(current):
-            return await self.status(task_id)
+            return False
         active = [item for item in torrents if self._is_active(item)]
         if len(active) >= self._settings.max_active_torrents:
             raise TorrentLimitError("The active torrent limit has been reached")
-        await self._client.start(task.torrent_hash)
-        return await self.status(task_id)
+        return True
 
     async def stop(self, task_id: str) -> TorrentStatus:
         task = await self._task(task_id)

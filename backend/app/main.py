@@ -16,6 +16,11 @@ from app.core.database import SessionFactory, engine
 from app.repositories.library import LibraryRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.schemas.system import ErrorResponse
+from app.services.cache.exceptions import (
+    CacheDeletionConflictError,
+    CacheFileNotFoundError,
+    CacheStorageError,
+)
 from app.services.cache.manager import CacheManager
 from app.services.library.exceptions import (
     LibraryConflictError,
@@ -73,6 +78,7 @@ async def cache_cleanup_loop(application: FastAPI) -> None:
                     LibraryRepository(session),
                     QBittorrentClient(application.state.torrent_http_client, settings),
                     application.state.stream_registry,
+                    application.state.compatibility_manager,
                     settings,
                 )
                 result = await manager.cleanup()
@@ -212,6 +218,27 @@ def create_app() -> FastAPI:
         error = ErrorResponse(code="torrent_storage_unavailable", message=str(exc))
         return JSONResponse(
             status_code=status.HTTP_507_INSUFFICIENT_STORAGE, content=error.model_dump()
+        )
+
+    @application.exception_handler(CacheFileNotFoundError)
+    async def cache_file_not_found(_: Request, exc: CacheFileNotFoundError) -> JSONResponse:
+        error = ErrorResponse(code="cache_file_not_found", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=error.model_dump())
+
+    @application.exception_handler(CacheDeletionConflictError)
+    async def cache_delete_conflict(
+        _: Request,
+        exc: CacheDeletionConflictError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="cache_delete_conflict", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(CacheStorageError)
+    async def cache_storage(_: Request, exc: CacheStorageError) -> JSONResponse:
+        error = ErrorResponse(code="cache_storage_error", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error.model_dump(),
         )
 
     @application.exception_handler(StreamNotReadyError)
