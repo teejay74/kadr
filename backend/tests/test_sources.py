@@ -113,6 +113,8 @@ def test_release_parser_is_conservative(title: str, expected: dict[str, object])
         ("Breaking Bad [S01-05] BDRip", [1, 2, 3, 4, 5]),
         ("Breaking.Bad.S01-S05.Complete", [1, 2, 3, 4, 5]),
         ("Show.S01E01-S05E16.1080p", [1, 2, 3, 4, 5]),
+        ("Dark Matter - S1-2E1-18 - 2024-2026 WEBRip", [1, 2]),
+        ("Show.S01-S02E01-18.1080p", [1, 2]),
         ("Dark Matter - S1E1-9 - 2024 MVO WEBDL", [1]),
         ("Show.S01E01-E09.1080p", [1]),
         ("Show Seasons 2-4 WEB-DL", [2, 3, 4]),

@@ -14,6 +14,7 @@ def _matches(title: str, *patterns: str) -> bool:
 def parse_release_seasons(title: str) -> list[int]:
     range_patterns = (
         r"(?:^|[^a-z0-9])s(\d{1,2})e\d{1,3}\s*[-–—]\s*s(\d{1,2})e\d{1,3}(?:[^a-z0-9]|$)",
+        r"(?:^|[^a-z0-9])s(\d{1,2})\s*[-–—]\s*s?(\d{1,2})e\d{1,3}\s*[-–—]\s*\d{1,3}(?:[^a-z0-9]|$)",
         r"(?:^|[^a-z0-9])s(\d{1,2})\s*[-–—]\s*s?(\d{1,2})(?:[^a-z0-9]|$)",
         r"(?:seasons?|сезоны?)\s*(\d{1,2})\s*[-–—]\s*(\d{1,2})",
         r"(?:^|[^0-9])(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*(?:seasons?|сезоны?)(?:[^a-zа-яё0-9]|$)",
