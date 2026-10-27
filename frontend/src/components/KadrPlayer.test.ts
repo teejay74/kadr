@@ -54,6 +54,43 @@ test('opens the stream only after an explicit user action and closes it', async 
   expect(document.querySelector('video')).toBeNull()
 })
 
+test('automatically activates after a unified playback resolution', async () => {
+  render(KadrPlayer, {
+    props: {
+      taskId: 'resolved-task',
+      title: 'Resolved video',
+      autoActivate: true,
+      initialResumeSeconds: 45,
+    },
+  })
+
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  expect(document.querySelector('video')?.getAttribute('src')).toBe(
+    '/api/v1/torrents/resolved-task/stream',
+  )
+  expect(fetch).not.toHaveBeenCalledWith(
+    '/api/v1/history/0?media_kind=movie',
+    expect.anything(),
+  )
+})
+
+test('opens a resolved library stream without probing torrent compatibility', async () => {
+  render(KadrPlayer, {
+    props: {
+      taskId: 'saved-task',
+      title: 'Saved video',
+      directStreamUrl: '/api/v1/library/saved-item/stream',
+      autoActivate: true,
+    },
+  })
+
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  expect(document.querySelector('video')?.getAttribute('src')).toBe(
+    '/api/v1/library/saved-item/stream',
+  )
+  expect(fetch).not.toHaveBeenCalled()
+})
+
 test('offers the saved playback position after metadata is available', async () => {
   localStorage.setItem('kadr:playback:task-id', '125')
   render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mp4' } })

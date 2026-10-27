@@ -10,6 +10,7 @@ import {
   getSeriesSeason,
   getSources,
   getTorrentEpisodeFiles,
+  resolvePlayback,
   selectTorrentFile,
   startCompatiblePlayback,
 } from './api'
@@ -180,6 +181,38 @@ test('requests history for one episode independently', async () => {
 
   const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/history/42?media_kind=series&season_number=2&episode_number=3')
+})
+
+test('resolves episode playback through the unified backend contract', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ status: 'source_required' }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await resolvePlayback(42, 'series', {
+    id: 1003,
+    season_number: 2,
+    number: 3,
+    name: 'Episode 3',
+    overview: '',
+    air_date: null,
+    runtime_minutes: 45,
+    still_url: null,
+    rating: 0,
+  })
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/playback/resolve')
+  expect(init.method).toBe('POST')
+  expect(JSON.parse(String(init.body))).toEqual({
+    media_id: 42,
+    media_kind: 'series',
+    profile_key: 'default',
+    season_number: 2,
+    episode_number: 3,
+    catalog_episode_id: 1003,
+  })
 })
 
 test('deletes one downloaded torrent file without deleting the release', async () => {

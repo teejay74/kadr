@@ -121,14 +121,30 @@ The player polls stream readiness every five seconds and shows the percentage
 of required startup pieces. Confirm that peers are present if that percentage
 does not change. KADR does not attach the browser media source or send
 unavailable sparse bytes until the beginning and required container tail are
-ready. It enables qBittorrent's sequential and first/last-piece modes for
-incomplete streams. A distant seek can still time out because qBittorrent's Web
-API cannot assign priority to an arbitrary piece range.
+ready. The shared player stops automatic readiness polling after twelve checks
+(about one minute) and offers an explicit retry instead of loading forever. It
+enables qBittorrent's sequential and first/last-piece modes for incomplete
+streams. A distant seek can still time out because qBittorrent's Web API cannot
+assign priority to an arbitrary piece range.
 
 If the beginning remains unavailable while later pieces are downloading, make
 sure the selected file has normal priority (`1`), not maximal priority (`7`).
 Maximal file priority can conflict with sequential piece ordering in
 qBittorrent 5.x. Opening the player reapplies the safe priority automatically.
+
+## “Выберите источник” or “Сохранённый источник сейчас недоступен” appears
+
+The unified resolver returns `source_required` when no saved item or persisted
+torrent-file binding exists. Use the retained source panel to choose one. For a
+series, confirm the selected file was bound to the exact episode with
+`GET /api/v1/torrents/{task_id}/episode-files`; KADR deliberately does not guess
+the episode from its filename.
+
+`unavailable` means a saved or bound source exists but its file, torrent task,
+storage, or qBittorrent state cannot currently be used. Check
+`docker compose logs --tail=200 api`, the relevant task status, and KADR-owned
+mount permissions. Choose another source if the old one is gone. Do not repair
+this by exposing internal services or making unrelated host paths writable.
 
 ## Player reports that the video stream cannot be opened
 

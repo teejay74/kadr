@@ -10,15 +10,17 @@ H.264/AAC MP4. Fully downloaded selections can be saved to an isolated local
 library, replayed without a torrent source, favorited, resumed across browsers,
 and explicitly deleted with protected path checks.
 
-UI redesign substages B1-B2 add normalized season/episode metadata, a shared
-film/series presentation layer, and episode-aware persistence. Series pages
-show an adaptive episode list directly below the hero and remember the last
-selected season in the browser. One torrent task can now retain several
-episode-to-file bindings, including multiple file variants for one logical
-episode. Library items and watch history can be stored independently per
-episode; history is also scoped by a profile key. Playback still uses the
-retained legacy source panel until the backend playback resolver is implemented
-and verified.
+UI redesign substages B1-C1 add normalized season/episode metadata, a shared
+film/series presentation layer, episode-aware persistence, and a unified
+backend playback resolver. Series pages show an adaptive episode list directly
+below the hero and remember the last selected season in the browser. One
+torrent task can retain several episode-to-file bindings, including multiple
+file variants for one logical episode. Library items and watch history are
+independent per episode and profile key. Film and episode play actions now ask
+the backend to prefer a playable library copy, reuse a persisted torrent-file
+binding, restore resume state, and report a controlled ready, buffering,
+source-required, or unavailable state. The legacy source panel remains as the
+manual fallback until the replacement selector passes end-to-end checks.
 
 ## Quick start
 
@@ -116,5 +118,6 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 6 report](docs/stage-6-report.md)
 - [UI redesign B1 report](docs/ui-redesign-b1-report.md)
 - [UI redesign B2 report](docs/ui-redesign-b2-report.md)
+- [UI redesign C1 report](docs/ui-redesign-c1-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

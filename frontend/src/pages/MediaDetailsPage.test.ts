@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import * as api from '../services/api'
 import MediaDetailsPage from './MediaDetailsPage.vue'
@@ -9,6 +9,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/api')>()),
   getFavorites: vi.fn(),
   getMediaDetails: vi.fn(),
+  resolvePlayback: vi.fn(),
   getSeriesSeason: vi.fn(),
 }))
 
@@ -67,6 +68,116 @@ beforeEach(() => {
   vi.mocked(api.getMediaDetails).mockResolvedValue(details)
   vi.mocked(api.getFavorites).mockResolvedValue([])
   vi.mocked(api.getSeriesSeason).mockImplementation(async (_id, number) => season(number))
+  vi.mocked(api.resolvePlayback).mockResolvedValue({
+    status: 'source_required',
+    source: null,
+    stream_url: null,
+    task_id: null,
+    file_id: null,
+    library_item_id: null,
+    resume_position_seconds: 0,
+    buffer_progress: 0,
+    download_progress: 0,
+    download_state: null,
+    download_speed_bytes: 0,
+    message: 'Выберите источник для начала просмотра.',
+  })
+})
+
+afterEach(cleanup)
+
+test('asks the backend to resolve an episode before opening legacy sources', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+  })
+  await router.push('/series/42')
+  await router.isReady()
+
+  render(MediaDetailsPage, {
+    global: {
+      plugins: [router],
+      stubs: { SourcesPanel: { template: '<section id="media-sources">Legacy sources</section>' } },
+    },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: /Эпизод сезона 1/ }))
+
+  await waitFor(() => expect(api.resolvePlayback).toHaveBeenCalledWith(
+    42,
+    'series',
+    expect.objectContaining({ season_number: 1, number: 1 }),
+  ))
+  expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
+  expect(screen.getByText('Legacy sources')).toBeTruthy()
+})
+
+test('opens the shared player when the backend resolves a saved episode', async () => {
+  vi.mocked(api.resolvePlayback).mockResolvedValueOnce({
+    status: 'ready',
+    source: 'library',
+    stream_url: '/api/v1/library/saved/stream',
+    task_id: 'task-id',
+    file_id: 1,
+    library_item_id: 'saved',
+    resume_position_seconds: 90,
+    buffer_progress: 1,
+    download_progress: 1,
+    download_state: 'saved',
+    download_speed_bytes: 0,
+    message: null,
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+  })
+  await router.push('/series/42')
+  await router.isReady()
+
+  render(MediaDetailsPage, {
+    global: {
+      plugins: [router],
+      stubs: {
+        SourcesPanel: { template: '<section id="media-sources">Legacy sources</section>' },
+        KadrPlayer: { template: '<div>Unified player</div>' },
+      },
+    },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: /Эпизод сезона 1/ }))
+
+  expect(await screen.findByText('Unified player')).toBeTruthy()
+  expect(screen.queryByText(/Для ручного выбора/)).toBeNull()
+})
+
+test('uses the same backend resolver for the movie primary action', async () => {
+  vi.mocked(api.getMediaDetails).mockResolvedValueOnce({
+    ...details,
+    kind: 'movie',
+    title: 'Тестовый фильм',
+    seasons: [],
+    season_count: null,
+    episode_count: null,
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }],
+  })
+  await router.push('/movies/42')
+  await router.isReady()
+
+  render(MediaDetailsPage, {
+    global: {
+      plugins: [router],
+      stubs: { SourcesPanel: { template: '<section id="media-sources">Legacy sources</section>' } },
+    },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Смотреть' }))
+
+  await waitFor(() => expect(api.resolvePlayback).toHaveBeenCalledWith(42, 'movie', null))
+  expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
+  expect(screen.getByText('Legacy sources')).toBeTruthy()
 })
 
 test('restores the last season and reloads episodes after season selection', async () => {

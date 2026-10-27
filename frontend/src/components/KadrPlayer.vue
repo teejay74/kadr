@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
   friendlyApiError,
@@ -30,6 +30,8 @@ const props = withDefaults(defineProps<{
   downloadState?: string
   downloadSpeedBytes?: number
   directStreamUrl?: string
+  autoActivate?: boolean
+  initialResumeSeconds?: number
 }>(), {
   selectionLabel: '',
   fileName: '',
@@ -42,6 +44,8 @@ const props = withDefaults(defineProps<{
   downloadState: '',
   downloadSpeedBytes: 0,
   directStreamUrl: '',
+  autoActivate: false,
+  initialResumeSeconds: -1,
 })
 
 const active = ref(false)
@@ -60,6 +64,8 @@ let playbackEnded = false
 let readinessTimer: ReturnType<typeof setTimeout> | undefined
 let compatibilityTimer: ReturnType<typeof setTimeout> | undefined
 let preparationId = 0
+let readinessAttempts = 0
+const maxReadinessAttempts = 12
 
 const streamUrl = computed(() => {
   const base = usingCompatible.value
@@ -141,20 +147,27 @@ async function activate(): Promise<void> {
   error.value = ''
   waiting.value = true
   playbackEnded = false
-  resumeAt.value = readSavedPosition()
-  try {
-    const history = props.mediaId > 0
-      ? await getHistoryItem(props.mediaId, props.mediaKind, props.episode)
-      : null
-    if (history && !history.completed) resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
-  } catch {
-    // Browser-local resume remains available when the API is unavailable.
+  readinessAttempts = 0
+  resumeAt.value = Math.max(readSavedPosition(), props.initialResumeSeconds)
+  if (props.initialResumeSeconds < 0) {
+    try {
+      const history = props.mediaId > 0
+        ? await getHistoryItem(props.mediaId, props.mediaKind, props.episode)
+        : null
+      if (history && !history.completed) resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
+    } catch {
+      // Browser-local resume remains available when the API is unavailable.
+    }
   }
   active.value = true
   streamReady.value = false
   bufferProgress.value = 0
   usingCompatible.value = false
   preparationId += 1
+  if (props.directStreamUrl) {
+    await prepareStream(preparationId)
+    return
+  }
   try {
     for (const mode of ['compatible', 'audio_only'] as const) {
       const existing = await getCompatiblePlayback(props.taskId, mode)
@@ -235,6 +248,12 @@ async function prepareStream(id = ++preparationId): Promise<void> {
     if (!active.value || id !== preparationId) return
     bufferProgress.value = readiness.buffer_progress
     if (!readiness.ready) {
+      readinessAttempts += 1
+      if (readinessAttempts >= maxReadinessAttempts) {
+        waiting.value = false
+        error.value = 'Источник не подготовил начальный буфер за минуту. Повторите попытку или выберите другой источник.'
+        return
+      }
       readinessTimer = setTimeout(() => void prepareStream(id), 5000)
       return
     }
@@ -362,6 +381,7 @@ function onPlaybackError(): void {
 async function retryPlayback(): Promise<void> {
   error.value = ''
   waiting.value = true
+  readinessAttempts = 0
   if (!streamReady.value) {
     await prepareStream()
     return
@@ -378,6 +398,9 @@ async function retryPlayback(): Promise<void> {
   }
 }
 
+onMounted(() => {
+  if (props.autoActivate) void activate()
+})
 onBeforeUnmount(stopPlayback)
 </script>
 

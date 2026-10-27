@@ -33,10 +33,11 @@ season summaries. UI redesign substage B1 separates the shared hero, actions,
 play button, cast carousel, season selector, episode list/cards, playback
 progress, and media status into focused components. A series season is loaded
 on demand from the metadata service and the last selected season is remembered
-in browser storage. The legacy source panel remains the only playback workflow
-until the unified backend playback resolver is implemented and verified. Empty
-integration packages continue to reserve later seams without presenting future
-features as implemented.
+in browser storage. In substage C1, the film action and episode cards use one
+backend resolver and render the same player component. The legacy source panel
+remains available as a manual fallback until its replacement selector is
+implemented and verified. Empty integration packages continue to reserve later
+seams without presenting future features as implemented.
 
 Episode catalogue identity is stored independently as series ID, season number,
 episode number, and optional provider episode ID. A separate file-variant row
@@ -53,6 +54,18 @@ file ID. Watch history optionally references a logical episode and is scoped by
 SQLite partial unique indexes distinguish title-level rows, whose episode ID is
 NULL, from episode-level rows. This avoids SQLite's nullable-unique loophole
 while preserving pre-B2 library and history records.
+
+The Playback Resolver accepts title identity plus optional logical episode and
+profile identity. It reads resume history, prefers an available saved-library
+copy, then reuses persisted episode/file variants. For a film it can reuse the
+latest task's backward-compatible selected file. It never derives episode
+identity from a filename. The resolver selects the exact file through the
+Torrent Manager and asks the Streaming Manager for piece-level readiness before
+returning `ready` or `buffering`; missing and stale sources return explicit
+`source_required` or `unavailable` states. The browser does not choose a file
+or infer readiness from overall download percentage. Player readiness polling
+is bounded to twelve five-second checks so a stalled source does not leave an
+unending loading state.
 
 Source search is explicitly user-triggered. The source service first resolves
 the trusted title and year from the metadata service, then calls Prowlarr over

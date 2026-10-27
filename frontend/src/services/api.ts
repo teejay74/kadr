@@ -13,6 +13,7 @@ import type {
   MediaPage,
   SeasonDetails,
   PlaybackPreparation,
+  PlaybackResolution,
   PlaybackMode,
   SortOrder,
   StreamReadiness,
@@ -136,6 +137,27 @@ export function updateHistory(
   return request<HistoryItem>(`/api/v1/history/${mediaId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
+  })
+}
+
+export function resolvePlayback(
+  mediaId: number,
+  mediaKind: MediaKind,
+  episode?: EpisodeSummary | null,
+  profileKey = 'default',
+): Promise<PlaybackResolution> {
+  return request<PlaybackResolution>('/api/v1/playback/resolve', {
+    method: 'POST',
+    body: JSON.stringify({
+      media_id: mediaId,
+      media_kind: mediaKind,
+      profile_key: profileKey,
+      ...(episode ? {
+        season_number: episode.season_number,
+        episode_number: episode.number,
+        catalog_episode_id: episode.id,
+      } : {}),
+    }),
   })
 }
 

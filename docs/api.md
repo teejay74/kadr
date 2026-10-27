@@ -106,6 +106,67 @@ Provider configuration and failure responses use the common error shape:
 Possible catalogue errors are `404 media_not_found`, `502
 metadata_unavailable`, and `503 metadata_not_configured`.
 
+## Unified playback resolution
+
+### `POST /api/v1/playback/resolve`
+
+Resolves the concrete playback source for both films and series episodes. The
+backend prefers an available saved-library item, then a persisted torrent file
+variant. It checks stream piece readiness and restores the matching profile and
+episode resume position. It does not search Prowlarr and does not infer an
+episode from a torrent filename.
+
+Film request:
+
+```json
+{"media_kind":"movie","media_id":42,"profile_key":"default"}
+```
+
+Episode request:
+
+```json
+{
+  "media_kind": "series",
+  "media_id": 42,
+  "season_number": 2,
+  "episode_number": 3,
+  "catalog_episode_id": 603,
+  "profile_key": "default"
+}
+```
+
+`season_number` and `episode_number` must be supplied together and are rejected
+for films. A successful resolution uses one of four application states:
+
+- `ready`: the returned library or torrent stream can be opened;
+- `buffering`: the exact torrent file is selected but its startup pieces are
+  still being prepared;
+- `source_required`: no persisted source exists, so the client may offer manual
+  source selection;
+- `unavailable`: a persisted source exists but cannot currently be opened, so
+  the client should explain the failure and offer another source.
+
+```json
+{
+  "status": "buffering",
+  "source": "torrent",
+  "stream_url": "/api/v1/torrents/7ad8/stream",
+  "task_id": "7ad8",
+  "file_id": 4,
+  "library_item_id": null,
+  "resume_position_seconds": 125,
+  "buffer_progress": 0.62,
+  "download_progress": 0.18,
+  "download_state": "downloading",
+  "download_speed_bytes": 2500000,
+  "message": null
+}
+```
+
+The public response never contains a filesystem path, torrent URI, hash, or
+credential. A `200` response with `source_required` or `unavailable` is a
+controlled workflow state rather than a transport failure.
+
 ## Source endpoints
 
 ### `GET /api/v1/media/{id}/sources`

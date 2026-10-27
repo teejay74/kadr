@@ -6,10 +6,24 @@ from starlette.background import BackgroundTask
 
 from app.api.dependencies import (
     PlaybackPreparationServiceDependency,
+    PlaybackResolverDependency,
 )
-from app.schemas.playback import PlaybackMode, PlaybackPreparation
+from app.schemas.playback import (
+    PlaybackMode,
+    PlaybackPreparation,
+    PlaybackResolution,
+    PlaybackResolveRequest,
+)
 
 router = APIRouter()
+
+
+@router.post("/playback/resolve", response_model=PlaybackResolution)
+async def resolve_playback(
+    body: PlaybackResolveRequest,
+    resolver: PlaybackResolverDependency,
+) -> PlaybackResolution:
+    return await resolver.resolve(body)
 
 
 @router.post(

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 
 import CastCarousel from '../components/CastCarousel.vue'
 import EpisodeList from '../components/EpisodeList.vue'
+import KadrPlayer from '../components/KadrPlayer.vue'
 import MediaActions from '../components/MediaActions.vue'
 import MediaHero from '../components/MediaHero.vue'
 import SeasonSelector from '../components/SeasonSelector.vue'
@@ -16,11 +17,13 @@ import {
   getFavorites,
   getMediaDetails,
   getSeriesSeason,
+  resolvePlayback,
 } from '../services/api'
 import type {
   EpisodeSummary,
   MediaDetails,
   MediaKind,
+  PlaybackResolution,
   SeasonDetails,
   SeasonSummary,
 } from '../types/media'
@@ -37,6 +40,9 @@ const seasonDetails = ref<SeasonDetails | null>(null)
 const seasonLoading = ref(false)
 const seasonError = ref('')
 const selectedEpisode = ref<EpisodeSummary | null>(null)
+const playback = ref<PlaybackResolution | null>(null)
+const playbackLoading = ref(false)
+const playbackMessage = ref('')
 let seasonRequestId = 0
 
 const availableSeasons = computed<SeasonSummary[]>(() => {
@@ -77,6 +83,8 @@ async function loadSeason(): Promise<void> {
   seasonLoading.value = true
   seasonError.value = ''
   selectedEpisode.value = null
+  playback.value = null
+  playbackMessage.value = ''
   try {
     const result = await getSeriesSeason(media.value.id, selectedSeasonNumber.value)
     if (requestId === seasonRequestId) seasonDetails.value = result
@@ -98,15 +106,36 @@ function selectSeason(number: number): void {
 }
 
 async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<void> {
+  if (!media.value || playbackLoading.value) return
   selectedEpisode.value = episode
-  await nextTick()
-  document.getElementById('media-sources')?.scrollIntoView({ behavior: 'smooth' })
+  playback.value = null
+  playbackMessage.value = ''
+  playbackLoading.value = true
+  try {
+    const result = await resolvePlayback(media.value.id, media.value.kind, episode)
+    if (result.status === 'ready' || result.status === 'buffering') {
+      playback.value = result
+      await nextTick()
+      document.getElementById('resolved-playback')?.scrollIntoView({ behavior: 'smooth' })
+      return
+    }
+    playbackMessage.value = result.message ?? 'Выберите источник для начала просмотра.'
+    await nextTick()
+    document.getElementById('media-sources')?.scrollIntoView({ behavior: 'smooth' })
+  } catch (caught) {
+    playbackMessage.value = friendlyApiError(caught)
+  } finally {
+    playbackLoading.value = false
+  }
 }
 
 async function handlePrimaryAction(): Promise<void> {
+  if (media.value?.kind === 'movie') {
+    await openPlaybackFlow()
+    return
+  }
   await nextTick()
-  const target = media.value?.kind === 'series' ? 'episodes-title' : 'media-sources'
-  document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' })
+  document.getElementById('episodes-title')?.scrollIntoView({ behavior: 'smooth' })
 }
 
 async function loadDetails(): Promise<void> {
@@ -122,6 +151,8 @@ async function loadDetails(): Promise<void> {
   seasonDetails.value = null
   seasonError.value = ''
   selectedEpisode.value = null
+  playback.value = null
+  playbackMessage.value = ''
   try {
     media.value = await getMediaDetails(kind.value, id)
     const favorites = await getFavorites()
@@ -202,9 +233,8 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         />
       </div>
       <p v-if="seasonDetails?.overview" class="season-overview">{{ seasonDetails.overview }}</p>
-      <p v-if="selectedEpisode" class="legacy-playback-notice" role="status">
-        Выбрано: сезон {{ selectedEpisode.season_number }}, серия {{ selectedEpisode.number }}.
-        До включения нового механизма запуска подтвердите соответствующий файл в блоке источника.
+      <p v-if="playbackMessage && selectedEpisode" class="legacy-playback-notice" role="status">
+        {{ playbackMessage }} Для ручного выбора используйте блок источников ниже.
       </p>
       <EpisodeList
         :episodes="seasonDetails?.episodes ?? []"
@@ -214,6 +244,42 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         @retry="loadSeason"
       />
     </section>
+
+    <section
+      v-if="playbackLoading || (playback && playback.task_id)"
+      id="resolved-playback"
+      class="details-section"
+      aria-label="Единый просмотр"
+    >
+      <StatePanel
+        v-if="playbackLoading"
+        title="Подготавливаем просмотр"
+        message="Проверяем библиотеку, сохранённый источник и готовность буфера."
+      />
+      <KadrPlayer
+        v-else-if="playback && playback.task_id"
+        :key="`${playback.source}:${playback.task_id}:${playback.file_id ?? 'saved'}`"
+        :task-id="playback.task_id"
+        :title="media.title"
+        :selection-label="selectedEpisode ? `Сезон ${selectedEpisode.season_number} · Серия ${selectedEpisode.number}` : media.title"
+        :file-name="selectedEpisode?.name || media.title"
+        :media-id="media.id"
+        :media-kind="media.kind"
+        :poster-url="media.poster_url"
+        :file-id="playback.file_id ?? undefined"
+        :episode="selectedEpisode"
+        :download-progress="playback.download_progress"
+        :download-state="playback.download_state ?? ''"
+        :download-speed-bytes="playback.download_speed_bytes"
+        :direct-stream-url="playback.source === 'library' ? playback.stream_url ?? '' : ''"
+        :initial-resume-seconds="playback.resume_position_seconds"
+        auto-activate
+      />
+    </section>
+
+    <p v-if="playbackMessage && media.kind === 'movie'" class="details-section legacy-playback-notice" role="status">
+      {{ playbackMessage }} Для ручного выбора используйте блок источников ниже.
+    </p>
 
     <SourcesPanel
       :media-id="media.id"

@@ -186,6 +186,27 @@ export interface PlaybackPreparation {
   stream_url: string | null
 }
 
+export type PlaybackResolutionStatus =
+  | 'ready'
+  | 'buffering'
+  | 'source_required'
+  | 'unavailable'
+
+export interface PlaybackResolution {
+  status: PlaybackResolutionStatus
+  source: 'library' | 'torrent' | null
+  stream_url: string | null
+  task_id: string | null
+  file_id: number | null
+  library_item_id: string | null
+  resume_position_seconds: number
+  buffer_progress: number
+  download_progress: number
+  download_state: string | null
+  download_speed_bytes: number
+  message: string | null
+}
+
 export interface MediaSnapshot {
   media_id: number
   media_kind: MediaKind

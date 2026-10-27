@@ -14,6 +14,7 @@ from app.services.library.manager import LibraryManager
 from app.services.metadata.catalog import CatalogService
 from app.services.metadata.tmdb import TMDBClient
 from app.services.playback.manager import CompatibilityManager
+from app.services.playback.resolver import PlaybackResolver
 from app.services.playback.service import PlaybackPreparationService
 from app.services.sources.prowlarr import ProwlarrClient
 from app.services.sources.search import SourceSearchService
@@ -138,6 +139,28 @@ def get_library_manager(
 
 
 LibraryManagerDependency = Annotated[LibraryManager, Depends(get_library_manager)]
+
+
+def get_playback_resolver(
+    torrents: TorrentManagerDependency,
+    streaming: StreamingManagerDependency,
+    library_manager: LibraryManagerDependency,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlaybackResolver:
+    return PlaybackResolver(
+        EpisodeRepository(session),
+        LibraryRepository(session),
+        TorrentTaskRepository(session),
+        library_manager,
+        torrents,
+        streaming,
+    )
+
+
+PlaybackResolverDependency = Annotated[
+    PlaybackResolver,
+    Depends(get_playback_resolver),
+]
 
 
 def get_cache_manager(

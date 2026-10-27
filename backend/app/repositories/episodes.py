@@ -128,3 +128,19 @@ class EpisodeRepository:
             )
         )
         return list(result.tuples())
+
+    async def list_episode_variants(
+        self,
+        episode_id: str,
+    ) -> list[tuple[TorrentFileVariant, TorrentTask]]:
+        result = await self._session.execute(
+            select(TorrentFileVariant, TorrentTask)
+            .join(
+                EpisodeFileBinding,
+                EpisodeFileBinding.file_variant_id == TorrentFileVariant.id,
+            )
+            .join(TorrentTask, TorrentTask.id == TorrentFileVariant.task_id)
+            .where(EpisodeFileBinding.episode_id == episode_id)
+            .order_by(TorrentTask.created_at.desc(), TorrentFileVariant.file_id)
+        )
+        return list(result.tuples())

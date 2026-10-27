@@ -148,6 +148,13 @@ class LibraryManager:
             release=lease.release,
         )
 
+    async def playback_available(self, item: LibraryItem) -> bool:
+        try:
+            path = self._safe_library_path(item.file_path)
+        except LibraryStorageError:
+            return False
+        return await asyncio.to_thread(path.is_file)
+
     async def favorite(self, body: FavoriteRequest) -> Favorite:
         existing = await self._repository.get_favorite(body.media_id, body.media_kind)
         if existing is not None:
