@@ -85,6 +85,17 @@ not calculate episode identity. A shared physical file bound to consecutive
 logical episodes is marked as combined and is not treated as a precise seek
 target without time-boundary metadata.
 
+The final D2 increment separates viewing from download administration.
+`DownloadsPage` consumes a bounded `GET /api/v1/torrents` projection and polls
+only while an incomplete task is active, at a ten-second interval. Torrent
+Manager joins recent KADR database tasks to one qBittorrent list response;
+missing external tasks are represented as unavailable rather than triggering
+one request per card. File lists remain on-demand. Pause/resume and protected
+completed-file deletion use the existing endpoints and safety checks. Media
+details no longer mount technical torrent controls; the legacy
+`SourcesPanel.vue` file remains available for rollback until real Debian
+playback acceptance is complete.
+
 Library items optionally reference a logical episode and record the selected
 file ID. Watch history optionally references a logical episode and is scoped by
 `profile_key` (currently `default` unless a caller supplies another profile).

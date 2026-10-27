@@ -183,6 +183,14 @@ the current torrent task. Failure does not interrupt current playback. If it
 does not start, verify the next episode binding and qBittorrent availability;
 do not enable a whole season as a workaround.
 
+## A task is marked “Нет в qBittorrent” on Downloads
+
+The task still exists in KADR's SQLite history, but its torrent hash was not
+present in the single qBittorrent status response. Start/stop and file actions
+are disabled for that row. Check qBittorrent availability and its data volume;
+do not edit SQLite or expose the qBittorrent Web UI to the network. A normal
+source selection can create or reuse an available task.
+
 ## Player reports that the video stream cannot be opened
 
 Inspect the readiness and stream requests plus API logs. A 409

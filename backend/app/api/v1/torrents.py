@@ -25,6 +25,11 @@ from app.schemas.torrents import (
 router = APIRouter()
 
 
+@router.get("/torrents", response_model=list[TorrentStatus])
+async def list_torrents(manager: TorrentManagerDependency) -> list[TorrentStatus]:
+    return await manager.list_tasks()
+
+
 @router.post("/media/{media_id}/torrents", response_model=TorrentStatus, status_code=201)
 async def add_torrent(
     manager: TorrentManagerDependency,

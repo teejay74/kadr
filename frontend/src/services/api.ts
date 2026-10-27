@@ -236,6 +236,10 @@ export function getTorrent(taskId: string): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}`)
 }
 
+export function getTorrents(): Promise<TorrentStatus[]> {
+  return request<TorrentStatus[]>('/api/v1/torrents')
+}
+
 export function getMediaTorrent(mediaId: number, mediaKind: MediaKind): Promise<TorrentStatus> {
   const params = new URLSearchParams({ media_kind: mediaKind })
   return request<TorrentStatus>(`/api/v1/media/${mediaId}/torrents?${params}`)

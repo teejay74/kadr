@@ -12,6 +12,7 @@ import {
   getSeriesSeason,
   getSources,
   getTorrentEpisodeFiles,
+  getTorrents,
   prefetchNextEpisode,
   resolvePlayback,
   resolveNextEpisode,
@@ -312,6 +313,18 @@ test('deletes one downloaded torrent file without deleting the release', async (
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/torrents/task/files/3')
   expect(init.method).toBe('DELETE')
+})
+
+test('loads the bounded KADR download task list', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => [],
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getTorrents()
+
+  expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/torrents')
 })
 
 test('requests the audio-only FFmpeg preparation mode explicitly', async () => {

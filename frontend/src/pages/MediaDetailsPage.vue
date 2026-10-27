@@ -11,7 +11,6 @@ import MediaHero from '../components/MediaHero.vue'
 import NextEpisodeOverlay from '../components/NextEpisodeOverlay.vue'
 import SeasonSelector from '../components/SeasonSelector.vue'
 import StatePanel from '../components/StatePanel.vue'
-import SourcesPanel from '../components/SourcesPanel.vue'
 import SourceSelector from '../components/SourceSelector.vue'
 import {
   addTorrent,
@@ -552,16 +551,16 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       {{ playbackMessage }} Окно выбора источника открыто.
     </p>
 
-    <SourcesPanel
-      :media-id="media.id"
-      :kind="media.kind"
-      :title="media.title"
-      :original-title="media.original_title"
-      :poster-url="media.poster_url"
-      :backdrop-url="media.backdrop_url"
-      :seasons="media.seasons"
-      :episode="selectedEpisode"
-    />
+    <section class="details-section download-management-link">
+      <div>
+        <p class="eyebrow">Фоновая загрузка</p>
+        <h2>Управление перенесено в «Загрузки»</h2>
+        <p>Скорость, очередь, файлы и остановка задач доступны отдельно от просмотра.</p>
+      </div>
+      <RouterLink class="button secondary focus-ring" to="/downloads">
+        Открыть загрузки
+      </RouterLink>
+    </section>
 
     <SourceSelector
       v-if="sourceSelectorOpen"

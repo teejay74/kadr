@@ -46,6 +46,7 @@ const details = {
   season_count: 2,
   episode_count: 2,
 }
+const downloadsTestRoute = { path: '/downloads', component: { template: '<div />' } }
 
 function season(number: number) {
   return {
@@ -112,7 +113,7 @@ afterEach(cleanup)
 test('asks the backend to resolve an episode before opening the source selector', async () => {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
   await router.push('/series/42')
   await router.isReady()
@@ -133,7 +134,7 @@ test('asks the backend to resolve an episode before opening the source selector'
   ))
   expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
   expect(screen.getByRole('dialog', { name: 'Выберите источник' })).toBeTruthy()
-  expect(screen.getByText('Legacy sources')).toBeTruthy()
+  expect(screen.getByRole('link', { name: 'Открыть загрузки' })).toBeTruthy()
 })
 
 test('opens the shared player when the backend resolves a saved episode', async () => {
@@ -153,7 +154,7 @@ test('opens the shared player when the backend resolves a saved episode', async 
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
   await router.push('/series/42')
   await router.isReady()
@@ -185,7 +186,7 @@ test('uses the same backend resolver for the movie primary action', async () => 
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }],
+    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }, downloadsTestRoute],
   })
   await router.push('/movies/42')
   await router.isReady()
@@ -202,7 +203,7 @@ test('uses the same backend resolver for the movie primary action', async () => 
   await waitFor(() => expect(api.resolvePlayback).toHaveBeenCalledWith(42, 'movie', null))
   expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
   expect(screen.getByRole('dialog', { name: 'Выберите источник' })).toBeTruthy()
-  expect(screen.getByText('Legacy sources')).toBeTruthy()
+  expect(screen.getByRole('link', { name: 'Открыть загрузки' })).toBeTruthy()
 })
 
 test('selects a movie source in the modal and retries unified playback', async () => {
@@ -299,7 +300,7 @@ test('selects a movie source in the modal and retries unified playback', async (
     })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }],
+    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }, downloadsTestRoute],
   })
   await router.push('/movies/42')
   await router.isReady()
@@ -402,7 +403,7 @@ test('opens episode confirmation when the selected series source is ambiguous', 
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
   await router.push('/series/42')
   await router.isReady()
@@ -425,7 +426,7 @@ test('restores the last season and reloads episodes after season selection', asy
   localStorage.setItem('kadr:season:42', '2')
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
   await router.push('/series/42')
   await router.isReady()
@@ -472,7 +473,7 @@ test('uses the backend next episode across seasons and opens it in the shared pl
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }],
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
   await router.push('/series/42')
   await router.isReady()

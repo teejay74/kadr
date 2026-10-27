@@ -114,6 +114,28 @@ class TorrentManager:
             raise TorrentNotFoundError("Torrent task not found")
         return await self.status(task.id)
 
+    async def list_tasks(self) -> list[TorrentStatus]:
+        """Return recent KADR tasks using one bounded qBittorrent request."""
+        tasks = await self._repository.list_recent()
+        if not tasks:
+            return []
+        items = await self._client.list()
+        by_hash = {
+            str(item.get("hash") or "").lower(): item
+            for item in items
+            if item.get("hash")
+        }
+        return [
+            self._to_status(
+                task,
+                by_hash.get(
+                    task.torrent_hash.lower(),
+                    {"state": "unavailable"},
+                ),
+            )
+            for task in tasks
+        ]
+
     async def files(self, task_id: str) -> list[TorrentFile]:
         task = await self._task(task_id)
         items = await self._client.files(task.torrent_hash)
@@ -352,12 +374,14 @@ class TorrentManager:
     @staticmethod
     def _to_status(task: TorrentTask, item: dict[str, Any]) -> TorrentStatus:
         eta = int(item.get("eta") or 0)
+        state = str(item.get("state") or task.state)
+        available = state != "unavailable"
         return TorrentStatus(
             id=task.id,
             media_id=task.media_id,
             media_kind=task.media_kind,  # type: ignore[arg-type]
             name=str(item.get("name") or task.release_title),
-            state=str(item.get("state") or task.state),
+            state=state,
             progress=min(max(float(item.get("progress") or 0), 0), 1),
             downloaded_bytes=max(int(item.get("downloaded") or 0), 0),
             total_size_bytes=max(int(item.get("size") or 0), 0),
@@ -369,7 +393,9 @@ class TorrentManager:
             selected_file_id=task.selected_file_id,
             selected_file_path=task.selected_file_path,
             can_start=(
-                task.selected_file_id is not None and str(item.get("state")) in STOPPED_STATES
+                available
+                and task.selected_file_id is not None
+                and state in STOPPED_STATES
             ),
-            can_stop=str(item.get("state")) not in STOPPED_STATES,
+            can_stop=available and state not in STOPPED_STATES,
         )

@@ -68,6 +68,9 @@ class FakeRepository:
         ]
         return matches[-1] if matches else None
 
+    async def list_recent(self, limit: int = 100) -> list[TorrentTask]:
+        return list(self.tasks.values())[-limit:][::-1]
+
     async def select_file(self, task: TorrentTask, file_id: int, file_path: str) -> None:
         task.selected_file_id = file_id
         task.selected_file_path = file_path
@@ -153,6 +156,70 @@ async def test_torrent_manager_adds_selects_and_starts_real_state() -> None:
     assert client.priority_calls == [([0, 1], 0), ([0, 1], 0), ([1], 1)]
     assert started.state == "downloading"
     assert started.progress == 0.25
+
+
+async def test_torrent_manager_lists_kadr_tasks_with_one_client_request() -> None:
+    class ListingClient(FakeTorrentClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.list_calls = 0
+
+        async def list(
+            self, *, torrent_hash: str | None = None, tag: str | None = None
+        ) -> list[dict[str, Any]]:
+            self.list_calls += 1
+            assert torrent_hash is None and tag is None
+            return [{
+                "hash": "known-hash",
+                "name": "Series S01",
+                "state": "downloading",
+                "progress": 0.4,
+                "downloaded": 400,
+                "size": 1000,
+                "dlspeed": 50,
+                "num_leechs": 1,
+                "num_seeds": 3,
+            }]
+
+    repository = FakeRepository()
+    repository.tasks["known"] = TorrentTask(
+        id="known",
+        media_id=42,
+        media_kind="series",
+        torrent_hash="known-hash",
+        source_id="a" * 24,
+        release_title="Series",
+        selected_file_id=2,
+        selected_file_path="S01E01.mkv",
+        storage_path="/tmp/cache",
+        state="stoppedDL",
+    )
+    repository.tasks["missing"] = TorrentTask(
+        id="missing",
+        media_id=7,
+        media_kind="movie",
+        torrent_hash="missing-hash",
+        source_id="b" * 24,
+        release_title="Missing movie",
+        storage_path="/tmp/cache",
+        state="stoppedDL",
+    )
+    client = ListingClient()
+    manager = TorrentManager(
+        client,
+        FakeSources(),
+        repository,
+        Settings(qbittorrent_password="x"),
+    )
+
+    items = await manager.list_tasks()
+
+    assert client.list_calls == 1
+    assert [item.id for item in items] == ["missing", "known"]
+    assert items[0].state == "unavailable"
+    assert items[0].can_start is False
+    assert items[0].can_stop is False
+    assert items[1].progress == 0.4
 
 
 async def test_torrent_manager_rejects_non_video_selection() -> None:
@@ -541,6 +608,7 @@ async def test_torrent_api_exposes_lifecycle_without_source_uri(client: AsyncCli
     assert "magnet" not in added.text.lower()
     task_id = added.json()["id"]
 
+    listed = await client.get("/api/v1/torrents")
     current = await client.get("/api/v1/media/42/torrents?media_kind=movie")
     files = await client.get(f"/api/v1/torrents/{task_id}/files")
     selected = await client.put(f"/api/v1/torrents/{task_id}/selection", json={"file_id": 1})
@@ -551,6 +619,8 @@ async def test_torrent_api_exposes_lifecycle_without_source_uri(client: AsyncCli
     started = await client.post(f"/api/v1/torrents/{task_id}/start")
     stopped = await client.post(f"/api/v1/torrents/{task_id}/stop")
 
+    assert listed.status_code == 200
+    assert listed.json()[0]["id"] == task_id
     assert current.status_code == 200
     assert current.json()["id"] == task_id
     assert files.status_code == 200

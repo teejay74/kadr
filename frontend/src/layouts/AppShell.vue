@@ -24,6 +24,7 @@ function submitSearch(): void {
         <RouterLink class="nav-link focus-ring" to="/movies">Фильмы</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/series">Сериалы</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/library">Библиотека</RouterLink>
+        <RouterLink class="nav-link focus-ring" to="/downloads">Загрузки</RouterLink>
       </nav>
       <form class="global-search" role="search" @submit.prevent="submitSearch">
         <label class="sr-only" for="global-search">Поиск фильмов и сериалов</label>

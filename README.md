@@ -34,6 +34,11 @@ boundaries. Near the end of a torrent episode KADR may prefetch exactly one
 confirmed next file from the same release; completion opens a configurable
 next-episode overlay. Combined files are never presented as having an exact
 episode seek point unless future stored time boundaries make that possible.
+The final D2 UI increment moves torrent progress, pause/resume controls, file
+inspection, and completed-cache deletion to a dedicated **Downloads** page.
+Film and series pages retain only playback, source choice, and a link to that
+technical workspace. The legacy `SourcesPanel` source remains in the tree for
+live-playback rollback until Debian acceptance is complete.
 
 ## Quick start
 
@@ -135,5 +140,6 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Episode Matcher report](docs/ui-redesign-episode-matcher-report.md)
 - [UI redesign C2 report](docs/ui-redesign-c2-report.md)
 - [UI redesign D1 report](docs/ui-redesign-d1-report.md)
+- [UI redesign D2 report](docs/ui-redesign-d2-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

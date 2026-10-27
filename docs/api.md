@@ -252,6 +252,12 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 
 ## Torrent Manager endpoints
 
+`GET /api/v1/torrents` returns up to 100 recent KADR-owned torrent tasks in
+database recency order. Torrent state is joined with one qBittorrent list
+request, avoiding per-card polling. A persisted task missing from qBittorrent
+is returned with state `unavailable` and no start/stop actions. The response
+does not expose torrent hashes, source URIs, credentials, or filesystem paths.
+
 | Method and path | Purpose |
 | --- | --- |
 | `POST /media/{id}/torrents` | Resolve an opaque source ID and add it stopped |

@@ -41,6 +41,14 @@ class TorrentTaskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_recent(self, limit: int = 100) -> list[TorrentTask]:
+        result = await self._session.execute(
+            select(TorrentTask)
+            .order_by(TorrentTask.updated_at.desc(), TorrentTask.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
     async def select_file(self, task: TorrentTask, file_id: int, file_path: str) -> None:
         task.selected_file_id = file_id
         task.selected_file_path = file_path

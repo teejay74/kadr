@@ -4,6 +4,7 @@ import HomePage from '../pages/HomePage.vue'
 import LibraryPage from '../pages/LibraryPage.vue'
 import CatalogPage from '../pages/CatalogPage.vue'
 import CreditsPage from '../pages/CreditsPage.vue'
+import DownloadsPage from '../pages/DownloadsPage.vue'
 import MediaDetailsPage from '../pages/MediaDetailsPage.vue'
 import SearchPage from '../pages/SearchPage.vue'
 
@@ -19,6 +20,7 @@ export const router = createRouter({
     { path: '/search', name: 'search', component: SearchPage },
     { path: '/credits', name: 'credits', component: CreditsPage },
     { path: '/library', name: 'library', component: LibraryPage },
+    { path: '/downloads', name: 'downloads', component: DownloadsPage },
   ],
 })
 
