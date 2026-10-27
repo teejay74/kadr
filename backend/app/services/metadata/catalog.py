@@ -9,11 +9,13 @@ from app.core.config import Settings
 from app.repositories.metadata_cache import MetadataCacheRepository
 from app.schemas.media import (
     CastMember,
+    EpisodeSummary,
     Genre,
     MediaCard,
     MediaDetails,
     MediaKind,
     MediaPage,
+    SeasonDetails,
     SeasonSummary,
 )
 from app.services.metadata.exceptions import MetadataUnavailableError
@@ -99,6 +101,10 @@ class CatalogService:
             {"append_to_response": "credits,videos"},
         )
         return self._details(payload, kind)
+
+    async def season(self, media_id: int, season_number: int) -> SeasonDetails:
+        payload = await self._request(f"/tv/{media_id}/season/{season_number}", {})
+        return self._season(payload, media_id, season_number)
 
     async def genres(self, kind: MediaKind) -> list[Genre]:
         tmdb_kind = "movie" if kind == "movie" else "tv"
@@ -217,6 +223,38 @@ class CatalogService:
                 if payload.get("number_of_episodes")
                 else None
             ),
+        )
+
+    def _season(
+        self,
+        payload: dict[str, Any],
+        media_id: int,
+        season_number: int,
+    ) -> SeasonDetails:
+        episodes = [
+            EpisodeSummary(
+                id=int(item["id"]),
+                season_number=int(item.get("season_number") or season_number),
+                number=int(item.get("episode_number") or 0),
+                name=str(item.get("name") or f"Серия {item.get('episode_number') or 0}"),
+                overview=str(item.get("overview") or ""),
+                air_date=self._optional_text(item.get("air_date")),
+                runtime_minutes=(int(item["runtime"]) if item.get("runtime") else None),
+                still_url=self._image(item.get("still_path"), "w500"),
+                rating=float(item.get("vote_average") or 0),
+            )
+            for item in payload.get("episodes", [])
+            if isinstance(item, dict) and item.get("id") is not None
+        ]
+        return SeasonDetails(
+            id=int(payload.get("id") or 0),
+            series_id=media_id,
+            number=int(payload.get("season_number") or season_number),
+            name=str(payload.get("name") or f"Сезон {season_number}"),
+            overview=str(payload.get("overview") or ""),
+            air_date=self._optional_text(payload.get("air_date")),
+            poster_url=self._image(payload.get("poster_path"), "w342"),
+            episodes=episodes,
         )
 
     def _image(self, path: object, size: str) -> str | None:

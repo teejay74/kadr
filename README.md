@@ -10,6 +10,12 @@ H.264/AAC MP4. Fully downloaded selections can be saved to an isolated local
 library, replayed without a torrent source, favorited, resumed across browsers,
 and explicitly deleted with protected path checks.
 
+UI redesign substage B1 adds normalized season/episode metadata and a shared
+film/series presentation layer. Series pages now show an adaptive episode list
+directly below the hero and remember the last selected season in the browser.
+Playback still uses the retained legacy source panel until the episode-aware
+resolver and persistence migration are implemented and verified.
+
 ## Quick start
 
 Requirements: Docker Engine with Docker Compose v2.
@@ -104,5 +110,6 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 5 report](docs/stage-5-report.md)
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 - [Stage 6 report](docs/stage-6-report.md)
+- [UI redesign B1 report](docs/ui-redesign-b1-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

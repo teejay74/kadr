@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import CastCarousel from '../components/CastCarousel.vue'
+import EpisodeList from '../components/EpisodeList.vue'
+import MediaActions from '../components/MediaActions.vue'
+import MediaHero from '../components/MediaHero.vue'
+import SeasonSelector from '../components/SeasonSelector.vue'
 import StatePanel from '../components/StatePanel.vue'
 import SourcesPanel from '../components/SourcesPanel.vue'
 import {
@@ -10,8 +15,15 @@ import {
   friendlyApiError,
   getFavorites,
   getMediaDetails,
+  getSeriesSeason,
 } from '../services/api'
-import type { MediaDetails, MediaKind } from '../types/media'
+import type {
+  EpisodeSummary,
+  MediaDetails,
+  MediaKind,
+  SeasonDetails,
+  SeasonSummary,
+} from '../types/media'
 
 const route = useRoute()
 const kind = computed(() => route.meta.kind as MediaKind)
@@ -20,6 +32,82 @@ const loading = ref(true)
 const error = ref('')
 const favorite = ref(false)
 const favoriteBusy = ref(false)
+const selectedSeasonNumber = ref(0)
+const seasonDetails = ref<SeasonDetails | null>(null)
+const seasonLoading = ref(false)
+const seasonError = ref('')
+const selectedEpisode = ref<EpisodeSummary | null>(null)
+let seasonRequestId = 0
+
+const availableSeasons = computed<SeasonSummary[]>(() => {
+  const seasons = media.value?.seasons ?? []
+  const regular = seasons.filter((season) => season.number > 0)
+  return regular.length ? regular : seasons
+})
+const seasonStorageKey = computed(() => `kadr:season:${media.value?.id ?? 'unknown'}`)
+
+function readStoredSeason(): number | null {
+  try {
+    const value = Number(localStorage.getItem(seasonStorageKey.value))
+    return Number.isInteger(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+function initialSeason(): number {
+  const stored = readStoredSeason()
+  if (stored !== null && availableSeasons.value.some((season) => season.number === stored)) {
+    return stored
+  }
+  return availableSeasons.value[0]?.number ?? 0
+}
+
+function rememberSeason(number: number): void {
+  try {
+    localStorage.setItem(seasonStorageKey.value, String(number))
+  } catch {
+    // Season navigation remains usable when browser storage is unavailable.
+  }
+}
+
+async function loadSeason(): Promise<void> {
+  if (!media.value || media.value.kind !== 'series') return
+  const requestId = ++seasonRequestId
+  seasonLoading.value = true
+  seasonError.value = ''
+  selectedEpisode.value = null
+  try {
+    const result = await getSeriesSeason(media.value.id, selectedSeasonNumber.value)
+    if (requestId === seasonRequestId) seasonDetails.value = result
+  } catch (caught) {
+    if (requestId === seasonRequestId) {
+      seasonDetails.value = null
+      seasonError.value = friendlyApiError(caught)
+    }
+  } finally {
+    if (requestId === seasonRequestId) seasonLoading.value = false
+  }
+}
+
+function selectSeason(number: number): void {
+  if (number === selectedSeasonNumber.value) return
+  selectedSeasonNumber.value = number
+  rememberSeason(number)
+  void loadSeason()
+}
+
+async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<void> {
+  selectedEpisode.value = episode
+  await nextTick()
+  document.getElementById('media-sources')?.scrollIntoView({ behavior: 'smooth' })
+}
+
+async function handlePrimaryAction(): Promise<void> {
+  await nextTick()
+  const target = media.value?.kind === 'series' ? 'episodes-title' : 'media-sources'
+  document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' })
+}
 
 async function loadDetails(): Promise<void> {
   const id = Number(route.params.id)
@@ -30,10 +118,18 @@ async function loadDetails(): Promise<void> {
   }
   loading.value = true
   error.value = ''
+  seasonRequestId += 1
+  seasonDetails.value = null
+  seasonError.value = ''
+  selectedEpisode.value = null
   try {
     media.value = await getMediaDetails(kind.value, id)
     const favorites = await getFavorites()
     favorite.value = favorites.some((item) => item.media_id === id && item.media_kind === kind.value)
+    if (media.value.kind === 'series' && availableSeasons.value.length) {
+      selectedSeasonNumber.value = initialSeason()
+      await loadSeason()
+    }
   } catch (caught) {
     error.value = friendlyApiError(caught)
   } finally {
@@ -80,28 +176,44 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
     />
   </div>
   <article v-else-if="media" class="details-page">
-    <div class="details-backdrop" :style="media.backdrop_url ? { backgroundImage: `linear-gradient(0deg, #101116 0%, rgba(16,17,22,.35) 65%, rgba(16,17,22,.65)), url(${media.backdrop_url})` } : {}" />
-    <div class="details-content">
-      <div class="details-poster"><img v-if="media.poster_url" :src="media.poster_url" :alt="`Постер: ${media.title}`" /><div v-else class="poster-placeholder">K</div></div>
-      <div class="details-copy">
-        <p class="eyebrow">{{ media.kind === 'movie' ? 'Фильм' : 'Сериал' }}</p>
-        <h1>{{ media.title }}</h1>
-        <p v-if="media.original_title !== media.title" class="original-title">{{ media.original_title }}</p>
-        <p v-if="media.tagline" class="tagline">{{ media.tagline }}</p>
-        <div class="hero-meta">
-          <span v-if="media.year">{{ media.year }}</span><span v-if="media.rating">★ {{ media.rating.toFixed(1) }}</span><span v-if="media.runtime_minutes">{{ media.runtime_minutes }} мин.</span><span v-if="media.season_count">{{ media.season_count }} сез.</span>
-        </div>
-        <div class="genre-list"><span v-for="genre in media.genres" :key="genre.id">{{ genre.name }}</span></div>
-        <p class="details-overview">{{ media.overview || 'Описание пока не переведено.' }}</p>
-        <div class="action-row">
-          <a class="button primary focus-ring" href="#media-sources">Выбрать источник</a>
-          <button class="button secondary focus-ring" type="button" :disabled="favoriteBusy" @click="toggleFavorite">
-            {{ favorite ? 'В избранном' : 'В избранное' }}
-          </button>
-          <a v-if="media.trailer_url" class="button secondary focus-ring" :href="media.trailer_url" target="_blank" rel="noopener">Трейлер ↗</a>
-        </div>
+    <MediaHero :media="media">
+      <MediaActions
+        :play-label="media.kind === 'movie' ? 'Смотреть' : 'Выбрать эпизод'"
+        :favorite="favorite"
+        :favorite-busy="favoriteBusy"
+        :trailer-url="media.trailer_url"
+        @play="handlePrimaryAction"
+        @toggle-favorite="toggleFavorite"
+      />
+    </MediaHero>
+
+    <section
+      v-if="media.kind === 'series' && availableSeasons.length"
+      class="details-section episodes-section"
+      aria-labelledby="episodes-title"
+    >
+      <div class="episodes-heading">
+        <h2 id="episodes-title">Эпизоды</h2>
+        <SeasonSelector
+          :model-value="selectedSeasonNumber"
+          :seasons="availableSeasons"
+          :disabled="seasonLoading"
+          @update:model-value="selectSeason"
+        />
       </div>
-    </div>
+      <p v-if="seasonDetails?.overview" class="season-overview">{{ seasonDetails.overview }}</p>
+      <p v-if="selectedEpisode" class="legacy-playback-notice" role="status">
+        Выбрано: сезон {{ selectedEpisode.season_number }}, серия {{ selectedEpisode.number }}.
+        До включения нового механизма запуска подтвердите соответствующий файл в блоке источника.
+      </p>
+      <EpisodeList
+        :episodes="seasonDetails?.episodes ?? []"
+        :loading="seasonLoading"
+        :error="seasonError"
+        @select="openPlaybackFlow"
+        @retry="loadSeason"
+      />
+    </section>
 
     <SourcesPanel
       :media-id="media.id"
@@ -113,25 +225,6 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       :seasons="media.seasons"
     />
 
-    <section v-if="media.cast.length" class="details-section">
-      <h2>В ролях</h2>
-      <div class="cast-grid">
-        <div v-for="person in media.cast" :key="person.id" class="cast-card">
-          <img v-if="person.profile_url" :src="person.profile_url" :alt="person.name" loading="lazy" />
-          <div v-else class="avatar-placeholder">{{ person.name.slice(0, 1) }}</div>
-          <strong>{{ person.name }}</strong><span>{{ person.character }}</span>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="media.kind === 'series' && media.seasons.length" class="details-section">
-      <h2>Сезоны</h2>
-      <div class="season-list">
-        <div v-for="season in media.seasons" :key="season.id" class="season-row">
-          <span class="season-number">{{ season.number }}</span>
-          <div><strong>{{ season.name }}</strong><p>{{ season.episode_count }} эпизодов<span v-if="season.air_date"> · {{ season.air_date.slice(0, 4) }}</span></p></div>
-        </div>
-      </div>
-    </section>
+    <CastCarousel :cast="media.cast" />
   </article>
 </template>

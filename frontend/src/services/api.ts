@@ -9,6 +9,7 @@ import type {
   MediaDetails,
   MediaKind,
   MediaPage,
+  SeasonDetails,
   PlaybackPreparation,
   PlaybackMode,
   SortOrder,
@@ -210,6 +211,10 @@ export function searchMedia(kind: MediaKind, search: string, page = 1): Promise<
 
 export function getMediaDetails(kind: MediaKind, id: number): Promise<MediaDetails> {
   return request<MediaDetails>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}/${id}`)
+}
+
+export function getSeriesSeason(seriesId: number, seasonNumber: number): Promise<SeasonDetails> {
+  return request<SeasonDetails>(`/api/v1/series/${seriesId}/seasons/${seasonNumber}`)
 }
 
 export function getGenres(kind: MediaKind): Promise<Genre[]> {

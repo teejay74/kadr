@@ -26,6 +26,29 @@ class SeasonSummary(BaseModel):
     poster_url: str | None = None
 
 
+class EpisodeSummary(BaseModel):
+    id: int
+    season_number: int
+    number: int
+    name: str
+    overview: str
+    air_date: str | None = None
+    runtime_minutes: int | None = None
+    still_url: str | None = None
+    rating: float = 0
+
+
+class SeasonDetails(BaseModel):
+    id: int
+    series_id: int
+    number: int
+    name: str
+    overview: str
+    air_date: str | None = None
+    poster_url: str | None = None
+    episodes: list[EpisodeSummary] = Field(default_factory=list)
+
+
 class MediaCard(BaseModel):
     id: int
     kind: MediaKind

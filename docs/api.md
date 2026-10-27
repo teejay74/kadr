@@ -36,9 +36,40 @@ provider errors are never returned to the browser.
 | `GET /series/genres` | Series genres | none |
 | `GET /movies/{id}` | Film details, cast, trailer | positive TMDB ID |
 | `GET /series/{id}` | Series details, cast, trailer, seasons | positive TMDB ID |
+| `GET /series/{id}/seasons/{season_number}` | Normalized season and episode metadata | positive TMDB ID; season `0`-`100` |
 
 `sort` accepts `popular`, `rating`, or `newest`. Pages are limited to TMDB's
 first 500 result pages. Invalid query values use FastAPI's validation response.
+
+Season details contain the series and season identity plus normalized episodes:
+
+```json
+{
+  "id": 501,
+  "series_id": 42,
+  "number": 2,
+  "name": "Сезон 2",
+  "overview": "...",
+  "air_date": "2025-01-10",
+  "poster_url": "https://image.tmdb.org/t/p/w342/example.jpg",
+  "episodes": [
+    {
+      "id": 601,
+      "season_number": 2,
+      "number": 1,
+      "name": "Возвращение",
+      "overview": "...",
+      "air_date": "2025-01-10",
+      "runtime_minutes": 52,
+      "still_url": "https://image.tmdb.org/t/p/w500/example.jpg",
+      "rating": 8.4
+    }
+  ]
+}
+```
+
+This endpoint describes catalogue identity only. It does not expose or infer a
+torrent file, playback source, download status, or saved-library state.
 
 Example media page:
 

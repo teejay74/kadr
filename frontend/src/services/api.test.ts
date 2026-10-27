@@ -6,6 +6,7 @@ import {
   configureTorrentPrefetch,
   deleteTorrentFile,
   getMediaPage,
+  getSeriesSeason,
   getSources,
   startCompatiblePlayback,
 } from './api'
@@ -68,6 +69,19 @@ test('adds a season marker to a series source search', async () => {
 
   const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/media/42/sources?kind=series&sort=seeders&order=desc&season_number=2')
+})
+
+test('requests normalized episode metadata for one series season', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ series_id: 42, number: 2, episodes: [] }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getSeriesSeason(42, 2)
+
+  const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/series/42/seasons/2')
 })
 
 test('adds a selected source without exposing its provider URL', async () => {

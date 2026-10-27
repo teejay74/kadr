@@ -22,6 +22,29 @@ export interface SeasonSummary {
   poster_url: string | null
 }
 
+export interface EpisodeSummary {
+  id: number
+  season_number: number
+  number: number
+  name: string
+  overview: string
+  air_date: string | null
+  runtime_minutes: number | null
+  still_url: string | null
+  rating: number
+}
+
+export interface SeasonDetails {
+  id: number
+  series_id: number
+  number: number
+  name: string
+  overview: string
+  air_date: string | null
+  poster_url: string | null
+  episodes: EpisodeSummary[]
+}
+
 export interface MediaCardData {
   id: number
   kind: MediaKind

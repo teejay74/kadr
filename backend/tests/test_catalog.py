@@ -52,6 +52,30 @@ def movie_page_payload() -> dict[str, Any]:
     }
 
 
+def season_payload() -> dict[str, Any]:
+    return {
+        "id": 501,
+        "season_number": 2,
+        "name": "Сезон 2",
+        "overview": "Продолжение истории.",
+        "air_date": "2025-01-10",
+        "poster_path": "/season.jpg",
+        "episodes": [
+            {
+                "id": 601,
+                "season_number": 2,
+                "episode_number": 1,
+                "name": "Возвращение",
+                "overview": "Первая серия сезона.",
+                "air_date": "2025-01-10",
+                "runtime": 52,
+                "still_path": "/episode.jpg",
+                "vote_average": 8.4,
+            }
+        ],
+    }
+
+
 async def test_movies_endpoint_uses_catalog_service_and_normalizes_tmdb(
     client: AsyncClient,
     session: AsyncSession,
@@ -98,6 +122,48 @@ async def test_catalog_reuses_sqlite_cache(session: AsyncSession) -> None:
 
     assert first == second
     assert len(fake_client.calls) == 1
+
+
+async def test_series_season_endpoint_normalizes_and_caches_episodes(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    fake_client = FakeTMDBClient(season_payload())
+    service = CatalogService(
+        fake_client,
+        MetadataCacheRepository(session),
+        Settings(),
+    )
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    first = await client.get("/api/v1/series/42/seasons/2")
+    second = await client.get("/api/v1/series/42/seasons/2")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == {
+        "id": 501,
+        "series_id": 42,
+        "number": 2,
+        "name": "Сезон 2",
+        "overview": "Продолжение истории.",
+        "air_date": "2025-01-10",
+        "poster_url": "https://image.tmdb.org/t/p/w342/season.jpg",
+        "episodes": [
+            {
+                "id": 601,
+                "season_number": 2,
+                "number": 1,
+                "name": "Возвращение",
+                "overview": "Первая серия сезона.",
+                "air_date": "2025-01-10",
+                "runtime_minutes": 52,
+                "still_url": "https://image.tmdb.org/t/p/w500/episode.jpg",
+                "rating": 8.4,
+            }
+        ],
+    }
+    assert fake_client.calls == [("/tv/42/season/2", {})]
 
 
 async def test_catalog_uses_expired_cache_during_provider_outage(

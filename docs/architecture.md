@@ -29,8 +29,20 @@ TMDB is unavailable. The token never reaches the browser.
 The responsive frontend uses Vue Router, Composition API, strict TypeScript,
 reusable media components, and a dedicated API client. It provides home rails,
 film and series catalogues, filters, pagination, search, detail pages, cast and
-season summaries. Empty integration packages continue to reserve later seams
-without presenting future features as implemented.
+season summaries. UI redesign substage B1 separates the shared hero, actions,
+play button, cast carousel, season selector, episode list/cards, playback
+progress, and media status into focused components. A series season is loaded
+on demand from the metadata service and the last selected season is remembered
+in browser storage. The legacy source panel remains the only playback workflow
+until the episode-aware backend resolver is implemented and verified. Empty
+integration packages continue to reserve later seams without presenting future
+features as implemented.
+
+Episode catalogue identity is currently metadata-only: series ID, season
+number, episode number, and provider episode ID. It is intentionally not tied
+to a torrent `file_id`. A later migration must model episode-to-file variants,
+allow several episode bindings per torrent task, and make library/history
+records episode-aware without deleting legacy rows.
 
 Source search is explicitly user-triggered. The source service first resolves
 the trusted title and year from the metadata service, then calls Prowlarr over

@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Path, Query
 
 from app.api.dependencies import CatalogServiceDependency
-from app.schemas.media import Genre, MediaDetails, MediaPage
+from app.schemas.media import Genre, MediaDetails, MediaPage, SeasonDetails
 
 router = APIRouter()
 Page = Annotated[int, Query(ge=1, le=500)]
@@ -69,6 +69,18 @@ async def search_series(
 @router.get("/series/genres", response_model=list[Genre])
 async def series_genres(service: CatalogServiceDependency) -> list[Genre]:
     return await service.genres("series")
+
+
+@router.get(
+    "/series/{media_id}/seasons/{season_number}",
+    response_model=SeasonDetails,
+)
+async def series_season(
+    service: CatalogServiceDependency,
+    media_id: Annotated[int, Path(gt=0)],
+    season_number: Annotated[int, Path(ge=0, le=100)],
+) -> SeasonDetails:
+    return await service.season(media_id, season_number)
 
 
 @router.get("/series/{media_id}", response_model=MediaDetails)
