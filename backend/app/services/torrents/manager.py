@@ -8,9 +8,10 @@ from typing import Any
 
 from app.core.config import Settings
 from app.models.torrent_task import TorrentTask
+from app.repositories.episodes import EpisodeRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.schemas.media import MediaKind
-from app.schemas.torrents import TorrentFile, TorrentStatus
+from app.schemas.torrents import EpisodeFileBindingResponse, TorrentFile, TorrentStatus
 from app.services.sources.search import SourceSearchService
 from app.services.torrents.exceptions import (
     TorrentFileError,
@@ -43,11 +44,13 @@ class TorrentManager:
         sources: SourceSearchService,
         repository: TorrentTaskRepository,
         settings: Settings,
+        episodes: EpisodeRepository | None = None,
     ) -> None:
         self._client = client
         self._sources = sources
         self._repository = repository
         self._settings = settings
+        self._episodes = episodes
 
     async def add(
         self,
@@ -119,7 +122,15 @@ class TorrentManager:
             items = await self._client.files(task.torrent_hash)
         return [self._to_file(index, item) for index, item in enumerate(items)]
 
-    async def select_file(self, task_id: str, file_id: int) -> TorrentStatus:
+    async def select_file(
+        self,
+        task_id: str,
+        file_id: int,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        catalog_episode_id: int | None = None,
+        variant_label: str | None = None,
+    ) -> TorrentStatus:
         task = await self._task(task_id)
         files = await self._client.files(task.torrent_hash)
         if file_id >= len(files):
@@ -154,7 +165,41 @@ class TorrentManager:
             1,
         )
         await self._repository.select_file(task, file_id, selected.name)
+        if season_number is not None and episode_number is not None:
+            if task.media_kind != "series":
+                raise TorrentFileError("Episode identity can only be assigned to a series")
+            if self._episodes is None:
+                raise TorrentFileError("Episode persistence is unavailable")
+            await self._episodes.bind_file(
+                task,
+                file_id,
+                selected.name,
+                season_number,
+                episode_number,
+                catalog_episode_id,
+                variant_label,
+            )
         return await self.status(task_id)
+
+    async def episode_files(self, task_id: str) -> list[EpisodeFileBindingResponse]:
+        await self._task(task_id)
+        if self._episodes is None:
+            return []
+        bindings = await self._episodes.list_task_bindings(task_id)
+        return [
+            EpisodeFileBindingResponse(
+                id=binding.id,
+                episode_id=episode.id,
+                media_id=episode.media_id,
+                season_number=episode.season_number,
+                episode_number=episode.episode_number,
+                catalog_episode_id=episode.catalog_episode_id,
+                file_variant_id=variant.id,
+                file_id=variant.file_id,
+                variant_label=variant.variant_label,
+            )
+            for binding, episode, variant in bindings
+        ]
 
     async def configure_prefetch(
         self,

@@ -24,7 +24,12 @@ def upgrade() -> None:
         sa.Column("backdrop_url", sa.String(length=1024), nullable=True),
         sa.Column("file_path", sa.String(length=1024), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.current_timestamp(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.current_timestamp(),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["task_id"], ["torrent_tasks.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("file_path"),
@@ -41,7 +46,12 @@ def upgrade() -> None:
         sa.Column("original_title", sa.String(length=512), nullable=False),
         sa.Column("poster_url", sa.String(length=1024), nullable=True),
         sa.Column("backdrop_url", sa.String(length=1024), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.current_timestamp(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.current_timestamp(),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("media_kind", "media_id", name="uq_favorite_media"),
     )
@@ -56,7 +66,12 @@ def upgrade() -> None:
         sa.Column("position_seconds", sa.Integer(), nullable=False),
         sa.Column("duration_seconds", sa.Integer(), nullable=False),
         sa.Column("completed", sa.Boolean(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.current_timestamp(), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.current_timestamp(),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("media_kind", "media_id", name="uq_history_media"),
     )

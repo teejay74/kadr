@@ -7,6 +7,7 @@ from app.schemas.library import CacheFileDeletionResponse
 from app.schemas.media import MediaKind
 from app.schemas.torrents import (
     AddTorrentRequest,
+    EpisodeFileBindingResponse,
     PrefetchTorrentFilesRequest,
     SelectTorrentFileRequest,
     TorrentFile,
@@ -55,6 +56,17 @@ async def torrent_files(
     return await manager.files(task_id)
 
 
+@router.get(
+    "/torrents/{task_id}/episode-files",
+    response_model=list[EpisodeFileBindingResponse],
+)
+async def torrent_episode_files(
+    manager: TorrentManagerDependency,
+    task_id: str,
+) -> list[EpisodeFileBindingResponse]:
+    return await manager.episode_files(task_id)
+
+
 @router.delete(
     "/torrents/{task_id}/files/{file_id}",
     response_model=CacheFileDeletionResponse,
@@ -73,7 +85,14 @@ async def select_torrent_file(
     task_id: str,
     body: SelectTorrentFileRequest,
 ) -> TorrentStatus:
-    return await manager.select_file(task_id, body.file_id)
+    return await manager.select_file(
+        task_id,
+        body.file_id,
+        body.season_number,
+        body.episode_number,
+        body.catalog_episode_id,
+        body.variant_label,
+    )
 
 
 @router.put("/torrents/{task_id}/prefetch", response_model=TorrentStatus)

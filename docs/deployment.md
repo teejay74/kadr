@@ -57,6 +57,81 @@ Validate configuration, back up `kadr.db` with SQLite's online backup method,
 build pinned images, run migrations, verify both health checks, and retain the
 previous application image and database backup for rollback.
 
+### B2 update on the current Debian host
+
+The audited checkout is `/srv/kadr` and the active KADR-only data root is
+`/srv/photo-storage/kadr`. Reconfirm both paths from `.env` before using these
+commands; never substitute a Photodom path.
+
+1. Confirm the checkout is clean, inspect the current revision, validate
+   Compose, and record KADR service health. Do not restart unrelated services:
+
+   ```bash
+   cd /srv/kadr
+   git status --short
+   git rev-parse HEAD
+   docker compose config --quiet
+   docker compose ps
+   ```
+
+2. Create an online SQLite backup while the current API is still running, then
+   validate the backup. The Python command uses only the standard library and
+   does not install a host dependency:
+
+   ```bash
+   install -d -m 0750 /srv/kadr/backups
+   backup=/srv/kadr/backups/kadr-pre-b2-$(date +%Y%m%d-%H%M%S).db
+   python3 -c 'import sqlite3,sys; source=sqlite3.connect(sys.argv[1]); target=sqlite3.connect(sys.argv[2]); source.backup(target); target.close(); source.close()' /srv/photo-storage/kadr/database/kadr.db "$backup"
+   python3 -c 'import sqlite3,sys; result=sqlite3.connect(sys.argv[1]).execute("PRAGMA integrity_check").fetchone(); print(result[0]); raise SystemExit(0 if result[0] == "ok" else 1)' "$backup"
+   ```
+
+3. Fetch the reviewed B2 commit and fast-forward the deployed branch. Stop if
+   the checkout has unexpected local changes:
+
+   ```bash
+   git fetch origin
+   git checkout main
+   git pull --ff-only origin main
+   ```
+
+4. Validate and test the exact checkout in its existing container toolchain:
+
+   ```bash
+   docker compose config --quiet
+   docker compose --profile test run --rm --build api-test pytest -p no:cacheprovider
+   docker compose --profile test run --rm api-test ruff check --no-cache .
+   docker compose --profile test run --rm --build web-test npm test -- --run
+   ```
+
+5. Rebuild and replace only KADR's API and web services. The API entrypoint runs
+   Alembic through `0005_episode_persistence` before Uvicorn starts; Prowlarr,
+   qBittorrent, Photodom, mounts, firewall, and Debian configuration are not
+   changed:
+
+   ```bash
+   docker compose up -d --build api web
+   docker compose ps
+   docker compose logs --tail=200 api web
+   curl -fsS http://127.0.0.1/api/v1/system/health
+   docker compose exec -T api alembic current
+   ```
+
+   The expected Alembic revision is `0005_episode_persistence`, all KADR core
+   services should be healthy, and the public health request should return
+   HTTP 200.
+
+6. Smoke-test an existing movie/library record first, then bind and play two
+   different episodes from one torrent task. Confirm each episode restores its
+   own progress and the old library/history records remain visible. Keep the
+   legacy source panel in place.
+
+If migration or smoke checks fail, save the API logs, stop only `api` and
+`web`, restore the recorded pre-B2 commit and the validated SQLite backup while
+the API is stopped, then rebuild those two KADR services. Do not attempt an
+Alembic downgrade after episode-level rows have been created: the pre-B2 schema
+cannot represent multiple episode rows for one title. Do not use `down -v`,
+delete volumes, or alter the active data root during rollback.
+
 Prowlarr port `9696` is bound to `127.0.0.1`, not the LAN. For remote Debian
 administration, use an SSH tunnel rather than changing the bind address or
 opening a firewall port. Back up `data/prowlarr` together with the KADR database

@@ -34,15 +34,25 @@ play button, cast carousel, season selector, episode list/cards, playback
 progress, and media status into focused components. A series season is loaded
 on demand from the metadata service and the last selected season is remembered
 in browser storage. The legacy source panel remains the only playback workflow
-until the episode-aware backend resolver is implemented and verified. Empty
+until the unified backend playback resolver is implemented and verified. Empty
 integration packages continue to reserve later seams without presenting future
 features as implemented.
 
-Episode catalogue identity is currently metadata-only: series ID, season
-number, episode number, and provider episode ID. It is intentionally not tied
-to a torrent `file_id`. A later migration must model episode-to-file variants,
-allow several episode bindings per torrent task, and make library/history
-records episode-aware without deleting legacy rows.
+Episode catalogue identity is stored independently as series ID, season number,
+episode number, and optional provider episode ID. A separate file-variant row
+identifies a physical `task_id`/`file_id`, while an association table connects
+logical episodes to one or more variants. Therefore one torrent task can bind
+different episodes to different files and one episode can later expose several
+quality variants. The legacy `torrent_tasks.selected_file_id` and selected path
+remain the active playback selection for backward compatibility; they are not
+the episode identity.
+
+Library items optionally reference a logical episode and record the selected
+file ID. Watch history optionally references a logical episode and is scoped by
+`profile_key` (currently `default` unless a caller supplies another profile).
+SQLite partial unique indexes distinguish title-level rows, whose episode ID is
+NULL, from episode-level rows. This avoids SQLite's nullable-unique loophole
+while preserving pre-B2 library and history records.
 
 Source search is explicitly user-triggered. The source service first resolves
 the trusted title and year from the metadata service, then calls Prowlarr over
@@ -94,7 +104,11 @@ The Library Manager accepts only a fully downloaded selected file whose
 canonical source remains beneath the configured KADR download root. It writes
 to a separate library root with hard-link-first/copy fallback and atomic
 publication. Saved-file Range streams use registry keys, so active items
-cannot be deleted. Favorites and watch history are persistent SQLite records.
+cannot be deleted. An episode save is idempotent for its logical episode, while
+legacy film/title saves remain idempotent at media level. Cache deletion protects
+the exact saved task/file and whole-task cleanup protects every task referenced
+by a saved item. Favorites and profile/episode-aware watch history are
+persistent SQLite records.
 
 The series source view uses the trusted metadata season list to issue bounded
 season-specific searches with `S01`-style markers. Every regular season gets a

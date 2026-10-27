@@ -9,7 +9,12 @@ import {
   startCompatiblePlayback,
   updateHistory,
 } from '../services/api'
-import type { MediaKind, PlaybackMode, PlaybackPreparation } from '../types/media'
+import type {
+  EpisodeSummary,
+  MediaKind,
+  PlaybackMode,
+  PlaybackPreparation,
+} from '../types/media'
 
 const props = withDefaults(defineProps<{
   taskId: string
@@ -19,6 +24,8 @@ const props = withDefaults(defineProps<{
   mediaId?: number
   mediaKind?: MediaKind
   posterUrl?: string | null
+  fileId?: number
+  episode?: EpisodeSummary | null
   downloadProgress?: number
   downloadState?: string
   downloadSpeedBytes?: number
@@ -29,6 +36,8 @@ const props = withDefaults(defineProps<{
   mediaId: 0,
   mediaKind: 'movie',
   posterUrl: null,
+  fileId: -1,
+  episode: null,
   downloadProgress: 0,
   downloadState: '',
   downloadSpeedBytes: 0,
@@ -62,7 +71,14 @@ const streamUrl = computed(() => {
   const separator = base.includes('?') ? '&' : '?'
   return `${base}${separator}attempt=${streamAttempt.value}`
 })
-const storageKey = computed(() => `kadr:playback:${props.taskId}`)
+const storageKey = computed(() => {
+  if (props.episode) {
+    return `kadr:playback:${props.mediaId}:s${props.episode.season_number}:e${props.episode.number}`
+  }
+  return props.fileId >= 0
+    ? `kadr:playback:${props.taskId}:f${props.fileId}`
+    : `kadr:playback:${props.taskId}`
+})
 const downloadPercent = computed(() => Math.round(props.downloadProgress * 100))
 const downloadStateLabel = computed(() => {
   if (props.downloadProgress >= 1) return 'файл загружен полностью'
@@ -128,7 +144,7 @@ async function activate(): Promise<void> {
   resumeAt.value = readSavedPosition()
   try {
     const history = props.mediaId > 0
-      ? await getHistoryItem(props.mediaId, props.mediaKind)
+      ? await getHistoryItem(props.mediaId, props.mediaKind, props.episode)
       : null
     if (history && !history.completed) resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
   } catch {
@@ -270,6 +286,11 @@ function savePosition(): void {
     position_seconds: current,
     duration_seconds: Math.floor(video.value?.duration ?? 0),
     completed: false,
+    ...(props.episode ? {
+      season_number: props.episode.season_number,
+      episode_number: props.episode.number,
+      catalog_episode_id: props.episode.id,
+    } : {}),
   }).catch(() => undefined)
 }
 
@@ -294,6 +315,11 @@ function onEnded(): void {
     position_seconds: 0,
     duration_seconds: Math.floor(video.value?.duration ?? 0),
     completed: true,
+    ...(props.episode ? {
+      season_number: props.episode.season_number,
+      episode_number: props.episode.number,
+      catalog_episode_id: props.episode.id,
+    } : {}),
   }).catch(() => undefined)
 }
 

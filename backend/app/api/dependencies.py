@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.repositories.episodes import EpisodeRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.metadata_cache import MetadataCacheRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
@@ -65,6 +66,7 @@ def get_torrent_manager(
         sources,
         TorrentTaskRepository(session),
         settings,
+        EpisodeRepository(session),
     )
 
 
@@ -131,6 +133,7 @@ def get_library_manager(
         QBittorrentClient(request.app.state.torrent_http_client, settings),
         request.app.state.stream_registry,
         settings,
+        EpisodeRepository(session),
     )
 
 

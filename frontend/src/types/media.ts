@@ -127,6 +127,18 @@ export interface TorrentFile {
   is_video: boolean
 }
 
+export interface EpisodeFileBinding {
+  id: string
+  episode_id: string
+  media_id: number
+  season_number: number
+  episode_number: number
+  catalog_episode_id: number | null
+  file_variant_id: string
+  file_id: number
+  variant_label: string | null
+}
+
 export interface TorrentStatus {
   id: string
   media_id: number
@@ -186,9 +198,19 @@ export interface MediaSnapshot {
 export interface LibraryItem extends MediaSnapshot {
   id: string
   task_id: string
+  file_id: number | null
+  episode: PersistedEpisodeIdentity | null
   size_bytes: number
   created_at: string
   stream_url: string
+}
+
+export interface PersistedEpisodeIdentity {
+  id: string
+  media_id: number
+  season_number: number
+  episode_number: number
+  catalog_episode_id: number | null
 }
 
 export interface FavoriteItem extends MediaSnapshot {
@@ -200,6 +222,11 @@ export interface HistoryItem {
   id: string
   media_id: number
   media_kind: MediaKind
+  profile_key: string
+  season_number: number | null
+  episode_number: number | null
+  catalog_episode_id: number | null
+  episode: PersistedEpisodeIdentity | null
   title: string
   poster_url: string | null
   position_seconds: number

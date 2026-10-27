@@ -164,7 +164,13 @@ HDR tone mapping, and every browser/device combination are not yet supported.
 ## Resume position is missing
 
 Stage 6 stores resume state in SQLite and keeps browser-local state as a
-fallback. Check `GET /api/v1/history/{media_id}?media_kind=...` and API logs.
+fallback. For a series episode, check
+`GET /api/v1/history/{media_id}?media_kind=series&season_number=...&episode_number=...`;
+add `profile_key=...` when using a non-default profile. Confirm that
+`GET /api/v1/torrents/{task_id}/episode-files` contains the selected file's
+episode binding. A legacy file without a binding deliberately continues to use
+title/task-level resume state rather than guessing an episode. Check API logs
+for persistence errors.
 Positions under five seconds and completed titles intentionally do not prompt
 for resume.
 

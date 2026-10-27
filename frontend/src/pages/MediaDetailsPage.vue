@@ -223,6 +223,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       :poster-url="media.poster_url"
       :backdrop-url="media.backdrop_url"
       :seasons="media.seasons"
+      :episode="selectedEpisode"
     />
 
     <CastCarousel :cast="media.cast" />

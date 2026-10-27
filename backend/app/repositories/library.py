@@ -1,4 +1,4 @@
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,36 @@ class LibraryRepository:
     async def get_library(self, item_id: str) -> LibraryItem | None:
         return await self._session.get(LibraryItem, item_id)
 
-    async def get_library_by_media(self, media_id: int, media_kind: str) -> LibraryItem | None:
+    async def get_library_by_task_file(
+        self,
+        task_id: str,
+        file_id: int,
+    ) -> LibraryItem | None:
+        result = await self._session.execute(
+            select(LibraryItem).where(
+                LibraryItem.task_id == task_id,
+                or_(LibraryItem.file_id == file_id, LibraryItem.file_id.is_(None)),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def has_library_for_task(self, task_id: str) -> bool:
+        result = await self._session.execute(
+            select(LibraryItem.id).where(LibraryItem.task_id == task_id).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def get_library_by_media(
+        self,
+        media_id: int,
+        media_kind: str,
+        episode_id: str | None = None,
+    ) -> LibraryItem | None:
         result = await self._session.execute(
             select(LibraryItem).where(
                 LibraryItem.media_id == media_id,
                 LibraryItem.media_kind == media_kind,
+                LibraryItem.episode_id == episode_id,
             )
         )
         return result.scalar_one_or_none()
@@ -33,7 +58,11 @@ class LibraryRepository:
             await self._session.commit()
         except IntegrityError:
             await self._session.rollback()
-            existing = await self.get_library_by_media(item.media_id, item.media_kind)
+            existing = await self.get_library_by_media(
+                item.media_id,
+                item.media_kind,
+                item.episode_id,
+            )
             if existing is None:
                 raise
             return existing
@@ -67,17 +96,27 @@ class LibraryRepository:
         await self._session.commit()
         return bool(result.rowcount)
 
-    async def list_history(self) -> list[WatchHistory]:
+    async def list_history(self, profile_key: str = "default") -> list[WatchHistory]:
         result = await self._session.execute(
-            select(WatchHistory).order_by(WatchHistory.updated_at.desc())
+            select(WatchHistory)
+            .where(WatchHistory.profile_key == profile_key)
+            .order_by(WatchHistory.updated_at.desc())
         )
         return list(result.scalars())
 
-    async def get_history(self, media_id: int, media_kind: str) -> WatchHistory | None:
+    async def get_history(
+        self,
+        media_id: int,
+        media_kind: str,
+        profile_key: str = "default",
+        episode_id: str | None = None,
+    ) -> WatchHistory | None:
         result = await self._session.execute(
             select(WatchHistory).where(
                 WatchHistory.media_id == media_id,
                 WatchHistory.media_kind == media_kind,
+                WatchHistory.profile_key == profile_key,
+                WatchHistory.episode_id == episode_id,
             )
         )
         return result.scalar_one_or_none()

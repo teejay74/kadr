@@ -49,8 +49,8 @@ class CacheManager:
             raise CacheDeletionConflictError(
                 "Wait for compatible video preparation to finish before deleting"
             )
-        saved = await self._library.get_library_by_media(task.media_id, task.media_kind)
-        if saved is not None and saved.task_id == task.id:
+        saved = await self._library.get_library_by_task_file(task.id, file_id)
+        if saved is not None:
             raise CacheDeletionConflictError(
                 "This download belongs to a saved library item and is protected"
             )
@@ -111,8 +111,7 @@ class CacheManager:
         for task in await self._tasks.list_older_than(cutoff):
             if await self._registry.is_active(task.id):
                 continue
-            saved = await self._library.get_library_by_media(task.media_id, task.media_kind)
-            if saved is not None and saved.task_id == task.id:
+            if await self._library.has_library_for_task(task.id):
                 continue
             items = await self._client.list(torrent_hash=task.torrent_hash)
             if items:

@@ -6,8 +6,11 @@ import {
   configureTorrentPrefetch,
   deleteTorrentFile,
   getMediaPage,
+  getHistoryItem,
   getSeriesSeason,
   getSources,
+  getTorrentEpisodeFiles,
+  selectTorrentFile,
   startCompatiblePlayback,
 } from './api'
 
@@ -121,6 +124,62 @@ test('replaces the episode prefetch queue with explicit file ids', async () => {
   expect(path).toBe('/api/v1/torrents/task/prefetch')
   expect(init.method).toBe('PUT')
   expect(JSON.parse(String(init.body))).toEqual({ file_ids: [2, 3, 4] })
+})
+
+test('binds a selected torrent file to catalogue episode identity', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await selectTorrentFile('task', 7, {
+    id: 1003,
+    season_number: 2,
+    number: 3,
+    name: 'Episode 3',
+    overview: '',
+    air_date: null,
+    runtime_minutes: 45,
+    still_url: null,
+    rating: 0,
+  })
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/selection')
+  expect(JSON.parse(String(init.body))).toEqual({
+    file_id: 7,
+    season_number: 2,
+    episode_number: 3,
+    catalog_episode_id: 1003,
+  })
+})
+
+test('requests persisted episode-to-file bindings for a torrent task', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getTorrentEpisodeFiles('task/id')
+
+  const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/id/episode-files')
+})
+
+test('requests history for one episode independently', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => null })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getHistoryItem(42, 'series', {
+    id: 1003,
+    season_number: 2,
+    number: 3,
+    name: 'Episode 3',
+    overview: '',
+    air_date: null,
+    runtime_minutes: 45,
+    still_url: null,
+    rating: 0,
+  })
+
+  const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/history/42?media_kind=series&season_number=2&episode_number=3')
 })
 
 test('deletes one downloaded torrent file without deleting the release', async () => {

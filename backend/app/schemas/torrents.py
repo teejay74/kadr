@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.media import MediaKind
 
@@ -13,6 +13,28 @@ class AddTorrentRequest(BaseModel):
 
 class SelectTorrentFileRequest(BaseModel):
     file_id: int = Field(ge=0)
+    season_number: int | None = Field(default=None, ge=0, le=100)
+    episode_number: int | None = Field(default=None, ge=1, le=10_000)
+    catalog_episode_id: int | None = Field(default=None, gt=0)
+    variant_label: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_episode_identity(self) -> "SelectTorrentFileRequest":
+        if (self.season_number is None) != (self.episode_number is None):
+            raise ValueError("season_number and episode_number must be provided together")
+        return self
+
+
+class EpisodeFileBindingResponse(BaseModel):
+    id: str
+    episode_id: str
+    media_id: int = Field(gt=0)
+    season_number: int = Field(ge=0)
+    episode_number: int = Field(ge=1)
+    catalog_episode_id: int | None = Field(default=None, gt=0)
+    file_variant_id: str
+    file_id: int = Field(ge=0)
+    variant_label: str | None = None
 
 
 class PrefetchTorrentFilesRequest(BaseModel):

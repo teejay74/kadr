@@ -9,14 +9,17 @@ import {
   getMediaTorrent,
   getSources,
   getTorrent,
+  getTorrentEpisodeFiles,
   getTorrentFiles,
   selectTorrentFile,
-  saveToLibrary,
+  saveEpisodeToLibrary,
   startTorrent,
   stopTorrent,
 } from '../services/api'
 import type {
+  EpisodeFileBinding,
   MediaKind,
+  EpisodeSummary,
   SeasonSummary,
   SourceRelease,
   SourceSort,
@@ -34,7 +37,15 @@ const props = withDefaults(defineProps<{
   posterUrl?: string | null
   backdropUrl?: string | null
   seasons?: SeasonSummary[]
-}>(), { title: '', originalTitle: '', posterUrl: null, backdropUrl: null, seasons: () => [] })
+  episode?: EpisodeSummary | null
+}>(), {
+  title: '',
+  originalTitle: '',
+  posterUrl: null,
+  backdropUrl: null,
+  seasons: () => [],
+  episode: null,
+})
 const items = ref<SourceRelease[]>([])
 const query = ref('')
 const loading = ref(false)
@@ -44,6 +55,7 @@ const sort = ref<SourceSort>('seeders')
 const order = computed(() => (sort.value === 'title' ? 'asc' : 'desc'))
 const torrent = ref<TorrentStatus | null>(null)
 const torrentFiles = ref<TorrentFile[]>([])
+const episodeFileBindings = ref<EpisodeFileBinding[]>([])
 const torrentBusy = ref(false)
 const torrentError = ref('')
 const torrentNotice = ref('')
@@ -61,6 +73,15 @@ const videoFiles = computed(() => torrentFiles.value.filter((file) => file.is_vi
 const selectedFile = computed(() => videoFiles.value.find(
   (file) => file.id === torrent.value?.selected_file_id,
 ))
+const selectedPlaybackEpisode = computed(() => {
+  if (!props.episode || !selectedFile.value) return null
+  const binding = episodeFileBindings.value.find((item) => (
+    item.file_id === selectedFile.value?.id
+    && item.season_number === props.episode?.season_number
+    && item.episode_number === props.episode?.number
+  ))
+  return binding ? props.episode : null
+})
 const selectedEpisodeLabel = computed(() => selectedFile.value
   ? describeVideoFile(selectedFile.value.name)
   : '')
@@ -393,13 +414,22 @@ async function queuePendingSeason(): Promise<void> {
   torrentError.value = ''
   try {
     const firstFile = candidates[0]
-    torrent.value = await selectTorrentFile(torrent.value.id, firstFile.id)
+    const parsedEpisode = parseEpisodeIdentity(firstFile.name)
+    const matchingEpisode = props.episode
+      && parsedEpisode?.season === props.episode.season_number
+      && parsedEpisode.episode === props.episode.number
+      ? props.episode
+      : null
+    torrent.value = matchingEpisode
+      ? await selectTorrentFile(torrent.value.id, firstFile.id, matchingEpisode)
+      : await selectTorrentFile(torrent.value.id, firstFile.id)
     const remainingIds = candidates
       .filter((file) => file.id !== firstFile.id && file.progress < 1)
       .map((file) => file.id)
     torrent.value = await configureTorrentPrefetch(torrent.value.id, remainingIds)
     pendingSeasonDownload.value = null
     pendingSeasonRequiresMatch.value = false
+    await refreshEpisodeBindings()
     await refreshFiles()
     torrentNotice.value = `Сезон ${seasonNumber} добавлен в загрузку. Эпизодов: ${candidates.length}.`
   } catch (caught) {
@@ -408,6 +438,18 @@ async function queuePendingSeason(): Promise<void> {
     torrentError.value = friendlyApiError(caught)
   } finally {
     seasonQueueBusy.value = false
+  }
+}
+
+async function refreshEpisodeBindings(): Promise<void> {
+  if (!torrent.value || props.kind !== 'series') {
+    episodeFileBindings.value = []
+    return
+  }
+  try {
+    episodeFileBindings.value = await getTorrentEpisodeFiles(torrent.value.id)
+  } catch {
+    episodeFileBindings.value = []
   }
 }
 
@@ -435,7 +477,10 @@ async function chooseFileAndStart(file: TorrentFile): Promise<void> {
     deletedFileIds.value = nextDeleted
   }
   try {
-    torrent.value = await selectTorrentFile(torrent.value.id, file.id)
+    torrent.value = props.episode
+      ? await selectTorrentFile(torrent.value.id, file.id, props.episode)
+      : await selectTorrentFile(torrent.value.id, file.id)
+    await refreshEpisodeBindings()
     if (file.progress < 1) torrent.value = await startTorrent(torrent.value.id)
     await refreshFiles()
     scheduleTorrentRefresh()
@@ -534,14 +579,14 @@ async function saveSelectedVideo(): Promise<void> {
   torrentBusy.value = true
   torrentError.value = ''
   try {
-    await saveToLibrary(torrent.value.id, {
+    await saveEpisodeToLibrary(torrent.value.id, {
       media_id: props.mediaId,
       media_kind: props.kind,
       title: props.title,
       original_title: props.originalTitle,
       poster_url: props.posterUrl,
       backdrop_url: props.backdropUrl,
-    })
+    }, selectedPlaybackEpisode.value)
     librarySaved.value = true
   } catch (caught) {
     torrentError.value = friendlyApiError(caught)
@@ -571,6 +616,7 @@ function chooseAnotherSource(): void {
   dismissTask()
   torrent.value = null
   torrentFiles.value = []
+  episodeFileBindings.value = []
   torrentError.value = ''
   torrentNotice.value = ''
   deleteCandidateId.value = null
@@ -595,6 +641,7 @@ async function restoreTask(): Promise<void> {
       : await getMediaTorrent(props.mediaId, props.kind)
     rememberTask(torrent.value.id)
     await refreshFiles()
+    await refreshEpisodeBindings()
     scheduleTorrentRefresh()
   } catch {
     torrent.value = null
@@ -604,6 +651,7 @@ async function restoreTask(): Promise<void> {
         torrent.value = await getMediaTorrent(props.mediaId, props.kind)
         rememberTask(torrent.value.id)
         await refreshFiles()
+        await refreshEpisodeBindings()
         scheduleTorrentRefresh()
       } catch {
         dismissTask()
@@ -657,6 +705,7 @@ watch(taskStorageKey, () => {
   clearTorrentTimer()
   torrent.value = null
   torrentFiles.value = []
+  episodeFileBindings.value = []
   torrentError.value = ''
   torrentNotice.value = ''
   deleteCandidateId.value = null
@@ -1017,6 +1066,8 @@ onBeforeUnmount(clearTorrentTimer)
           :media-id="mediaId"
           :media-kind="kind"
           :poster-url="posterUrl"
+          :file-id="torrent.selected_file_id ?? undefined"
+          :episode="selectedPlaybackEpisode"
           :download-progress="selectedFile?.progress ?? torrent.progress"
           :download-state="torrent.state"
           :download-speed-bytes="torrent.download_speed_bytes"

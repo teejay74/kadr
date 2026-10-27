@@ -15,6 +15,8 @@ beforeEach(() => {
   vi.mocked(api.getLibrary).mockResolvedValue([{
     id: 'saved-1',
     task_id: 'task-1',
+    file_id: 0,
+    episode: null,
     media_id: 42,
     media_kind: 'movie',
     title: 'Тестовый фильм',

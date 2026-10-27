@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
@@ -8,8 +8,10 @@ const api = vi.hoisted(() => ({
   getSources: vi.fn(),
   getMediaTorrent: vi.fn(),
   getTorrent: vi.fn(),
+  getTorrentEpisodeFiles: vi.fn(),
   getTorrentFiles: vi.fn(),
   selectTorrentFile: vi.fn(),
+  saveEpisodeToLibrary: vi.fn(),
   startTorrent: vi.fn(),
   stopTorrent: vi.fn(),
   friendlyApiError: vi.fn(() => 'Ошибка поиска'),
@@ -71,6 +73,7 @@ beforeEach(() => {
   })
   api.addTorrent.mockResolvedValue(stoppedTorrent)
   api.getMediaTorrent.mockRejectedValue(new Error('No current task'))
+  api.getTorrentEpisodeFiles.mockResolvedValue([])
   api.getTorrentFiles.mockResolvedValue([])
 })
 
@@ -461,7 +464,9 @@ test('queues several following episodes without changing the selected episode', 
 
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
 
-  await fireEvent.click(await screen.findByRole('button', { name: 'Скачать следующие 2' }))
+  const nextEpisodesButton = await screen.findByRole('button', { name: 'Скачать следующие 2' })
+  await waitFor(() => expect(nextEpisodesButton.hasAttribute('disabled')).toBe(false))
+  await fireEvent.click(nextEpisodesButton)
   expect(api.configureTorrentPrefetch).toHaveBeenCalledWith('task-id', [1, 2])
   expect(await screen.findByText('Загружаются заранее')).toBeTruthy()
   expect(screen.getByText('Сезон 1 · Серия 2')).toBeTruthy()
@@ -525,9 +530,11 @@ test('downloads every missing episode from the selected season only', async () =
 
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
 
-  await fireEvent.click(await screen.findByRole('button', {
+  const seasonButton = await screen.findByRole('button', {
     name: 'Скачать сезон 1 целиком',
-  }))
+  })
+  await waitFor(() => expect(seasonButton.hasAttribute('disabled')).toBe(false))
+  await fireEvent.click(seasonButton)
 
   expect(api.configureTorrentPrefetch).toHaveBeenCalledWith('task-id', [0, 2])
   expect(await screen.findByText('Сезон 1 добавлен в загрузку. Эпизодов в очереди: 2.')).toBeTruthy()
@@ -561,7 +568,9 @@ test('requires confirmation and deletes one downloaded episode', async () => {
 
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
 
-  await fireEvent.click(await screen.findByRole('button', { name: 'Удалить файл' }))
+  const deleteButton = await screen.findByRole('button', { name: 'Удалить файл' })
+  await waitFor(() => expect(deleteButton.hasAttribute('disabled')).toBe(false))
+  await fireEvent.click(deleteButton)
   expect(api.deleteTorrentFile).not.toHaveBeenCalled()
   await fireEvent.click(screen.getByRole('button', { name: 'Да, удалить' }))
 

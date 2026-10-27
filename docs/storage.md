@@ -6,6 +6,17 @@ timestamps. The API container
 mounts that directory at `/data`; the location and database URL are
 configurable. SQLite enables foreign keys, WAL, and a five-second busy timeout.
 
+Migration `0005_episode_persistence` adds logical `media_episodes`, physical
+`torrent_file_variants`, and their many-to-many `episode_file_bindings`. It
+rebuilds the SQLite library/history tables through Alembic batch operations,
+keeps all existing rows, assigns legacy history to profile `default`, and
+backfills `library_items.file_id` from the corresponding legacy
+`torrent_tasks.selected_file_id` where available. Partial unique indexes enforce
+one title-level row when `episode_id IS NULL` and independent rows per episode
+when it is not NULL; profile identity is included for history. This behavior is
+covered by a real `0004` to `0005` SQLite migration test, including duplicate
+NULL-key cases.
+
 Use WAL only on a compatible local filesystem (the planned Debian ext4 storage
 is appropriate after verification). Backups must use SQLite's online backup
 mechanism or a coordinated checkpoint/copy, not an arbitrary live-file copy.

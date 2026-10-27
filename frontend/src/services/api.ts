@@ -1,6 +1,8 @@
 import type {
   CatalogQuery,
   CacheFileDeletion,
+  EpisodeFileBinding,
+  EpisodeSummary,
   Genre,
   FavoriteItem,
   HistoryItem,
@@ -65,9 +67,25 @@ export function getLibrary(): Promise<LibraryItem[]> {
 }
 
 export function saveToLibrary(taskId: string, media: MediaSnapshot): Promise<LibraryItem> {
+  return saveEpisodeToLibrary(taskId, media)
+}
+
+export function saveEpisodeToLibrary(
+  taskId: string,
+  media: MediaSnapshot,
+  episode?: EpisodeSummary | null,
+): Promise<LibraryItem> {
   return request<LibraryItem>('/api/v1/library', {
     method: 'POST',
-    body: JSON.stringify({ task_id: taskId, ...media }),
+    body: JSON.stringify({
+      task_id: taskId,
+      ...media,
+      ...(episode ? {
+        season_number: episode.season_number,
+        episode_number: episode.number,
+        catalog_episode_id: episode.id,
+      } : {}),
+    }),
   })
 }
 
@@ -90,14 +108,30 @@ export function deleteFavorite(kind: MediaKind, mediaId: number): Promise<void> 
   return request<void>(`/api/v1/favorites/${kind}/${mediaId}`, { method: 'DELETE' })
 }
 
-export function getHistoryItem(mediaId: number, kind: MediaKind): Promise<HistoryItem | null> {
+export function getHistoryItem(
+  mediaId: number,
+  kind: MediaKind,
+  episode?: EpisodeSummary | null,
+): Promise<HistoryItem | null> {
   const params = new URLSearchParams({ media_kind: kind })
+  if (episode) {
+    params.set('season_number', String(episode.season_number))
+    params.set('episode_number', String(episode.number))
+  }
   return request<HistoryItem | null>(`/api/v1/history/${mediaId}?${params}`)
 }
 
+export type HistoryUpdatePayload = Pick<
+  HistoryItem,
+  'media_kind' | 'title' | 'poster_url' | 'position_seconds' | 'duration_seconds' | 'completed'
+> & Partial<Pick<
+  HistoryItem,
+  'profile_key' | 'season_number' | 'episode_number' | 'catalog_episode_id'
+>>
+
 export function updateHistory(
   mediaId: number,
-  payload: Omit<HistoryItem, 'id' | 'media_id' | 'updated_at'>,
+  payload: HistoryUpdatePayload,
 ): Promise<HistoryItem> {
   return request<HistoryItem>(`/api/v1/history/${mediaId}`, {
     method: 'PUT',
@@ -135,6 +169,10 @@ export function getTorrentFiles(taskId: string): Promise<TorrentFile[]> {
   return request<TorrentFile[]>(`/api/v1/torrents/${taskId}/files`)
 }
 
+export function getTorrentEpisodeFiles(taskId: string): Promise<EpisodeFileBinding[]> {
+  return request<EpisodeFileBinding[]>(`/api/v1/torrents/${taskId}/episode-files`)
+}
+
 export function deleteTorrentFile(taskId: string, fileId: number): Promise<CacheFileDeletion> {
   return request<CacheFileDeletion>(
     `/api/v1/torrents/${encodeURIComponent(taskId)}/files/${fileId}`,
@@ -142,10 +180,21 @@ export function deleteTorrentFile(taskId: string, fileId: number): Promise<Cache
   )
 }
 
-export function selectTorrentFile(taskId: string, fileId: number): Promise<TorrentStatus> {
+export function selectTorrentFile(
+  taskId: string,
+  fileId: number,
+  episode?: EpisodeSummary | null,
+): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}/selection`, {
     method: 'PUT',
-    body: JSON.stringify({ file_id: fileId }),
+    body: JSON.stringify({
+      file_id: fileId,
+      ...(episode ? {
+        season_number: episode.season_number,
+        episode_number: episode.number,
+        catalog_episode_id: episode.id,
+      } : {}),
+    }),
   })
 }
 

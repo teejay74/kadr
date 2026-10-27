@@ -173,8 +173,9 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 | `GET /media/{id}/torrents?media_kind=movie` | Restore the latest task for this title |
 | `GET /torrents/{task_id}` | Read real progress, speed, peers, and state |
 | `GET /torrents/{task_id}/files` | List torrent files and priorities |
+| `GET /torrents/{task_id}/episode-files` | List persisted logical episode/file-ID bindings |
 | `DELETE /torrents/{task_id}/files/{file_id}` | Delete one completed cached video |
-| `PUT /torrents/{task_id}/selection` | Prioritize one supported video |
+| `PUT /torrents/{task_id}/selection` | Prioritize one supported video and optionally bind an episode |
 | `PUT /torrents/{task_id}/prefetch` | Replace the background episode prefetch queue |
 | `POST /torrents/{task_id}/start` | Start after selection and safety checks |
 | `POST /torrents/{task_id}/stop` | Stop without deleting data |
@@ -183,7 +184,18 @@ The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`.
 For a release found by a season-specific search it also includes
 `"season_number":2`; this makes opaque source resolution repeat the same
 search.
-selection uses `{"file_id":0}`. Episode prefetch uses
+Selection keeps the backward-compatible `{"file_id":0}` form. For a series,
+it can also persist logical identity with
+`{"file_id":0,"season_number":1,"episode_number":2,"catalog_episode_id":123}`;
+season and episode numbers must be supplied together. An optional
+`variant_label` identifies a quality label without making it part of logical
+episode identity. Repeated bindings are idempotent, different files can bind to
+different episodes in one task, and several file variants can bind to the same
+episode. `selected_file_id` remains the current legacy playback selection.
+The episode-files response contains logical and opaque variant IDs plus the
+qBittorrent file ID, but never returns a server filesystem path.
+
+Episode prefetch uses
 `{"file_ids":[1,2,3]}` (up to 100 supported video files, including an explicitly
 selected whole season); an empty list cancels
 all queued files except the episode currently selected for playback. Responses include task ID, media identity,
@@ -269,17 +281,26 @@ returns `playback_artifact_not_ready` (409).
 | `GET /favorites` | List favorites |
 | `POST /favorites` | Add an idempotent favorite snapshot |
 | `DELETE /favorites/{kind}/{media_id}` | Remove a favorite |
-| `GET /history` | List server-side watch history |
-| `GET /history/{media_id}?media_kind=movie` | Read one resume position |
-| `PUT /history/{media_id}` | Upsert position, duration, and completion |
+| `GET /history?profile_key=default` | List one profile's server-side watch history |
+| `GET /history/{media_id}?media_kind=movie` | Read one title or episode resume position |
+| `PUT /history/{media_id}` | Upsert profile/title-or-episode position, duration, and completion |
 | `POST /cache/cleanup` | Run the guarded TTL cleanup immediately |
 | `GET /system/storage` | Report library/cache counts, bytes, and free space |
 
-Saving requires a task whose selected video is fully downloaded. KADR creates
+Saving requires a task whose selected video is fully downloaded. A series save
+may add `season_number`, `episode_number`, and optional `catalog_episode_id` to
+the existing media snapshot body. The response includes `file_id` and the
+logical `episode` object when applicable. KADR creates
 an atomic hard link when possible and otherwise copies to the configured
 library root. Repeated or concurrent save requests are idempotent and return
-the existing library item. API responses never expose filesystem paths. Library streaming
+the existing title/episode library item. API responses never expose filesystem paths. Library streaming
 supports the same single-range `200`/`206`/`416` contract. Deleting an active
 library stream returns `409 library_conflict`; unsafe or unavailable storage
 returns `507 library_storage`.
+
+History bodies accept `profile_key` (default `default`) and, for a series,
+paired `season_number`/`episode_number` plus optional `catalog_episode_id`.
+Episode reads use the same season and episode query parameters. Title-level and
+episode-level history rows remain separate, as do rows belonging to different
+profiles.
 

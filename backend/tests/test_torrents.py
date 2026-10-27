@@ -10,7 +10,7 @@ from app.api.dependencies import get_torrent_manager
 from app.core.config import Settings
 from app.main import app
 from app.models.torrent_task import TorrentTask
-from app.schemas.torrents import PrefetchTorrentFilesRequest
+from app.schemas.torrents import PrefetchTorrentFilesRequest, SelectTorrentFileRequest
 from app.services.sources.search import ResolvedSource
 from app.services.torrents.exceptions import TorrentFileError, TorrentStorageError
 from app.services.torrents.manager import TorrentManager
@@ -173,6 +173,38 @@ async def test_torrent_manager_rejects_non_video_selection() -> None:
         await manager.select_file(task.id, 0)
 
 
+async def test_torrent_manager_keeps_legacy_selection_and_binds_episode_file() -> None:
+    class FakeEpisodes:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+
+        async def bind_file(self, *args: object) -> None:
+            self.calls.append(args)
+
+    client = FakeTorrentClient()
+    repository = FakeRepository()
+    episodes = FakeEpisodes()
+    manager = TorrentManager(
+        client,
+        FakeSources(),
+        repository,
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+        episodes,  # type: ignore[arg-type]
+    )
+    task = await manager.add(42, "series", "a" * 24)
+
+    selected = await manager.select_file(task.id, 1, 2, 3, 1003, "1080p")
+
+    assert selected.selected_file_id == 1
+    assert repository.tasks[task.id].selected_file_id == 1
+    assert episodes.calls[0][1:] == (1, "Sintel.mp4", 2, 3, 1003, "1080p")
+
+
 async def test_torrent_manager_prefetches_multiple_episodes_and_can_cancel() -> None:
     class SeriesTorrentClient(FakeTorrentClient):
         async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
@@ -254,6 +286,19 @@ def test_whole_season_prefetch_request_accepts_up_to_one_hundred_files() -> None
 
     with pytest.raises(ValueError):
         PrefetchTorrentFilesRequest(file_ids=list(range(101)))
+
+
+def test_episode_file_selection_requires_complete_identity() -> None:
+    request = SelectTorrentFileRequest(
+        file_id=3,
+        season_number=1,
+        episode_number=2,
+        catalog_episode_id=1002,
+    )
+    assert request.episode_number == 2
+
+    with pytest.raises(ValueError):
+        SelectTorrentFileRequest(file_id=3, season_number=1)
 
 
 async def test_switching_episode_keeps_only_the_forward_prefetch_queue() -> None:

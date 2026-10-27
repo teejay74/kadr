@@ -1,7 +1,7 @@
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Header, Path, Query, Response, status
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Response, status
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
@@ -92,8 +92,11 @@ async def remove_favorite(
 
 
 @router.get("/history", response_model=list[HistoryResponse])
-async def list_history(manager: LibraryManagerDependency) -> list[HistoryResponse]:
-    return await manager.list_history()
+async def list_history(
+    manager: LibraryManagerDependency,
+    profile_key: Annotated[str, Query(min_length=1, max_length=64)] = "default",
+) -> list[HistoryResponse]:
+    return await manager.list_history(profile_key)
 
 
 @router.get("/history/{media_id}", response_model=HistoryResponse | None)
@@ -101,8 +104,22 @@ async def get_history(
     manager: LibraryManagerDependency,
     media_id: Annotated[int, Path(gt=0)],
     media_kind: Annotated[MediaKind, Query()],
+    profile_key: Annotated[str, Query(min_length=1, max_length=64)] = "default",
+    season_number: Annotated[int | None, Query(ge=0, le=100)] = None,
+    episode_number: Annotated[int | None, Query(ge=1, le=10_000)] = None,
 ) -> HistoryResponse | None:
-    return await manager.get_history(media_id, media_kind)
+    if (season_number is None) != (episode_number is None):
+        raise HTTPException(
+            status_code=422,
+            detail="season_number and episode_number must be provided together",
+        )
+    return await manager.get_history(
+        media_id,
+        media_kind,
+        profile_key,
+        season_number,
+        episode_number,
+    )
 
 
 @router.put("/history/{media_id}", response_model=HistoryResponse)
