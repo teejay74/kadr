@@ -2,15 +2,19 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import {
   addTorrent,
+  analyzeEpisodeMatches,
   ApiError,
   configureTorrentPrefetch,
+  confirmEpisodeMatches,
   deleteTorrentFile,
   getMediaPage,
   getHistoryItem,
   getSeriesSeason,
   getSources,
   getTorrentEpisodeFiles,
+  prefetchNextEpisode,
   resolvePlayback,
+  resolveNextEpisode,
   selectTorrentFile,
   startCompatiblePlayback,
 } from './api'
@@ -163,6 +167,51 @@ test('requests persisted episode-to-file bindings for a torrent task', async () 
   expect(path).toBe('/api/v1/torrents/task/id/episode-files')
 })
 
+test('requests server-side episode matching for a torrent task', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ task_id: 'task/id', files: [], requires_confirmation: false }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await analyzeEpisodeMatches('task/id')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task%2Fid/episode-matches/analyze')
+  expect(init.method).toBe('POST')
+})
+
+test('confirms multiple episodes for one torrent file', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ task_id: 'task', files: [], requires_confirmation: false }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const episodes = [
+    {
+      season_number: 1,
+      episode_number: 1,
+      catalog_episode_id: 101,
+      name: 'Part one',
+      runtime_minutes: 45,
+    },
+    {
+      season_number: 1,
+      episode_number: 2,
+      catalog_episode_id: 102,
+      name: 'Part two',
+      runtime_minutes: 46,
+    },
+  ]
+
+  await confirmEpisodeMatches('task', [{ file_id: 7, episodes }])
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/episode-matches')
+  expect(init.method).toBe('PUT')
+  expect(JSON.parse(String(init.body))).toEqual({ mappings: [{ file_id: 7, episodes }] })
+})
+
 test('requests history for one episode independently', async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => null })
   vi.stubGlobal('fetch', fetchMock)
@@ -212,6 +261,42 @@ test('resolves episode playback through the unified backend contract', async () 
     season_number: 2,
     episode_number: 3,
     catalog_episode_id: 1003,
+  })
+})
+
+test('sends the current source identity when resolving and prefetching next episode', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ status: 'buffering', prefetched: true }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const current = {
+    id: 1003,
+    season_number: 2,
+    number: 3,
+    name: 'Episode 3',
+    overview: '',
+    air_date: null,
+    runtime_minutes: 45,
+    still_url: null,
+    rating: 0,
+  }
+
+  await prefetchNextEpisode(42, current, 'task-id', 7)
+  await resolveNextEpisode(42, current, 'task-id', 7)
+
+  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+    '/api/v1/playback/next/prefetch',
+    '/api/v1/playback/next',
+  ])
+  expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+    media_id: 42,
+    season_number: 2,
+    episode_number: 3,
+    catalog_episode_id: 1003,
+    profile_key: 'default',
+    current_task_id: 'task-id',
+    current_file_id: 7,
   })
 })
 

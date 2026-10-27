@@ -65,6 +65,10 @@ class PlaybackResolver:
             if episode is None:
                 return self._missing(resume_position, stale_source)
             candidates = await self._episodes.list_episode_variants(episode.id)
+            if request.preferred_task_id is not None:
+                candidates.sort(
+                    key=lambda item: item[1].id != request.preferred_task_id
+                )
             if not candidates:
                 return self._missing(resume_position, stale_source)
             for variant, task in candidates:
@@ -82,12 +86,28 @@ class PlaybackResolver:
             request.media_id,
             request.media_kind,
         )
-        if task is None or task.selected_file_id is None:
+        if task is None:
+            return self._missing(resume_position, stale_source)
+        file_id = task.selected_file_id
+        if file_id is None:
+            try:
+                selected = await self._torrent_manager.select_preferred_movie_file(task.id)
+            except (
+                TorrentFileError,
+                TorrentLimitError,
+                TorrentNotConfiguredError,
+                TorrentNotFoundError,
+                TorrentStorageError,
+                TorrentUnavailableError,
+            ):
+                return self._missing(resume_position, stale_source)
+            file_id = selected.selected_file_id
+        if file_id is None:
             return self._missing(resume_position, stale_source)
         result = await self._torrent(
             request,
             task,
-            task.selected_file_id,
+            file_id,
             resume_position,
         )
         return result or self._unavailable(resume_position)

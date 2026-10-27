@@ -10,10 +10,12 @@ from app.repositories.library import LibraryRepository
 from app.repositories.metadata_cache import MetadataCacheRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.services.cache.manager import CacheManager
+from app.services.episodes.matcher import EpisodeMatcher
 from app.services.library.manager import LibraryManager
 from app.services.metadata.catalog import CatalogService
 from app.services.metadata.tmdb import TMDBClient
 from app.services.playback.manager import CompatibilityManager
+from app.services.playback.navigation import EpisodeNavigationService
 from app.services.playback.resolver import PlaybackResolver
 from app.services.playback.service import PlaybackPreparationService
 from app.services.sources.prowlarr import ProwlarrClient
@@ -72,6 +74,22 @@ def get_torrent_manager(
 
 
 TorrentManagerDependency = Annotated[TorrentManager, Depends(get_torrent_manager)]
+
+
+def get_episode_matcher(
+    catalog: CatalogServiceDependency,
+    torrents: TorrentManagerDependency,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EpisodeMatcher:
+    return EpisodeMatcher(
+        catalog,
+        torrents,
+        TorrentTaskRepository(session),
+        EpisodeRepository(session),
+    )
+
+
+EpisodeMatcherDependency = Annotated[EpisodeMatcher, Depends(get_episode_matcher)]
 
 
 def get_streaming_manager(
@@ -160,6 +178,26 @@ def get_playback_resolver(
 PlaybackResolverDependency = Annotated[
     PlaybackResolver,
     Depends(get_playback_resolver),
+]
+
+
+def get_episode_navigation_service(
+    catalog: CatalogServiceDependency,
+    resolver: PlaybackResolverDependency,
+    torrents: TorrentManagerDependency,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EpisodeNavigationService:
+    return EpisodeNavigationService(
+        catalog,
+        resolver,
+        EpisodeRepository(session),
+        torrents,
+    )
+
+
+EpisodeNavigationServiceDependency = Annotated[
+    EpisodeNavigationService,
+    Depends(get_episode_navigation_service),
 ]
 
 

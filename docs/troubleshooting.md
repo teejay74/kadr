@@ -135,16 +135,53 @@ qBittorrent 5.x. Opening the player reapplies the safe priority automatically.
 ## “Выберите источник” or “Сохранённый источник сейчас недоступен” appears
 
 The unified resolver returns `source_required` when no saved item or persisted
-torrent-file binding exists. Use the retained source panel to choose one. For a
-series, confirm the selected file was bound to the exact episode with
-`GET /api/v1/torrents/{task_id}/episode-files`; KADR deliberately does not guess
-the episode from its filename.
+torrent-file binding exists. KADR opens the source-selection modal; retry its
+search if the indexer was temporarily unavailable. The retained source panel
+remains available as a manual fallback during C2 acceptance. For a series,
+confirm the selected file was bound to the exact episode with
+`GET /api/v1/torrents/{task_id}/episode-files`. The resolver itself never
+guesses an episode: the separate Episode Matcher first validates filenames
+against TMDB and persists only unique exact matches.
 
 `unavailable` means a saved or bound source exists but its file, torrent task,
 storage, or qBittorrent state cannot currently be used. Check
 `docker compose logs --tail=200 api`, the relevant task status, and KADR-owned
 mount permissions. Choose another source if the old one is gone. Do not repair
 this by exposing internal services or making unrelated host paths writable.
+
+If a chosen magnet is registered but its file list is not ready within the
+bounded modal wait, KADR keeps the modal open and asks you to retry after a few
+seconds. It does not poll indefinitely or start a whole season. For a film,
+the backend chooses the largest safe supported video; for a series, Episode
+Matcher must confirm the requested episode before the unified resolver starts
+playback.
+
+## Episode Matcher asks for confirmation or cannot save a match
+
+`probable` means the path or duration is useful but not strong enough for safe
+automatic binding. `ambiguous` means several candidates, a conflict, missing
+TMDB evidence, or an unsafe path. Select every episode actually contained in
+the file and save once; KADR reuses that torrent/file mapping after restart.
+Combined files can map to several episodes, but without stored time boundaries
+KADR cannot jump precisely to the second episode. If TMDB is unavailable,
+retry after metadata access is restored; do not bypass validation by editing
+SQLite. Absolute paths, `..`, control characters, and Windows drive paths are
+rejected rather than offered for confirmation.
+
+## The next-episode overlay is missing or cannot continue
+
+KADR asks the backend for catalog order only after a series episode ends. If
+TMDB is unavailable, inspect API logs and restore metadata access. A
+`source_required` result means Episode Matcher has no confirmed file binding
+for that next logical episode; choose a source in the normal modal. A combined
+file warning is intentional: without stored time boundaries KADR cannot know
+where the second episode begins, so it does not restart the same file and call
+that an exact transition.
+
+Near-end prefetch is opportunistic and limited to one confirmed next file in
+the current torrent task. Failure does not interrupt current playback. If it
+does not start, verify the next episode binding and qBittorrent availability;
+do not enable a whole season as a workaround.
 
 ## Player reports that the video stream cannot be opened
 

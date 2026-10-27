@@ -104,7 +104,7 @@ commands; never substitute a Photodom path.
    ```
 
 5. Rebuild and replace only KADR's API and web services. The API entrypoint runs
-   Alembic through `0005_episode_persistence` before Uvicorn starts; Prowlarr,
+   Alembic through `0006_episode_matcher` before Uvicorn starts; Prowlarr,
    qBittorrent, Photodom, mounts, firewall, and Debian configuration are not
    changed:
 
@@ -116,14 +116,20 @@ commands; never substitute a Photodom path.
    docker compose exec -T api alembic current
    ```
 
-   The expected Alembic revision is `0005_episode_persistence`, all KADR core
+   The expected Alembic revision is `0006_episode_matcher`, all KADR core
    services should be healthy, and the public health request should return
    HTTP 200.
 
 6. Smoke-test an existing movie/library record first, then bind and play two
-   different episodes from one torrent task. Confirm each episode restores its
-   own progress and the old library/history records remain visible. Keep the
-   legacy source panel in place.
+   different episodes from one torrent task. Confirm one standard exact name is
+   mapped automatically and one ambiguous or combined file opens the
+   confirmation dialog, then reload and verify the choice is remembered.
+   Verify a movie with no source opens `SourceSelector`, hides the raw release
+   title until “Технические подробности” is expanded, and reaches the shared
+   player after selection. Repeat with an unavailable source and the explicit
+   “Другой источник” menu action.
+   Confirm each episode restores its own progress and the old library/history
+   records remain visible. Keep the legacy source panel in place.
 
 If migration or smoke checks fail, save the API logs, stop only `api` and
 `web`, restore the recorded pre-B2 commit and the validated SQLite backup while

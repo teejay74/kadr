@@ -15,6 +15,7 @@ withDefaults(defineProps<{
 defineEmits<{
   play: []
   toggleFavorite: []
+  changeSource: []
 }>()
 </script>
 
@@ -38,5 +39,13 @@ defineEmits<{
     >
       Трейлер ↗
     </a>
+    <details class="media-actions-menu">
+      <summary class="button secondary focus-ring" aria-label="Другие действия">⋯</summary>
+      <div>
+        <button class="button secondary focus-ring" type="button" @click="$emit('changeSource')">
+          Другой источник
+        </button>
+      </div>
+    </details>
   </div>
 </template>

@@ -3,7 +3,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
   addTorrent: vi.fn(),
+  analyzeEpisodeMatches: vi.fn(),
   configureTorrentPrefetch: vi.fn(),
+  confirmEpisodeMatches: vi.fn(),
   deleteTorrentFile: vi.fn(),
   getSources: vi.fn(),
   getMediaTorrent: vi.fn(),
@@ -75,6 +77,12 @@ beforeEach(() => {
   api.getMediaTorrent.mockRejectedValue(new Error('No current task'))
   api.getTorrentEpisodeFiles.mockResolvedValue([])
   api.getTorrentFiles.mockResolvedValue([])
+  api.analyzeEpisodeMatches.mockResolvedValue({
+    task_id: 'task-id',
+    metadata_available: true,
+    files: [],
+    requires_confirmation: false,
+  })
 })
 
 afterEach(cleanup)
@@ -472,10 +480,14 @@ test('queues several following episodes without changing the selected episode', 
   expect(screen.getByText('Сезон 1 · Серия 2')).toBeTruthy()
   expect(screen.getByText('Сезон 1 · Серия 3')).toBeTruthy()
 
-  await fireEvent.click(screen.getByRole('button', {
+  const cancelPrefetchButton = screen.getByRole('button', {
     name: 'Отменить загрузку следующих серий',
-  }))
-  expect(api.configureTorrentPrefetch).toHaveBeenLastCalledWith('task-id', [])
+  })
+  await waitFor(() => expect(cancelPrefetchButton.hasAttribute('disabled')).toBe(false))
+  await fireEvent.click(cancelPrefetchButton)
+  await waitFor(() => {
+    expect(api.configureTorrentPrefetch).toHaveBeenLastCalledWith('task-id', [])
+  })
 })
 
 test('downloads every missing episode from the selected season only', async () => {
@@ -631,4 +643,62 @@ test('finds the latest server task when this browser has not stored its id', asy
   expect(await screen.findByText('Загружаем видео')).toBeTruthy()
   expect(api.getMediaTorrent).toHaveBeenCalledWith(42, 'movie')
   expect(localStorage.getItem('kadr:torrent:movie:42')).toBe('task-id')
+})
+
+test('opens matcher confirmation for an ambiguous series file and saves the choice', async () => {
+  api.getMediaTorrent.mockResolvedValue({
+    ...stoppedTorrent,
+    media_kind: 'series',
+    selected_file_id: null,
+    selected_file_path: null,
+  })
+  api.getTorrentFiles.mockResolvedValue([{
+    id: 7,
+    name: 'Season 1/Combined Feature.mkv',
+    size_bytes: 2_000,
+    progress: 0,
+    priority: 0,
+    is_video: true,
+    duration_seconds: null,
+  }])
+  const matchFile = {
+    file_id: 7,
+    file_path: 'Season 1/Combined Feature.mkv',
+    confidence: 'ambiguous' as const,
+    episodes: [{
+      season_number: 1,
+      episode_number: 1,
+      catalog_episode_id: 101,
+      name: 'Начало',
+      runtime_minutes: 45,
+    }],
+    alternatives: [],
+    reasons: ['Требуется подтверждение.'],
+    confirmed: false,
+    confirmation: null,
+    unsafe: false,
+    duration_seconds: null,
+  }
+  api.analyzeEpisodeMatches.mockResolvedValue({
+    task_id: 'task-id',
+    metadata_available: true,
+    files: [matchFile],
+    requires_confirmation: true,
+  })
+  api.confirmEpisodeMatches.mockResolvedValue({
+    task_id: 'task-id',
+    metadata_available: true,
+    files: [{ ...matchFile, confirmed: true, confirmation: 'manual' }],
+    requires_confirmation: false,
+  })
+
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
+
+  expect(await screen.findByRole('dialog', { name: 'Проверьте соответствия серий' })).toBeTruthy()
+  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить соответствия' }))
+
+  await waitFor(() => expect(api.confirmEpisodeMatches).toHaveBeenCalledWith('task-id', [{
+    file_id: 7,
+    episodes: matchFile.episodes,
+  }]))
 })

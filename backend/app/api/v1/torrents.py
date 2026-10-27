@@ -2,7 +2,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from app.api.dependencies import CacheManagerDependency, TorrentManagerDependency
+from app.api.dependencies import (
+    CacheManagerDependency,
+    EpisodeMatcherDependency,
+    TorrentManagerDependency,
+)
+from app.schemas.episode_matcher import (
+    EpisodeMatchConfirmationRequest,
+    EpisodeMatchReport,
+)
 from app.schemas.library import CacheFileDeletionResponse
 from app.schemas.media import MediaKind
 from app.schemas.torrents import (
@@ -65,6 +73,29 @@ async def torrent_episode_files(
     task_id: str,
 ) -> list[EpisodeFileBindingResponse]:
     return await manager.episode_files(task_id)
+
+
+@router.post(
+    "/torrents/{task_id}/episode-matches/analyze",
+    response_model=EpisodeMatchReport,
+)
+async def analyze_episode_matches(
+    matcher: EpisodeMatcherDependency,
+    task_id: str,
+) -> EpisodeMatchReport:
+    return await matcher.analyze(task_id)
+
+
+@router.put(
+    "/torrents/{task_id}/episode-matches",
+    response_model=EpisodeMatchReport,
+)
+async def confirm_episode_matches(
+    matcher: EpisodeMatcherDependency,
+    task_id: str,
+    body: EpisodeMatchConfirmationRequest,
+) -> EpisodeMatchReport:
+    return await matcher.confirm(task_id, body)
 
 
 @router.delete(

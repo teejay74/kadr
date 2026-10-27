@@ -35,6 +35,9 @@ class EpisodeFileBindingResponse(BaseModel):
     file_variant_id: str
     file_id: int = Field(ge=0)
     variant_label: str | None = None
+    confidence: Literal["exact", "probable", "ambiguous"] = "exact"
+    confirmation: Literal["automatic", "manual"] = "manual"
+    segment_index: int | None = Field(default=None, ge=1)
 
 
 class PrefetchTorrentFilesRequest(BaseModel):
@@ -48,6 +51,7 @@ class TorrentFile(BaseModel):
     progress: float = Field(ge=0, le=1)
     priority: int = Field(ge=0)
     is_video: bool
+    duration_seconds: int | None = Field(default=None, ge=1)
 
 
 class TorrentStatus(BaseModel):

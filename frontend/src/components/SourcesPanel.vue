@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import {
   addTorrent,
+  analyzeEpisodeMatches,
   configureTorrentPrefetch,
+  confirmEpisodeMatches,
   deleteTorrentFile,
   friendlyApiError,
   getMediaTorrent,
@@ -18,6 +20,8 @@ import {
 } from '../services/api'
 import type {
   EpisodeFileBinding,
+  EpisodeMatchReport,
+  EpisodeMatchSelection,
   MediaKind,
   EpisodeSummary,
   SeasonSummary,
@@ -27,6 +31,7 @@ import type {
   TorrentStatus,
 } from '../types/media'
 import KadrPlayer from './KadrPlayer.vue'
+import EpisodeMatchDialog from './EpisodeMatchDialog.vue'
 import StatePanel from './StatePanel.vue'
 
 const props = withDefaults(defineProps<{
@@ -56,6 +61,10 @@ const order = computed(() => (sort.value === 'title' ? 'asc' : 'desc'))
 const torrent = ref<TorrentStatus | null>(null)
 const torrentFiles = ref<TorrentFile[]>([])
 const episodeFileBindings = ref<EpisodeFileBinding[]>([])
+const episodeMatchReport = ref<EpisodeMatchReport | null>(null)
+const episodeMatchOpen = ref(false)
+const episodeMatchBusy = ref(false)
+const episodeMatchError = ref('')
 const torrentBusy = ref(false)
 const torrentError = ref('')
 const torrentNotice = ref('')
@@ -67,6 +76,7 @@ const pendingSeasonDownload = ref<number | null>(null)
 const pendingSeasonRequiresMatch = ref(false)
 const seasonQueueBusy = ref(false)
 let torrentTimer: ReturnType<typeof setTimeout> | undefined
+let episodeMatchSignature = ''
 const dismissedTask = 'dismissed'
 
 const videoFiles = computed(() => torrentFiles.value.filter((file) => file.is_video))
@@ -460,9 +470,49 @@ async function refreshFiles(): Promise<void> {
     torrentFiles.value = files.map((file) => deletedFileIds.value.has(file.id)
       ? { ...file, progress: 0, priority: 0 }
       : file)
+    await analyzeEpisodeFiles()
   } catch (caught) {
     torrentFiles.value = []
     torrentError.value = friendlyApiError(caught)
+  }
+}
+
+async function analyzeEpisodeFiles(force = false): Promise<void> {
+  if (!torrent.value || props.kind !== 'series' || videoFiles.value.length === 0) {
+    episodeMatchReport.value = null
+    return
+  }
+  const signature = `${torrent.value.id}:${videoFiles.value
+    .map((file) => `${file.id}:${file.name}`)
+    .join('|')}`
+  if (!force && signature === episodeMatchSignature) return
+  episodeMatchSignature = signature
+  episodeMatchBusy.value = true
+  episodeMatchError.value = ''
+  try {
+    episodeMatchReport.value = await analyzeEpisodeMatches(torrent.value.id)
+    await refreshEpisodeBindings()
+    if (episodeMatchReport.value.requires_confirmation) episodeMatchOpen.value = true
+  } catch (caught) {
+    episodeMatchError.value = friendlyApiError(caught)
+  } finally {
+    episodeMatchBusy.value = false
+  }
+}
+
+async function saveEpisodeMatches(mappings: EpisodeMatchSelection[]): Promise<void> {
+  if (!torrent.value) return
+  episodeMatchBusy.value = true
+  episodeMatchError.value = ''
+  try {
+    episodeMatchReport.value = await confirmEpisodeMatches(torrent.value.id, mappings)
+    await refreshEpisodeBindings()
+    episodeMatchOpen.value = episodeMatchReport.value.requires_confirmation
+    torrentNotice.value = 'Соответствия эпизодов сохранены и будут использованы повторно.'
+  } catch (caught) {
+    episodeMatchError.value = friendlyApiError(caught)
+  } finally {
+    episodeMatchBusy.value = false
   }
 }
 
@@ -617,6 +667,10 @@ function chooseAnotherSource(): void {
   torrent.value = null
   torrentFiles.value = []
   episodeFileBindings.value = []
+  episodeMatchReport.value = null
+  episodeMatchOpen.value = false
+  episodeMatchError.value = ''
+  episodeMatchSignature = ''
   torrentError.value = ''
   torrentNotice.value = ''
   deleteCandidateId.value = null
@@ -706,6 +760,10 @@ watch(taskStorageKey, () => {
   torrent.value = null
   torrentFiles.value = []
   episodeFileBindings.value = []
+  episodeMatchReport.value = null
+  episodeMatchOpen.value = false
+  episodeMatchError.value = ''
+  episodeMatchSignature = ''
   torrentError.value = ''
   torrentNotice.value = ''
   deleteCandidateId.value = null
@@ -888,6 +946,17 @@ onBeforeUnmount(clearTorrentTimer)
           @click="applyTorrentAction('stop')"
         >
           Приостановить
+        </button>
+        <button
+          v-if="kind === 'series' && videoFiles.length"
+          class="button secondary focus-ring"
+          type="button"
+          :disabled="episodeMatchBusy"
+          @click="episodeMatchReport?.requires_confirmation
+            ? episodeMatchOpen = true
+            : analyzeEpisodeFiles(true)"
+        >
+          {{ episodeMatchBusy ? 'Сопоставляем…' : 'Сопоставить серии' }}
         </button>
       </div>
       <div v-if="videoFiles.length && !hasSelectedFile" class="torrent-file-selection">
@@ -1087,5 +1156,14 @@ onBeforeUnmount(clearTorrentTimer)
     </section>
     <p v-if="torrentNotice" class="torrent-notice" role="status">{{ torrentNotice }}</p>
     <p v-if="torrentError" class="torrent-error" role="alert">{{ torrentError }}</p>
+    <p v-if="episodeMatchError" class="torrent-error" role="alert">{{ episodeMatchError }}</p>
+    <EpisodeMatchDialog
+      v-if="episodeMatchOpen && episodeMatchReport"
+      :report="episodeMatchReport"
+      :busy="episodeMatchBusy"
+      :error="episodeMatchError"
+      @close="episodeMatchOpen = false"
+      @confirm="saveEpisodeMatches"
+    />
   </section>
 </template>

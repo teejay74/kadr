@@ -138,8 +138,7 @@ class TorrentManager:
         selected = self._to_file(file_id, files[file_id])
         if not selected.is_video:
             raise TorrentFileError("Only a supported video file can be selected")
-        selected_path = PurePosixPath(selected.name)
-        if selected_path.is_absolute() or ".." in selected_path.parts:
+        if not self._safe_relative_path(selected.name):
             raise TorrentFileError("The selected torrent file has an unsafe path")
         preserved_prefetch_ids = []
         if task.selected_file_id is not None:
@@ -181,6 +180,24 @@ class TorrentManager:
             )
         return await self.status(task_id)
 
+    async def select_preferred_movie_file(self, task_id: str) -> TorrentStatus:
+        """Select the largest safe video for a film when no legacy choice exists."""
+        task = await self._task(task_id)
+        if task.media_kind != "movie":
+            raise TorrentFileError("Automatic movie selection is unavailable for series")
+        if task.selected_file_id is not None:
+            return await self.status(task_id)
+        files = await self._client.files(task.torrent_hash)
+        candidates: list[TorrentFile] = []
+        for index, item in enumerate(files):
+            candidate = self._to_file(index, item)
+            if candidate.is_video and self._safe_relative_path(candidate.name):
+                candidates.append(candidate)
+        if not candidates:
+            raise TorrentFileError("The torrent does not contain a safe supported movie file")
+        selected = max(candidates, key=lambda item: (item.size_bytes, -item.id))
+        return await self.select_file(task_id, selected.id)
+
     async def episode_files(self, task_id: str) -> list[EpisodeFileBindingResponse]:
         await self._task(task_id)
         if self._episodes is None:
@@ -197,6 +214,9 @@ class TorrentManager:
                 file_variant_id=variant.id,
                 file_id=variant.file_id,
                 variant_label=variant.variant_label,
+                confidence=binding.confidence,
+                confirmation=binding.confirmation,
+                segment_index=binding.segment_index,
             )
             for binding, episode, variant in bindings
         ]
@@ -303,6 +323,8 @@ class TorrentManager:
     @staticmethod
     def _to_file(index: int, item: dict[str, Any]) -> TorrentFile:
         name = str(item.get("name") or f"file-{index}")
+        raw_duration = item.get("duration_seconds") or item.get("duration")
+        duration_seconds = int(raw_duration) if raw_duration else None
         return TorrentFile(
             id=index,
             name=name,
@@ -310,6 +332,21 @@ class TorrentManager:
             progress=min(max(float(item.get("progress") or 0), 0), 1),
             priority=max(int(item.get("priority") or 0), 0),
             is_video=PurePosixPath(name).suffix.lower() in VIDEO_EXTENSIONS,
+            duration_seconds=(
+                duration_seconds if duration_seconds is not None and duration_seconds > 0 else None
+            ),
+        )
+
+    @staticmethod
+    def _safe_relative_path(value: str) -> bool:
+        normalized = value.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        return (
+            bool(value)
+            and not path.is_absolute()
+            and ".." not in path.parts
+            and not (len(normalized) >= 3 and normalized[1:3] == ":/")
+            and not any(ord(character) < 32 for character in value)
         )
 
     @staticmethod

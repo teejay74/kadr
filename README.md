@@ -21,6 +21,19 @@ the backend to prefer a playable library copy, reuse a persisted torrent-file
 binding, restore resume state, and report a controlled ready, buffering,
 source-required, or unavailable state. The legacy source panel remains as the
 manual fallback until the replacement selector passes end-to-end checks.
+The server-side Episode Matcher recognizes common English and Russian episode
+markers, validates them against TMDB, saves only unique exact matches
+automatically, and opens a confirmation dialog for probable or ambiguous
+files. Saved mappings are reused by torrent identity and file ID after restart.
+UI redesign C2 opens a normalized source-selection modal only when a source is
+missing, unavailable, or explicitly replaced. Raw release names stay inside
+technical details; series selections pass through Episode Matcher, while a new
+film release gets its preferred safe video selected by the backend.
+UI redesign D1 adds backend-owned next-episode navigation across season
+boundaries. Near the end of a torrent episode KADR may prefetch exactly one
+confirmed next file from the same release; completion opens a configurable
+next-episode overlay. Combined files are never presented as having an exact
+episode seek point unless future stored time boundaries make that possible.
 
 ## Quick start
 
@@ -119,5 +132,8 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [UI redesign B1 report](docs/ui-redesign-b1-report.md)
 - [UI redesign B2 report](docs/ui-redesign-b2-report.md)
 - [UI redesign C1 report](docs/ui-redesign-c1-report.md)
+- [Episode Matcher report](docs/ui-redesign-episode-matcher-report.md)
+- [UI redesign C2 report](docs/ui-redesign-c2-report.md)
+- [UI redesign D1 report](docs/ui-redesign-d1-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

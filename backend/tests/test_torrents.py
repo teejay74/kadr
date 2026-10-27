@@ -173,6 +173,34 @@ async def test_torrent_manager_rejects_non_video_selection() -> None:
         await manager.select_file(task.id, 0)
 
 
+async def test_torrent_manager_selects_largest_safe_movie_on_backend() -> None:
+    class MovieFilesClient(FakeTorrentClient):
+        async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
+            return [
+                {"name": "sample.mp4", "size": 100, "progress": 0, "priority": 0},
+                {"name": "Movie.mkv", "size": 900, "progress": 0, "priority": 0},
+                {"name": "../unsafe.mkv", "size": 2_000, "progress": 0, "priority": 0},
+            ]
+
+    manager = TorrentManager(
+        MovieFilesClient(),
+        FakeSources(),
+        FakeRepository(),
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+    task = await manager.add(42, "movie", "a" * 24)
+
+    selected = await manager.select_preferred_movie_file(task.id)
+
+    assert selected.selected_file_id == 1
+    assert selected.selected_file_path == "Movie.mkv"
+
+
 async def test_torrent_manager_keeps_legacy_selection_and_binds_episode_file() -> None:
     class FakeEpisodes:
         def __init__(self) -> None:

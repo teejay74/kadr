@@ -61,6 +61,18 @@ class TorrentFileVariant(Base):
 class EpisodeFileBinding(Base):
     __tablename__ = "episode_file_bindings"
     __table_args__ = (
+        CheckConstraint(
+            "confidence IN ('exact', 'probable', 'ambiguous')",
+            name="ck_episode_file_binding_confidence",
+        ),
+        CheckConstraint(
+            "confirmation IN ('automatic', 'manual')",
+            name="ck_episode_file_binding_confirmation",
+        ),
+        CheckConstraint(
+            "segment_index IS NULL OR segment_index >= 1",
+            name="ck_episode_file_binding_segment",
+        ),
         UniqueConstraint("episode_id", "file_variant_id", name="uq_episode_file_binding"),
         Index("ix_episode_file_bindings_episode", "episode_id"),
         Index("ix_episode_file_bindings_file", "file_variant_id"),
@@ -73,6 +85,9 @@ class EpisodeFileBinding(Base):
     file_variant_id: Mapped[str] = mapped_column(
         ForeignKey("torrent_file_variants.id", ondelete="CASCADE")
     )
+    confidence: Mapped[str] = mapped_column(String(16), default="exact")
+    confirmation: Mapped[str] = mapped_column(String(16), default="manual")
+    segment_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.current_timestamp()
     )

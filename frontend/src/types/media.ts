@@ -125,6 +125,7 @@ export interface TorrentFile {
   progress: number
   priority: number
   is_video: boolean
+  duration_seconds: number | null
 }
 
 export interface EpisodeFileBinding {
@@ -137,6 +138,45 @@ export interface EpisodeFileBinding {
   file_variant_id: string
   file_id: number
   variant_label: string | null
+  confidence: EpisodeMatchConfidence
+  confirmation: 'automatic' | 'manual'
+  segment_index: number | null
+}
+
+export type EpisodeMatchConfidence = 'exact' | 'probable' | 'ambiguous'
+
+export interface EpisodeMatchIdentity {
+  season_number: number
+  episode_number: number
+  catalog_episode_id: number | null
+  name: string
+  runtime_minutes: number | null
+}
+
+export interface EpisodeMatchFile {
+  file_id: number
+  file_path: string
+  confidence: EpisodeMatchConfidence
+  episodes: EpisodeMatchIdentity[]
+  alternatives: EpisodeMatchIdentity[]
+  reasons: string[]
+  confirmed: boolean
+  confirmation: 'automatic' | 'manual' | null
+  unsafe: boolean
+  duration_seconds: number | null
+}
+
+export interface EpisodeMatchReport {
+  task_id: string
+  metadata_available: boolean
+  files: EpisodeMatchFile[]
+  requires_confirmation: boolean
+}
+
+export interface EpisodeMatchSelection {
+  file_id: number
+  episodes: EpisodeMatchIdentity[]
+  segment_index?: number | null
 }
 
 export interface TorrentStatus {
@@ -204,6 +244,17 @@ export interface PlaybackResolution {
   download_progress: number
   download_state: string | null
   download_speed_bytes: number
+  message: string | null
+}
+
+export type NextEpisodeStatus = PlaybackResolutionStatus | 'end'
+
+export interface NextEpisodeResolution {
+  status: NextEpisodeStatus
+  episode: EpisodeSummary | null
+  playback: PlaybackResolution | null
+  prefetched: boolean
+  combined_file: boolean
   message: string | null
 }
 

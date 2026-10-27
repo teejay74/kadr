@@ -2,6 +2,8 @@ import type {
   CatalogQuery,
   CacheFileDeletion,
   EpisodeFileBinding,
+  EpisodeMatchReport,
+  EpisodeMatchSelection,
   EpisodeSummary,
   Genre,
   FavoriteItem,
@@ -10,6 +12,7 @@ import type {
   MediaSnapshot,
   MediaDetails,
   MediaKind,
+  NextEpisodeResolution,
   MediaPage,
   SeasonDetails,
   PlaybackPreparation,
@@ -161,6 +164,57 @@ export function resolvePlayback(
   })
 }
 
+interface NextEpisodePayload {
+  media_id: number
+  season_number: number
+  episode_number: number
+  catalog_episode_id: number
+  profile_key: string
+  current_task_id?: string
+  current_file_id?: number
+}
+
+function nextEpisodePayload(
+  mediaId: number,
+  episode: EpisodeSummary,
+  taskId?: string | null,
+  fileId?: number | null,
+): NextEpisodePayload {
+  return {
+    media_id: mediaId,
+    season_number: episode.season_number,
+    episode_number: episode.number,
+    catalog_episode_id: episode.id,
+    profile_key: 'default',
+    ...(taskId ? { current_task_id: taskId } : {}),
+    ...(fileId !== null && fileId !== undefined ? { current_file_id: fileId } : {}),
+  }
+}
+
+export function resolveNextEpisode(
+  mediaId: number,
+  episode: EpisodeSummary,
+  taskId?: string | null,
+  fileId?: number | null,
+): Promise<NextEpisodeResolution> {
+  return request<NextEpisodeResolution>('/api/v1/playback/next', {
+    method: 'POST',
+    body: JSON.stringify(nextEpisodePayload(mediaId, episode, taskId, fileId)),
+  })
+}
+
+export function prefetchNextEpisode(
+  mediaId: number,
+  episode: EpisodeSummary,
+  taskId?: string | null,
+  fileId?: number | null,
+): Promise<NextEpisodeResolution> {
+  return request<NextEpisodeResolution>('/api/v1/playback/next/prefetch', {
+    method: 'POST',
+    body: JSON.stringify(nextEpisodePayload(mediaId, episode, taskId, fileId)),
+  })
+}
+
 export function addTorrent(
   mediaId: number,
   mediaKind: MediaKind,
@@ -193,6 +247,26 @@ export function getTorrentFiles(taskId: string): Promise<TorrentFile[]> {
 
 export function getTorrentEpisodeFiles(taskId: string): Promise<EpisodeFileBinding[]> {
   return request<EpisodeFileBinding[]>(`/api/v1/torrents/${taskId}/episode-files`)
+}
+
+export function analyzeEpisodeMatches(taskId: string): Promise<EpisodeMatchReport> {
+  return request<EpisodeMatchReport>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}/episode-matches/analyze`,
+    { method: 'POST' },
+  )
+}
+
+export function confirmEpisodeMatches(
+  taskId: string,
+  mappings: EpisodeMatchSelection[],
+): Promise<EpisodeMatchReport> {
+  return request<EpisodeMatchReport>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}/episode-matches`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ mappings }),
+    },
+  )
 }
 
 export function deleteTorrentFile(taskId: string, fileId: number): Promise<CacheFileDeletion> {

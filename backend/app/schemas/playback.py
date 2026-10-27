@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.schemas.media import MediaKind
+from app.schemas.media import EpisodeSummary, MediaKind
 
 PlaybackState = Literal["idle", "probing", "processing", "ready", "failed"]
 PlaybackMode = Literal["compatible", "audio_only"]
@@ -23,6 +23,7 @@ class PlaybackResolveRequest(BaseModel):
     episode_number: int | None = Field(default=None, ge=1, le=10_000)
     catalog_episode_id: int | None = Field(default=None, gt=0)
     profile_key: str = Field(default="default", min_length=1, max_length=64)
+    preferred_task_id: str | None = Field(default=None, min_length=1, max_length=64)
 
     @model_validator(mode="after")
     def validate_identity(self) -> "PlaybackResolveRequest":
@@ -45,6 +46,34 @@ class PlaybackResolution(BaseModel):
     download_progress: float = Field(default=0, ge=0, le=1)
     download_state: str | None = None
     download_speed_bytes: int = Field(default=0, ge=0)
+    message: str | None = None
+
+
+class NextEpisodeRequest(BaseModel):
+    media_id: int = Field(gt=0)
+    season_number: int = Field(ge=0, le=100)
+    episode_number: int = Field(ge=1, le=10_000)
+    catalog_episode_id: int | None = Field(default=None, gt=0)
+    profile_key: str = Field(default="default", min_length=1, max_length=64)
+    current_task_id: str | None = Field(default=None, min_length=1, max_length=64)
+    current_file_id: int | None = Field(default=None, ge=0)
+
+
+NextEpisodeState = Literal[
+    "ready",
+    "buffering",
+    "source_required",
+    "unavailable",
+    "end",
+]
+
+
+class NextEpisodeResolution(BaseModel):
+    status: NextEpisodeState
+    episode: EpisodeSummary | None = None
+    playback: PlaybackResolution | None = None
+    prefetched: bool = False
+    combined_file: bool = False
     message: str | None = None
 
 

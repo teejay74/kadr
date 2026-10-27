@@ -17,6 +17,15 @@ when it is not NULL; profile identity is included for history. This behavior is
 covered by a real `0004` to `0005` SQLite migration test, including duplicate
 NULL-key cases.
 
+Migration `0006_episode_matcher` adds non-null confidence and confirmation
+provenance plus a nullable future `segment_index` to every episode/file
+binding. Existing bindings are preserved as `exact` and `manual`; SQLite check
+constraints reject unsupported confidence/provenance values and non-positive
+segment indexes. A binding remains keyed through the persisted torrent task
+(whose torrent hash is unique) and qBittorrent `file_id`, so a confirmed choice
+survives application restarts. One file may bind to several logical episodes,
+and one logical episode may bind to several file variants.
+
 Use WAL only on a compatible local filesystem (the planned Debian ext4 storage
 is appropriate after verification). Backups must use SQLite's online backup
 mechanism or a coordinated checkpoint/copy, not an arbitrary live-file copy.

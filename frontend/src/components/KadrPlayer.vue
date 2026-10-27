@@ -48,6 +48,11 @@ const props = withDefaults(defineProps<{
   initialResumeSeconds: -1,
 })
 
+const emit = defineEmits<{
+  'near-end': []
+  'ended': []
+}>()
+
 const active = ref(false)
 const waiting = ref(false)
 const streamReady = ref(false)
@@ -61,6 +66,7 @@ const compatibleMode = ref<PlaybackMode>('compatible')
 const usingCompatible = ref(false)
 let lastSavedSecond = -1
 let playbackEnded = false
+let nearEndEmitted = false
 let readinessTimer: ReturnType<typeof setTimeout> | undefined
 let compatibilityTimer: ReturnType<typeof setTimeout> | undefined
 let preparationId = 0
@@ -147,6 +153,7 @@ async function activate(): Promise<void> {
   error.value = ''
   waiting.value = true
   playbackEnded = false
+  nearEndEmitted = false
   readinessAttempts = 0
   resumeAt.value = Math.max(readSavedPosition(), props.initialResumeSeconds)
   if (props.initialResumeSeconds < 0) {
@@ -316,6 +323,17 @@ function savePosition(): void {
 function onTimeUpdate(): void {
   const current = Math.floor(video.value?.currentTime ?? 0)
   if (current - lastSavedSecond >= 5) savePosition()
+  const duration = video.value?.duration ?? 0
+  if (
+    props.episode
+    && !nearEndEmitted
+    && Number.isFinite(duration)
+    && duration >= 180
+    && duration - current <= 90
+  ) {
+    nearEndEmitted = true
+    emit('near-end')
+  }
 }
 
 function onEnded(): void {
@@ -326,6 +344,7 @@ function onEnded(): void {
     // Playback remains usable when browser storage is unavailable.
   }
   lastSavedSecond = -1
+  emit('ended')
   if (props.mediaId <= 0) return
   void updateHistory(props.mediaId, {
     media_kind: props.mediaKind,

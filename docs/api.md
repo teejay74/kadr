@@ -167,6 +167,30 @@ The public response never contains a filesystem path, torrent URI, hash, or
 credential. A `200` response with `source_required` or `unavailable` is a
 controlled workflow state rather than a transport failure.
 
+For a newly selected film torrent with no legacy `selected_file_id`, the
+resolver asks Torrent Manager to select the largest safe supported video on the
+backend before checking piece readiness. The browser never chooses a concrete
+torrent file from its name. Series still require a persisted logical
+episode/file binding, normally created by Episode Matcher.
+
+### `POST /api/v1/playback/next`
+
+Finds the next series episode from TMDB season metadata and resolves its
+playback source. The client supplies the current catalog episode plus optional
+current task/file identity. The server follows catalog order, including season
+boundaries, and prefers a confirmed variant from the current torrent task. It
+never computes the result by blindly incrementing an episode number.
+
+### `POST /api/v1/playback/next/prefetch`
+
+Finds the same metadata-owned next episode but only enables its single
+confirmed file in the current torrent task alongside the actively selected
+file. It does not resolve another release and does not queue a season. The
+response reports `prefetched`; missing bindings remain `source_required`.
+When current and next episodes map to one combined file, `combined_file` is
+true and KADR explicitly declines to promise a precise seek without stored
+time boundaries.
+
 ## Source endpoints
 
 ### `GET /api/v1/media/{id}/sources`
@@ -235,6 +259,8 @@ indexer_not_configured`. Source discovery does not add or download a torrent.
 | `GET /torrents/{task_id}` | Read real progress, speed, peers, and state |
 | `GET /torrents/{task_id}/files` | List torrent files and priorities |
 | `GET /torrents/{task_id}/episode-files` | List persisted logical episode/file-ID bindings |
+| `POST /torrents/{task_id}/episode-matches/analyze` | Analyze and safely persist unique exact episode matches |
+| `PUT /torrents/{task_id}/episode-matches` | Confirm one or more episode mappings per file |
 | `DELETE /torrents/{task_id}/files/{file_id}` | Delete one completed cached video |
 | `PUT /torrents/{task_id}/selection` | Prioritize one supported video and optionally bind an episode |
 | `PUT /torrents/{task_id}/prefetch` | Replace the background episode prefetch queue |
@@ -254,7 +280,37 @@ episode identity. Repeated bindings are idempotent, different files can bind to
 different episodes in one task, and several file variants can bind to the same
 episode. `selected_file_id` remains the current legacy playback selection.
 The episode-files response contains logical and opaque variant IDs plus the
-qBittorrent file ID, but never returns a server filesystem path.
+qBittorrent file ID, matching confidence, confirmation provenance, and optional
+future segment index, but never returns a server filesystem path.
+
+Episode analysis reads the full relative torrent path and recognizes `S01E02`,
+`1x02`, `Season 1 Episode 2`, `Сезон 1 Серия 2`, combined markers, and bounded
+ranges. It validates episode identities against TMDB and may use a duration
+already supplied by the torrent adapter as supporting evidence; it never
+downloads or probes a file just to match it. The response classifies each video
+as `exact`, `probable`, or `ambiguous`. Only an exact, unique, conflict-free
+result is stored automatically. Probable, ambiguous, conflicting, metadata-
+unverified, and unsafe-path results require user action or remain unbound.
+
+Confirmation accepts, for example:
+
+```json
+{
+  "mappings": [
+    {
+      "file_id": 7,
+      "episodes": [
+        {"season_number": 1, "episode_number": 1},
+        {"season_number": 1, "episode_number": 2}
+      ]
+    }
+  ]
+}
+```
+
+This represents a combined file without claiming time boundaries for its
+individual episodes. A logical episode may also have several file variants.
+Automatic concatenation of several files is not implemented.
 
 Episode prefetch uses
 `{"file_ids":[1,2,3]}` (up to 100 supported video files, including an explicitly

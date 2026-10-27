@@ -29,6 +29,31 @@ class FakeTorrentManager:
     def __init__(self, *, unavailable: bool = False) -> None:
         self.unavailable = unavailable
         self.calls: list[tuple[object, ...]] = []
+        self.preferred_calls: list[str] = []
+
+    async def select_preferred_movie_file(self, task_id: str) -> TorrentStatus:
+        self.preferred_calls.append(task_id)
+        if self.unavailable:
+            raise TorrentUnavailableError("offline")
+        return TorrentStatus(
+            id=task_id,
+            media_id=42,
+            media_kind="movie",
+            name="Movie",
+            state="stoppedDL",
+            progress=0,
+            downloaded_bytes=0,
+            total_size_bytes=1000,
+            download_speed_bytes=0,
+            upload_speed_bytes=0,
+            peers=0,
+            seeds=1,
+            eta_seconds=None,
+            selected_file_id=4,
+            selected_file_path="Movie.mkv",
+            can_start=True,
+            can_stop=False,
+        )
 
     async def select_file(self, *args: object) -> TorrentStatus:
         self.calls.append(args)
@@ -203,6 +228,34 @@ async def test_resolver_requires_source_without_saved_media_or_binding(
     assert result.status == "source_required"
     assert result.source is None
     assert result.stream_url is None
+
+
+@pytest.mark.asyncio
+async def test_resolver_selects_movie_file_on_backend_for_a_new_source(
+    session: AsyncSession,
+) -> None:
+    task = TorrentTask(
+        id="00000000-0000-0000-0000-000000000206",
+        media_id=42,
+        media_kind="movie",
+        torrent_hash="new-movie-hash",
+        source_id="d" * 24,
+        release_title="Movie 1080p",
+        storage_path="/downloads/cache",
+        state="stoppedDL",
+    )
+    await TorrentTaskRepository(session).create(task)
+    service, torrents, streaming = resolver(session)
+
+    result = await service.resolve(
+        PlaybackResolveRequest(media_kind="movie", media_id=42)
+    )
+
+    assert result.status == "ready"
+    assert result.file_id == 4
+    assert torrents.preferred_calls == [task.id]
+    assert torrents.calls[0][0:2] == (task.id, 4)
+    assert streaming.calls == [task.id]
 
 
 @pytest.mark.asyncio

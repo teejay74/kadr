@@ -48,6 +48,43 @@ quality variants. The legacy `torrent_tasks.selected_file_id` and selected path
 remain the active playback selection for backward compatibility; they are not
 the episode identity.
 
+`EpisodeMatcher` sits between torrent-file discovery, TMDB metadata, and the
+episode repository. It parses the complete relative path (including season
+folders), validates explicit identities against provider metadata, and uses
+title similarity plus already available duration only as secondary evidence.
+It has no LLM or machine-learning dependency and never triggers a media
+download or FFmpeg probe. Only unique, conflict-free `exact` matches are
+written automatically; `probable` and `ambiguous` candidates are returned to a
+Vue confirmation dialog. Confirmed mappings retain confidence and automatic or
+manual provenance in SQLite and are reused after process restart. The
+many-to-many data model supports combined episodes and multiple physical
+variants; an optional segment index reserves a future multipart seam, but this
+increment neither concatenates files nor invents seek boundaries inside a
+combined video.
+
+Substage C2 adds a modal `SourceSelector` to the unified playback flow. It opens
+only after `source_required`, `unavailable`, or an explicit “Другой источник”
+action. It shows normalized quality, release type, size, language/audio, and
+seed availability while keeping the raw release title in an opt-in technical
+details block. Its recommendation is a convenience score, not a liveness
+claim. After the user selects a release, the browser waits only for torrent
+metadata; the backend still owns concrete file choice. Films use the largest
+safe supported video selected by Torrent Manager. Series run Episode Matcher
+and open the existing confirmation dialog when the requested episode is not
+already confirmed. The unified resolver is retried only after that preparation.
+The legacy source panel remains mounted for regression and manual recovery.
+
+Substage D1 places series ordering in `EpisodeNavigationService`. It reads
+TMDB season episode lists, crosses to the first catalog episode of the next
+regular season, and asks the existing Playback Resolver to reuse a confirmed
+variant with the current torrent task preferred. A separate opportunistic
+path calls Torrent Manager prefetch with exactly one next file; it preserves
+the active selection and never queues a whole season. `NextEpisodeOverlay`
+owns only presentation, countdown, and the local autoplay preference. It does
+not calculate episode identity. A shared physical file bound to consecutive
+logical episodes is marked as combined and is not treated as a precise seek
+target without time-boundary metadata.
+
 Library items optionally reference a logical episode and record the selected
 file ID. Watch history optionally references a logical episode and is scoped by
 `profile_key` (currently `default` unless a caller supplies another profile).
@@ -167,6 +204,7 @@ browser profiles. A hard Cloudflare IP block can still reject the request.
 | A stream fails after response headers are sent | Browser sees a network/media error rather than a JSON body | Validate the initial buffer before returning headers; surface later starvation as a player error and keep timeout bounded. |
 | Process restart loses active-stream counters | Temporary concurrency accounting reset | Registry is deliberately process-local for the single-worker MVP; use shared coordination before adding API replicas. |
 | Malicious torrent paths or unsafe cache deletion | Filesystem escape or data loss | Canonical paths must stay beneath KADR roots; active and saved tasks are protected; qBittorrent deletes only known expired tasks. |
+| Ambiguous or misleading episode filenames | Wrong episode history or playback binding | Full-path parsing, TMDB existence checks, conflict detection, exact-only automatic persistence, and explicit confirmation for probable/ambiguous candidates. |
 | Public exposure of internal services/secrets | Account or host compromise | Only web entry point published; secrets server-side; auth and rate limiting are required before remote exposure. |
 
 ## Stage dependencies

@@ -5,10 +5,13 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.dependencies import (
+    EpisodeNavigationServiceDependency,
     PlaybackPreparationServiceDependency,
     PlaybackResolverDependency,
 )
 from app.schemas.playback import (
+    NextEpisodeRequest,
+    NextEpisodeResolution,
     PlaybackMode,
     PlaybackPreparation,
     PlaybackResolution,
@@ -24,6 +27,22 @@ async def resolve_playback(
     resolver: PlaybackResolverDependency,
 ) -> PlaybackResolution:
     return await resolver.resolve(body)
+
+
+@router.post("/playback/next", response_model=NextEpisodeResolution)
+async def resolve_next_episode(
+    body: NextEpisodeRequest,
+    service: EpisodeNavigationServiceDependency,
+) -> NextEpisodeResolution:
+    return await service.resolve_next(body)
+
+
+@router.post("/playback/next/prefetch", response_model=NextEpisodeResolution)
+async def prefetch_next_episode(
+    body: NextEpisodeRequest,
+    service: EpisodeNavigationServiceDependency,
+) -> NextEpisodeResolution:
+    return await service.prefetch_next(body)
 
 
 @router.post(

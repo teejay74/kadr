@@ -282,3 +282,38 @@ test('automatically reuses a compatible version on the next playback attempt', a
     expect.anything(),
   )
 })
+
+test('requests one next-episode prefetch near the end and emits completion', async () => {
+  const view = render(KadrPlayer, {
+    props: {
+      taskId: 'task-id',
+      title: 'Series',
+      mediaId: 42,
+      mediaKind: 'series',
+      directStreamUrl: '/api/v1/library/saved/stream',
+      autoActivate: true,
+      episode: {
+        id: 101,
+        season_number: 1,
+        number: 1,
+        name: 'Episode 1',
+        overview: '',
+        air_date: null,
+        runtime_minutes: 45,
+        still_url: null,
+        rating: 0,
+      },
+    },
+  })
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'duration', { configurable: true, value: 1800 })
+  Object.defineProperty(player, 'currentTime', { configurable: true, value: 1720 })
+
+  await fireEvent.timeUpdate(player)
+  await fireEvent.timeUpdate(player)
+  await fireEvent.ended(player)
+
+  expect(view.emitted()['near-end']).toHaveLength(1)
+  expect(view.emitted().ended).toHaveLength(1)
+})
