@@ -8,6 +8,7 @@ import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 from app.core.config import Settings
 from app.schemas.playback import (
@@ -78,19 +79,22 @@ class CompatibilityManager:
         selected_file_id: int,
         source: Path,
         mode: PlaybackMode = "compatible",
+        audio_stream_index: int | None = None,
+        track_id: str | None = None,
     ) -> PlaybackPreparation:
-        job_id = self._job_id(task_id, selected_file_id, mode)
-        output = self._output_path(task_id, selected_file_id, mode)
+        self._validate_track_mode(mode, audio_stream_index, track_id)
+        job_id = self._job_id(task_id, selected_file_id, mode, track_id)
+        output = self._output_path(task_id, selected_file_id, mode, track_id)
         if await asyncio.to_thread(output.is_file):
             job = self._jobs.setdefault(job_id, PreparationJob())
             job.state = "ready"
             job.progress = 1.0
-            return self._to_status(task_id, mode, job)
+            return self._to_status(task_id, mode, job, track_id)
 
         async with self._lock:
             current = self._jobs.get(job_id)
             if current is not None and current.task is not None and not current.task.done():
-                return self._to_status(task_id, mode, current)
+                return self._to_status(task_id, mode, current, track_id)
             running = sum(
                 job.task is not None and not job.task.done()
                 for job in self._jobs.values()
@@ -103,24 +107,34 @@ class CompatibilityManager:
             await self._ensure_output_space(source)
             self._jobs[job_id] = job
             job.task = asyncio.create_task(
-                self._run(task_id, selected_file_id, source, mode, job)
+                self._run(
+                    task_id,
+                    selected_file_id,
+                    source,
+                    mode,
+                    job,
+                    audio_stream_index,
+                    track_id,
+                )
             )
-            return self._to_status(task_id, mode, job)
+            return self._to_status(task_id, mode, job, track_id)
 
     def status(
         self,
         task_id: str,
         selected_file_id: int,
         mode: PlaybackMode = "compatible",
+        track_id: str | None = None,
     ) -> PlaybackPreparation:
-        job = self._jobs.get(self._job_id(task_id, selected_file_id, mode))
-        output = self._output_path(task_id, selected_file_id, mode)
+        self._validate_track_mode(mode, None, track_id, preparing=False)
+        job = self._jobs.get(self._job_id(task_id, selected_file_id, mode, track_id))
+        output = self._output_path(task_id, selected_file_id, mode, track_id)
         if job is None:
             if output.is_file():
                 job = PreparationJob(state="ready", progress=1.0)
             else:
                 job = PreparationJob()
-        return self._to_status(task_id, mode, job)
+        return self._to_status(task_id, mode, job, track_id)
 
     async def open(
         self,
@@ -129,8 +143,10 @@ class CompatibilityManager:
         mode: PlaybackMode,
         range_header: str | None,
         registry: StreamRegistry,
+        track_id: str | None = None,
     ) -> PreparedStream:
-        output = self._output_path(task_id, selected_file_id, mode)
+        self._validate_track_mode(mode, None, track_id, preparing=False)
+        output = self._output_path(task_id, selected_file_id, mode, track_id)
         if not await asyncio.to_thread(output.is_file):
             raise PlaybackArtifactNotReadyError(
                 "The compatible playback file is not ready"
@@ -157,12 +173,12 @@ class CompatibilityManager:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def is_preparing(self, task_id: str, selected_file_id: int) -> bool:
+        prefix = f"{task_id}:{selected_file_id}:"
         return any(
-            (job := self._jobs.get(self._job_id(task_id, selected_file_id, mode)))
-            is not None
+            key.startswith(prefix)
             and job.task is not None
             and not job.task.done()
-            for mode in ("compatible", "audio_only")
+            for key, job in self._jobs.items()
         )
 
     async def discard(self, task_id: str, selected_file_id: int) -> None:
@@ -170,12 +186,20 @@ class CompatibilityManager:
             raise PlaybackPreparationError(
                 "Stop compatible playback preparation before deleting this video"
             )
-        outputs = [
-            self._output_path(task_id, selected_file_id, mode)
-            for mode in ("compatible", "audio_only")
-        ]
-        for mode, output in zip(("compatible", "audio_only"), outputs, strict=True):
-            self._jobs.pop(self._job_id(task_id, selected_file_id, mode), None)
+        directory = self._output_path(
+            task_id,
+            selected_file_id,
+            "compatible",
+        ).parent
+        outputs = [directory / "compatible.mp4", directory / "audio-only.mp4"]
+        if await asyncio.to_thread(directory.is_dir):
+            outputs.extend(
+                await asyncio.to_thread(lambda: list(directory.glob("audio-*.mp4")))
+            )
+        prefix = f"{task_id}:{selected_file_id}:"
+        for key in [key for key in self._jobs if key.startswith(prefix)]:
+            self._jobs.pop(key, None)
+        for output in outputs:
             await asyncio.to_thread(output.unlink, missing_ok=True)
             await asyncio.to_thread(output.with_suffix(".part.mp4").unlink, missing_ok=True)
         try:
@@ -190,25 +214,30 @@ class CompatibilityManager:
         source: Path,
         mode: PlaybackMode,
         job: PreparationJob,
+        audio_stream_index: int | None,
+        track_id: str | None,
     ) -> None:
-        temporary = self._output_path(task_id, selected_file_id, mode).with_suffix(
+        temporary = self._output_path(task_id, selected_file_id, mode, track_id).with_suffix(
             ".part.mp4"
         )
         try:
-            probe = await self._probe(source)
+            probe = await self._probe(source, audio_stream_index)
             job.video_codec = probe.video_codec
             job.audio_codec = probe.audio_codec
             job.strategy = (
-                "audio_transcode" if mode == "audio_only" else select_strategy(probe)
+                "audio_transcode"
+                if mode in {"audio_only", "audio_track"}
+                else select_strategy(probe)
             )
             job.state = "processing"
-            output = self._output_path(task_id, selected_file_id, mode)
+            output = self._output_path(task_id, selected_file_id, mode, track_id)
             await asyncio.to_thread(output.parent.mkdir, parents=True, exist_ok=True)
             command = self._ffmpeg_command(
                 source,
                 temporary,
                 job.strategy,
                 probe.video_codec,
+                audio_stream_index,
             )
             job.process = await asyncio.create_subprocess_exec(
                 *command,
@@ -247,20 +276,35 @@ class CompatibilityManager:
             )
             await self._remove_temporary(temporary)
 
-    async def _probe(self, source: Path) -> ProbeResult:
-        process = await asyncio.create_subprocess_exec(
-            self._settings.ffprobe_path,
-            "-v",
-            "error",
-            "-show_streams",
-            "-show_format",
-            "-of",
-            "json",
-            str(source),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
+    async def _probe(
+        self,
+        source: Path,
+        audio_stream_index: int | None = None,
+    ) -> ProbeResult:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                self._settings.ffprobe_path,
+                "-v",
+                "error",
+                "-show_streams",
+                "-show_format",
+                "-of",
+                "json",
+                str(source),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise PlaybackPreparationError("ffprobe is unavailable") from exc
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=self._settings.ffprobe_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            process.kill()
+            await process.wait()
+            raise PlaybackPreparationError("ffprobe timed out") from exc
         if process.returncode != 0:
             raise PlaybackPreparationError(
                 stderr.decode(errors="replace").strip() or "ffprobe failed"
@@ -272,11 +316,21 @@ class CompatibilityManager:
             None,
         )
         audio = next(
-            (item for item in streams if item.get("codec_type") == "audio"),
+            (
+                item
+                for item in streams
+                if item.get("codec_type") == "audio"
+                and (
+                    audio_stream_index is None
+                    or item.get("index") == audio_stream_index
+                )
+            ),
             None,
         )
         if not isinstance(video, dict):
             raise PlaybackPreparationError("The selected file has no video stream")
+        if audio_stream_index is not None and not isinstance(audio, dict):
+            raise PlaybackPreparationError("The selected audio stream is unavailable")
         duration = float((payload.get("format") or {}).get("duration") or 0)
         return ProbeResult(
             duration_seconds=max(duration, 0),
@@ -301,6 +355,7 @@ class CompatibilityManager:
         output: Path,
         strategy: PlaybackStrategy,
         video_codec: str | None = None,
+        audio_stream_index: int | None = None,
     ) -> list[str]:
         command = [
             self._settings.ffmpeg_path,
@@ -312,7 +367,11 @@ class CompatibilityManager:
             "-map",
             "0:v:0",
             "-map",
-            "0:a:0?",
+            (
+                f"0:{audio_stream_index}"
+                if audio_stream_index is not None
+                else "0:a:0?"
+            ),
             "-map_metadata",
             "-1",
             "-map_chapters",
@@ -401,21 +460,33 @@ class CompatibilityManager:
             logger.warning("Could not remove incomplete playback artifact: %s", exc)
 
     @staticmethod
-    def _job_id(task_id: str, selected_file_id: int, mode: PlaybackMode) -> str:
-        return f"{task_id}:{selected_file_id}:{mode}"
+    def _job_id(
+        task_id: str,
+        selected_file_id: int,
+        mode: PlaybackMode,
+        track_id: str | None = None,
+    ) -> str:
+        return f"{task_id}:{selected_file_id}:{mode}:{track_id or '-'}"
 
     def _output_path(
         self,
         task_id: str,
         selected_file_id: int,
         mode: PlaybackMode,
+        track_id: str | None = None,
     ) -> Path:
         if not task_id or Path(task_id).name != task_id:
             raise PlaybackPreparationError("Invalid playback task identifier")
         if selected_file_id < 0:
             raise PlaybackPreparationError("Invalid selected file identifier")
         root = Path(self._settings.playback_cache_root).resolve(strict=False)
-        filename = "compatible.mp4" if mode == "compatible" else "audio-only.mp4"
+        if mode == "compatible":
+            filename = "compatible.mp4"
+        elif mode == "audio_only":
+            filename = "audio-only.mp4"
+        else:
+            self._validate_track_id(track_id)
+            filename = f"audio-{track_id}.mp4"
         output = (
             root / task_id / str(selected_file_id) / filename
         ).resolve(strict=False)
@@ -428,6 +499,7 @@ class CompatibilityManager:
         task_id: str,
         mode: PlaybackMode,
         job: PreparationJob,
+        track_id: str | None = None,
     ) -> PlaybackPreparation:
         return PlaybackPreparation(
             mode=mode,
@@ -437,13 +509,48 @@ class CompatibilityManager:
             video_codec=job.video_codec,
             audio_codec=job.audio_codec,
             message=job.message,
+            track_id=track_id,
             stream_url=(
                 f"/api/v1/torrents/{task_id}/compatible/stream"
-                + ("?mode=audio_only" if mode == "audio_only" else "")
+                + self._stream_query(mode, track_id)
                 if job.state == "ready"
                 else None
             ),
         )
+
+    @staticmethod
+    def _stream_query(mode: PlaybackMode, track_id: str | None) -> str:
+        if mode == "audio_only":
+            return "?mode=audio_only"
+        if mode == "audio_track" and track_id is not None:
+            return f"?mode=audio_track&track_id={quote(track_id)}"
+        return ""
+
+    @staticmethod
+    def _validate_track_id(track_id: str | None) -> None:
+        if (
+            track_id is None
+            or len(track_id) > 64
+            or not all(
+                character.isalnum() or character == "-" for character in track_id
+            )
+        ):
+            raise PlaybackPreparationError("Invalid audio track identifier")
+
+    @classmethod
+    def _validate_track_mode(
+        cls,
+        mode: PlaybackMode,
+        audio_stream_index: int | None,
+        track_id: str | None,
+        *,
+        preparing: bool = True,
+    ) -> None:
+        if mode != "audio_track":
+            return
+        cls._validate_track_id(track_id)
+        if preparing and (audio_stream_index is None or audio_stream_index < 0):
+            raise PlaybackPreparationError("Invalid selected audio stream")
 
     async def _read(
         self,

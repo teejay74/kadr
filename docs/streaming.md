@@ -107,6 +107,38 @@ endpoint; bitmap subtitles are marked as requiring an explicit burn-in mode.
 D3.1 only discovers and classifies tracks: the current player does not yet show
 the menu, and neither ffmpeg nor a derived stream starts during Direct Play.
 
+D3.2 stores one semantic audio/subtitle preference set per profile. It never
+stores only the numeric ffprobe index: reordered streams can still match by
+semantic key or by normalized language, title, and codec. Subtitles remain off
+until explicitly enabled. The track-list response exposes the resolved exact
+IDs for the current file, while an invalid ID from another file is rejected.
+This persistence does not alter the media element or start a compatibility job.
+
+D3.3 exposes these lists in KadrPlayer. A browser-provided `audioTracks` or
+`textTracks` collection is used only when present and when KADR can match the
+normalized language/title safely. Native changes keep the current media URL and
+position. Browsers that do not expose alternate MKV tracks receive a clear
+saved-but-not-applied status; KADR does not pretend the sound changed and does
+not start FFmpeg automatically. Missing studio/title metadata does not block
+the menu.
+
+D3.4 adds a separate, explicit action after the viewer selects an audio track
+that the browser cannot apply natively. For a completed torrent file, KADR
+validates the exact opaque ID again, copies the original video, converts only
+that audio stream to AAC stereo, and switches to the isolated compatible MP4.
+KadrPlayer captures and restores the playback position across the source
+change. Saving a preference alone still does not start FFmpeg. Selected-audio
+compatible preparation is not yet exposed for saved library files.
+
+D3.5 delivers text subtitle codecs through an explicit WebVTT preparation
+action for both completed torrent files and saved library items. The server
+revalidates the opaque ID against the current source, extracts only that exact
+subtitle stream, and caches the result by file fingerprint and track identity.
+KadrPlayer attaches the returned same-origin `<track>` and restores its prior
+position after reloading metadata. Preference saving alone does not extract a
+subtitle. Bitmap formats remain labelled `burn_in_required` and do not start a
+video transcode in this stage.
+
 Saved-library cards use the same controlled player around the independent
 library stream instead of exposing a blank native video element. Unsupported
 audio can therefore invoke the explicit fast repair mode, while ordinary
@@ -138,15 +170,16 @@ video codec playable; use full compatibility preparation in that case.
 
 Full video conversion is CPU-intensive and completes before playback begins.
 The default is one concurrent preparation, two video threads, CRF 23,
-`veryfast`, and at most 1920×1080. Embedded subtitles and alternate audio
-tracks are not yet exposed, HDR is not tone-mapped, and compatibility cannot
-be guaranteed for every browser/device.
+`veryfast`, and at most 1920×1080. Embedded subtitles are not yet delivered,
+HDR is not tone-mapped, and compatibility cannot be guaranteed for every
+browser/device.
 
 | Variable | Default | Meaning |
 | --- | ---: | --- |
 | `KADR_PLAYBACK_CACHE_ROOT` | `/playback` | Separate compatible-file output root |
 | `KADR_PLAYBACK_MIN_FREE_SPACE_GB` | `5` | Free space retained after estimated output |
 | `KADR_FFPROBE_TIMEOUT_SECONDS` | `15` | Maximum time for one on-demand metadata probe |
+| `KADR_SUBTITLE_EXTRACTION_TIMEOUT_SECONDS` | `120` | Maximum time for one explicitly requested text-subtitle extraction |
 | `KADR_MAX_ACTIVE_TRANSCODES` | `1` | Concurrent FFmpeg preparations |
 | `KADR_TRANSCODE_VIDEO_THREADS` | `2` | FFmpeg video encoder threads |
 | `KADR_TRANSCODE_VIDEO_PRESET` | `veryfast` | H.264 encoder speed/efficiency trade-off |

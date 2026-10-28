@@ -18,6 +18,9 @@ import type {
   PlaybackPreparation,
   PlaybackResolution,
   PlaybackMode,
+  PlaybackTrackList,
+  PlaybackSubtitlePreparation,
+  PlaybackTrackPreferencePayload,
   SortOrder,
   StreamReadiness,
   SourceResults,
@@ -320,11 +323,58 @@ export function getStreamReadiness(taskId: string): Promise<StreamReadiness> {
   return request<StreamReadiness>(`/api/v1/torrents/${encodeURIComponent(taskId)}/stream/readiness`)
 }
 
+function playbackTrackPath(taskId: string, libraryItemId?: string): string {
+  return libraryItemId
+    ? `/api/v1/library/${encodeURIComponent(libraryItemId)}/tracks`
+    : `/api/v1/torrents/${encodeURIComponent(taskId)}/tracks`
+}
+
+export function getPlaybackTracks(
+  taskId: string,
+  libraryItemId = '',
+  profileKey = 'default',
+): Promise<PlaybackTrackList> {
+  const params = new URLSearchParams({ profile_key: profileKey })
+  return request<PlaybackTrackList>(
+    `${playbackTrackPath(taskId, libraryItemId)}?${params}`,
+  )
+}
+
+export function savePlaybackTrackPreferences(
+  taskId: string,
+  libraryItemId: string,
+  payload: PlaybackTrackPreferencePayload,
+): Promise<PlaybackTrackList> {
+  return request<PlaybackTrackList>(
+    `${playbackTrackPath(taskId, libraryItemId)}/preferences`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function preparePlaybackSubtitle(
+  taskId: string,
+  libraryItemId: string,
+  trackId: string,
+): Promise<PlaybackSubtitlePreparation> {
+  const base = playbackTrackPath(taskId, libraryItemId)
+  return request<PlaybackSubtitlePreparation>(
+    `${base}/${encodeURIComponent(trackId)}/subtitle`,
+    { method: 'POST' },
+  )
+}
+
 export function startCompatiblePlayback(
   taskId: string,
   mode: PlaybackMode = 'compatible',
+  trackId = '',
 ): Promise<PlaybackPreparation> {
-  const query = mode === 'audio_only' ? '?mode=audio_only' : ''
+  const params = new URLSearchParams()
+  if (mode !== 'compatible') params.set('mode', mode)
+  if (trackId) params.set('track_id', trackId)
+  const query = params.size ? `?${params}` : ''
   return request<PlaybackPreparation>(`/api/v1/torrents/${encodeURIComponent(taskId)}/compatible${query}`, {
     method: 'POST',
   })
@@ -333,8 +383,12 @@ export function startCompatiblePlayback(
 export function getCompatiblePlayback(
   taskId: string,
   mode: PlaybackMode = 'compatible',
+  trackId = '',
 ): Promise<PlaybackPreparation> {
-  const query = mode === 'audio_only' ? '?mode=audio_only' : ''
+  const params = new URLSearchParams()
+  if (mode !== 'compatible') params.set('mode', mode)
+  if (trackId) params.set('track_id', trackId)
+  const query = params.size ? `?${params}` : ''
   return request<PlaybackPreparation>(
     `/api/v1/torrents/${encodeURIComponent(taskId)}/compatible${query}`,
   )
@@ -415,6 +469,12 @@ export function friendlyApiError(error: unknown): string {
   }
   if (error instanceof ApiError && error.code === 'playback_preparation_limit') {
     return 'Уже подготавливается другая совместимая версия. Дождитесь её завершения.'
+  }
+  if (error instanceof ApiError && error.code === 'playback_tracks_unavailable') {
+    return 'Список дорожек станет доступен после полной загрузки выбранного файла.'
+  }
+  if (error instanceof ApiError && error.code === 'invalid_playback_track') {
+    return 'Эта дорожка больше не относится к выбранному файлу. Обновите список.'
   }
   if (error instanceof ApiError && error.code === 'library_conflict') {
     return error.message

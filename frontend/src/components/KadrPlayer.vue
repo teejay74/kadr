@@ -5,7 +5,10 @@ import {
   friendlyApiError,
   getCompatiblePlayback,
   getHistoryItem,
+  getPlaybackTracks,
   getStreamReadiness,
+  preparePlaybackSubtitle,
+  savePlaybackTrackPreferences,
   startCompatiblePlayback,
   updateHistory,
 } from '../services/api'
@@ -14,6 +17,8 @@ import type {
   MediaKind,
   PlaybackMode,
   PlaybackPreparation,
+  PlaybackTrack,
+  PlaybackTrackList,
 } from '../types/media'
 
 const props = withDefaults(defineProps<{
@@ -30,6 +35,8 @@ const props = withDefaults(defineProps<{
   downloadState?: string
   downloadSpeedBytes?: number
   directStreamUrl?: string
+  libraryItemId?: string
+  profileKey?: string
   autoActivate?: boolean
   initialResumeSeconds?: number
 }>(), {
@@ -44,6 +51,8 @@ const props = withDefaults(defineProps<{
   downloadState: '',
   downloadSpeedBytes: 0,
   directStreamUrl: '',
+  libraryItemId: '',
+  profileKey: 'default',
   autoActivate: false,
   initialResumeSeconds: -1,
 })
@@ -63,10 +72,21 @@ const resumeAt = ref(0)
 const streamAttempt = ref(0)
 const compatible = ref<PlaybackPreparation | null>(null)
 const compatibleMode = ref<PlaybackMode>('compatible')
+const compatibleTrackId = ref('')
 const usingCompatible = ref(false)
 const currentDownloadProgress = ref(props.downloadProgress)
 const currentDownloadState = ref(props.downloadState)
 const currentDownloadSpeedBytes = ref(props.downloadSpeedBytes)
+const trackList = ref<PlaybackTrackList | null>(null)
+const tracksOpen = ref(false)
+const tracksLoading = ref(false)
+const tracksError = ref('')
+const trackStatus = ref('')
+const pendingCompatibleAudioTrackId = ref('')
+const pendingSubtitleTrackId = ref('')
+const externalSubtitleUrl = ref('')
+const externalSubtitleTrackId = ref('')
+const trackSwitchPosition = ref(0)
 let lastSavedSecond = -1
 let playbackEnded = false
 let nearEndEmitted = false
@@ -75,6 +95,18 @@ let compatibilityTimer: ReturnType<typeof setTimeout> | undefined
 let preparationId = 0
 let readinessAttempts = 0
 const maxReadinessAttempts = 12
+
+interface NativeAudioTrack {
+  id: string
+  language: string
+  label: string
+  enabled: boolean
+}
+
+interface NativeAudioTrackList {
+  length: number
+  [index: number]: NativeAudioTrack
+}
 
 const streamUrl = computed(() => {
   const base = usingCompatible.value
@@ -113,6 +145,38 @@ const downloadStatus = computed(() => {
     : ''
   return `Скачано ${downloadPercent.value}% · ${downloadStateLabel.value}${speed}`
 })
+const selectedAudioTrack = computed(() => trackList.value?.audio_tracks.find(
+  (track) => track.id === trackList.value?.selected_audio_track_id,
+) ?? null)
+const selectedSubtitleTrack = computed(() => trackList.value?.subtitle_tracks.find(
+  (track) => track.id === trackList.value?.selected_subtitle_track_id,
+) ?? null)
+
+function languageLabel(language: string | null): string {
+  const labels: Record<string, string> = {
+    en: 'Английский',
+    ru: 'Русский',
+    uk: 'Украинский',
+    de: 'Немецкий',
+    fr: 'Французский',
+    es: 'Испанский',
+    it: 'Итальянский',
+    ja: 'Японский',
+    ko: 'Корейский',
+    zh: 'Китайский',
+  }
+  return language ? labels[language] ?? language.toUpperCase() : 'Язык не указан'
+}
+
+function trackLabel(track: PlaybackTrack): string {
+  const parts = [languageLabel(track.language)]
+  if (track.title) parts.push(track.title)
+  if (track.channels) parts.push(`${track.channels} каналов`)
+  parts.push(track.codec.toUpperCase())
+  if (track.is_default) parts.push('по умолчанию')
+  if (track.is_forced) parts.push('форсированные')
+  return parts.join(' · ')
+}
 
 function readSavedPosition(): number {
   try {
@@ -137,6 +201,210 @@ function formatBytes(bytes: number): string {
   const units = ['Б', 'КБ', 'МБ', 'ГБ']
   const unit = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), units.length - 1)
   return `${(bytes / 1024 ** unit).toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`
+}
+
+async function toggleTracks(): Promise<void> {
+  tracksOpen.value = !tracksOpen.value
+  if (!tracksOpen.value || trackList.value || tracksLoading.value) return
+  tracksLoading.value = true
+  tracksError.value = ''
+  try {
+    trackList.value = await getPlaybackTracks(
+      props.taskId,
+      props.libraryItemId,
+      props.profileKey,
+    )
+    applyResolvedTracks()
+  } catch (reason) {
+    tracksError.value = friendlyApiError(reason)
+  } finally {
+    tracksLoading.value = false
+  }
+}
+
+async function selectAudioTrack(trackId: string): Promise<void> {
+  if (!trackList.value) return
+  await saveTrackSelection(trackId, trackList.value.selected_subtitle_track_id, trackList.value.subtitles_enabled)
+}
+
+async function selectSubtitleTrack(trackId: string | null): Promise<void> {
+  if (!trackList.value) return
+  await saveTrackSelection(
+    trackList.value.selected_audio_track_id,
+    trackId ?? trackList.value.selected_subtitle_track_id,
+    trackId !== null,
+  )
+}
+
+async function prepareSelectedSubtitle(): Promise<void> {
+  if (!pendingSubtitleTrackId.value || !video.value) return
+  tracksLoading.value = true
+  tracksError.value = ''
+  trackSwitchPosition.value = video.value.currentTime
+  try {
+    const prepared = await preparePlaybackSubtitle(
+      props.taskId,
+      props.libraryItemId,
+      pendingSubtitleTrackId.value,
+    )
+    externalSubtitleUrl.value = prepared.stream_url
+    externalSubtitleTrackId.value = prepared.track_id
+    pendingSubtitleTrackId.value = ''
+    trackStatus.value = 'Субтитры подготовлены и подключены.'
+    await nextTick()
+    video.value?.load()
+  } catch (reason) {
+    tracksError.value = friendlyApiError(reason)
+  } finally {
+    tracksLoading.value = false
+  }
+}
+
+async function saveTrackSelection(
+  audioTrackId: string | null,
+  subtitleTrackId: string | null,
+  subtitlesEnabled: boolean,
+): Promise<void> {
+  tracksLoading.value = true
+  tracksError.value = ''
+  trackStatus.value = ''
+  try {
+    trackList.value = await savePlaybackTrackPreferences(
+      props.taskId,
+      props.libraryItemId,
+      {
+        profile_key: props.profileKey,
+        audio_track_id: audioTrackId,
+        subtitle_track_id: subtitleTrackId,
+        subtitles_enabled: subtitlesEnabled,
+      },
+    )
+    if (
+      !subtitlesEnabled
+      || externalSubtitleTrackId.value !== selectedSubtitleTrack.value?.id
+    ) {
+      externalSubtitleUrl.value = ''
+      externalSubtitleTrackId.value = ''
+    }
+    const audioApplied = selectedAudioTrack.value
+      ? applyNativeAudioTrack(selectedAudioTrack.value)
+      : true
+    const subtitleApplied = !subtitlesEnabled
+      || (Boolean(externalSubtitleUrl.value)
+        && externalSubtitleTrackId.value === selectedSubtitleTrack.value?.id)
+      || applyNativeSubtitleTrack(selectedSubtitleTrack.value)
+    const applied = audioApplied && subtitleApplied
+    pendingCompatibleAudioTrackId.value = audioApplied || !selectedAudioTrack.value || Boolean(props.libraryItemId)
+      ? ''
+      : selectedAudioTrack.value.id
+    pendingSubtitleTrackId.value = !subtitlesEnabled
+      || !selectedSubtitleTrack.value
+      || selectedSubtitleTrack.value.delivery !== 'external_webvtt'
+      || subtitleApplied
+      ? ''
+      : selectedSubtitleTrack.value.id
+    trackStatus.value = applied
+      ? 'Выбор применён без перезапуска потока.'
+      : 'Выбор сохранён. Этот браузер не умеет переключить дорожку внутри текущего файла.'
+  } catch (reason) {
+    tracksError.value = friendlyApiError(reason)
+  } finally {
+    tracksLoading.value = false
+  }
+}
+
+async function prepareSelectedAudioTrack(): Promise<void> {
+  if (!pendingCompatibleAudioTrackId.value) return
+  trackSwitchPosition.value = video.value?.currentTime ?? 0
+  compatibleTrackId.value = pendingCompatibleAudioTrackId.value
+  preparationId += 1
+  if (readinessTimer) clearTimeout(readinessTimer)
+  if (compatibilityTimer) clearTimeout(compatibilityTimer)
+  streamReady.value = false
+  waiting.value = false
+  error.value = ''
+  compatibleMode.value = 'audio_track'
+  try {
+    await handleCompatibility(
+      await startCompatiblePlayback(
+        props.taskId,
+        'audio_track',
+        compatibleTrackId.value,
+      ),
+    )
+  } catch (reason) {
+    error.value = friendlyApiError(reason)
+  }
+}
+
+function applyResolvedTracks(): boolean {
+  if (!trackList.value || !video.value) return false
+  const audioApplied = selectedAudioTrack.value
+    ? applyNativeAudioTrack(selectedAudioTrack.value)
+    : true
+  const subtitleApplied = applyNativeSubtitleTrack(
+    trackList.value.subtitles_enabled ? selectedSubtitleTrack.value : null,
+  )
+  return audioApplied && subtitleApplied
+}
+
+function applyNativeAudioTrack(track: PlaybackTrack): boolean {
+  const element = video.value as (HTMLVideoElement & { audioTracks?: NativeAudioTrackList }) | null
+  const nativeTracks = element?.audioTracks
+  if (!nativeTracks || nativeTracks.length === 0) return false
+  const match = findNativeTrack(nativeTracks, track)
+  if (!match) return false
+  try {
+    for (let index = 0; index < nativeTracks.length; index += 1) {
+      nativeTracks[index].enabled = nativeTracks[index] === match
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findNativeTrack(
+  tracks: NativeAudioTrackList,
+  requested: PlaybackTrack,
+): NativeAudioTrack | null {
+  let best: NativeAudioTrack | null = null
+  let bestScore = 0
+  for (let index = 0; index < tracks.length; index += 1) {
+    const candidate = tracks[index]
+    let score = 0
+    if (requested.language && candidate.language.toLowerCase() === requested.language) score += 4
+    if (
+      requested.title
+      && candidate.label.toLocaleLowerCase().includes(requested.title.toLocaleLowerCase())
+    ) score += 3
+    if (score > bestScore) {
+      best = candidate
+      bestScore = score
+    }
+  }
+  if (best) return best
+  return tracks.length === 1 ? tracks[0] : null
+}
+
+function applyNativeSubtitleTrack(track: PlaybackTrack | null): boolean {
+  const nativeTracks = video.value?.textTracks
+  if (!nativeTracks) return track === null
+  let matched = track === null
+  for (let index = 0; index < nativeTracks.length; index += 1) {
+    const candidate = nativeTracks[index]
+    const languageMatches = Boolean(
+      track?.language && candidate.language.toLowerCase() === track.language,
+    )
+    const titleMatches = Boolean(
+      track?.title
+      && candidate.label.toLocaleLowerCase().includes(track.title.toLocaleLowerCase()),
+    )
+    const selected = track !== null && (languageMatches || titleMatches)
+    candidate.mode = selected ? 'showing' : 'disabled'
+    matched = matched || selected
+  }
+  return matched
 }
 
 async function startVideoElement(): Promise<void> {
@@ -173,6 +441,14 @@ async function activate(): Promise<void> {
   streamReady.value = false
   bufferProgress.value = 0
   usingCompatible.value = false
+  trackList.value = null
+  tracksOpen.value = false
+  tracksError.value = ''
+  trackStatus.value = ''
+  pendingCompatibleAudioTrackId.value = ''
+  pendingSubtitleTrackId.value = ''
+  externalSubtitleUrl.value = ''
+  externalSubtitleTrackId.value = ''
   preparationId += 1
   if (props.directStreamUrl) {
     await prepareStream(preparationId)
@@ -210,6 +486,7 @@ async function startPreparation(mode: PlaybackMode): Promise<void> {
   waiting.value = false
   error.value = ''
   compatibleMode.value = mode
+  compatibleTrackId.value = ''
   try {
     await handleCompatibility(await startCompatiblePlayback(props.taskId, mode))
   } catch (reason) {
@@ -219,7 +496,11 @@ async function startPreparation(mode: PlaybackMode): Promise<void> {
 
 async function pollCompatibility(): Promise<void> {
   try {
-    await handleCompatibility(await getCompatiblePlayback(props.taskId, compatibleMode.value))
+    await handleCompatibility(await getCompatiblePlayback(
+      props.taskId,
+      compatibleMode.value,
+      compatibleTrackId.value,
+    ))
   } catch (reason) {
     error.value = friendlyApiError(reason)
   }
@@ -281,7 +562,16 @@ async function prepareStream(id = ++preparationId): Promise<void> {
 
 function onLoadedMetadata(): void {
   waiting.value = false
+  if (trackList.value) applyResolvedTracks()
   const duration = video.value?.duration ?? 0
+  if (video.value && trackSwitchPosition.value > 0) {
+    video.value.currentTime = Number.isFinite(duration) && duration > 1
+      ? Math.min(trackSwitchPosition.value, duration - 1)
+      : trackSwitchPosition.value
+    trackSwitchPosition.value = 0
+    resumeAt.value = 0
+    void video.value.play().catch(() => undefined)
+  }
   if (resumeAt.value >= Math.max(duration - 10, 5)) resumeAt.value = 0
 }
 
@@ -469,10 +759,86 @@ onBeforeUnmount(stopPlayback)
             {{ downloadStatus }}
           </span>
         </div>
-        <button class="button secondary focus-ring" type="button" @click="stopPlayback">
-          Закрыть плеер
-        </button>
+        <div class="player-toolbar-actions">
+          <button
+            class="button secondary focus-ring"
+            type="button"
+            aria-controls="kadr-track-menu"
+            :aria-expanded="tracksOpen"
+            @click="toggleTracks"
+          >
+            Аудио и субтитры
+          </button>
+          <button class="button secondary focus-ring" type="button" @click="stopPlayback">
+            Закрыть плеер
+          </button>
+        </div>
       </div>
+      <section v-if="tracksOpen" id="kadr-track-menu" class="track-menu" aria-label="Аудио и субтитры">
+        <p v-if="tracksLoading" role="status">Определяем дорожки файла…</p>
+        <p v-else-if="tracksError" class="torrent-error" role="alert">{{ tracksError }}</p>
+        <template v-else-if="trackList">
+          <fieldset class="track-group">
+            <legend>Аудиодорожка</legend>
+            <p v-if="trackList.audio_tracks.length === 0">Аудиодорожки не найдены.</p>
+            <label v-for="track in trackList.audio_tracks" :key="track.id" class="track-option">
+              <input
+                type="radio"
+                name="kadr-audio-track"
+                :value="track.id"
+                :checked="track.id === trackList.selected_audio_track_id"
+                :disabled="tracksLoading"
+                @change="selectAudioTrack(track.id)"
+              >
+              <span>{{ trackLabel(track) }}</span>
+            </label>
+          </fieldset>
+          <fieldset class="track-group">
+            <legend>Субтитры</legend>
+            <label class="track-option">
+              <input
+                type="radio"
+                name="kadr-subtitle-track"
+                value="off"
+                :checked="!trackList.subtitles_enabled"
+                :disabled="tracksLoading"
+                @change="selectSubtitleTrack(null)"
+              >
+              <span>Выключены</span>
+            </label>
+            <label v-for="track in trackList.subtitle_tracks" :key="track.id" class="track-option">
+              <input
+                type="radio"
+                name="kadr-subtitle-track"
+                :value="track.id"
+                :checked="trackList.subtitles_enabled && track.id === trackList.selected_subtitle_track_id"
+                :disabled="tracksLoading || track.delivery === 'unsupported'"
+                @change="selectSubtitleTrack(track.id)"
+              >
+              <span>{{ trackLabel(track) }}</span>
+            </label>
+          </fieldset>
+          <small v-if="trackStatus" class="track-status" role="status">{{ trackStatus }}</small>
+          <button
+            v-if="pendingCompatibleAudioTrackId"
+            class="button primary focus-ring"
+            type="button"
+            :disabled="tracksLoading"
+            @click="prepareSelectedAudioTrack"
+          >
+            Подготовить выбранную аудиодорожку
+          </button>
+          <button
+            v-if="pendingSubtitleTrackId"
+            class="button primary focus-ring"
+            type="button"
+            :disabled="tracksLoading"
+            @click="prepareSelectedSubtitle"
+          >
+            Подготовить выбранные субтитры
+          </button>
+        </template>
+      </section>
       <div class="video-frame">
         <video
           v-if="streamReady"
@@ -490,6 +856,14 @@ onBeforeUnmount(stopPlayback)
           @ended="onEnded"
           @error="onPlaybackError"
         >
+          <track
+            v-if="externalSubtitleUrl"
+            kind="subtitles"
+            :src="externalSubtitleUrl"
+            :srclang="selectedSubtitleTrack?.language || 'und'"
+            :label="selectedSubtitleTrack?.title || languageLabel(selectedSubtitleTrack?.language ?? null)"
+            default
+          >
           Ваш браузер не поддерживает воспроизведение видео.
         </video>
         <div v-if="waiting" class="player-status" role="status">
@@ -510,7 +884,11 @@ onBeforeUnmount(stopPlayback)
         >
           FFmpeg: {{ compatible.state === 'probing'
             ? 'анализ'
-            : compatible.mode === 'audio_only' ? 'исправляем звук' : 'подготовка' }}…
+            : compatible.mode === 'audio_only'
+              ? 'исправляем звук'
+              : compatible.mode === 'audio_track'
+                ? 'готовим выбранную аудиодорожку'
+                : 'подготовка' }}…
           {{ Math.round(compatible.progress * 100) }}%
         </p>
       </div>

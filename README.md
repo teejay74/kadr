@@ -48,6 +48,20 @@ completed selected torrent file or one saved library item. It returns stable
 semantic preference keys plus exact stream IDs, languages, codecs, labels,
 defaults, and delivery capabilities without starting FFmpeg or scanning a
 season in the background.
+D3.2 persists audio and subtitle preferences per profile using semantic track
+identity rather than stream position. Discovery responses resolve the best
+available track for the current file and keep subtitles explicitly opt-in.
+D3.3 adds the KadrPlayer “Аудио и субтитры” menu. It applies native browser
+audio/text tracks when the media engine exposes them, preserves playback
+position, and reports when the current container requires a compatible stream.
+D3.4 adds an explicit compatible-audio action for completed torrent files.
+KADR validates the opaque track ID against the current file, copies the video,
+converts only the selected audio stream to AAC, and restores the viewer's
+position after switching. Ordinary Direct Play still never starts FFmpeg.
+D3.5 adds explicit text-subtitle preparation for torrent and saved-library
+sources. KADR revalidates the selected track, extracts only that stream to a
+cached WebVTT file, attaches it to the player, and restores playback position.
+Bitmap subtitles remain a separate future burn-in path.
 
 ## Quick start
 
@@ -152,5 +166,9 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [UI redesign D2 report](docs/ui-redesign-d2-report.md)
 - [UI redesign D2.1 report](docs/ui-redesign-d2-1-report.md)
 - [Audio/subtitle D3.1 report](docs/ui-redesign-d3-1-report.md)
+- [Audio/subtitle D3.2 report](docs/ui-redesign-d3-2-report.md)
+- [Audio/subtitle D3.3 report](docs/ui-redesign-d3-3-report.md)
+- [Audio/subtitle D3.4 report](docs/ui-redesign-d3-4-report.md)
+- [Audio/subtitle D3.5 report](docs/ui-redesign-d3-5-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

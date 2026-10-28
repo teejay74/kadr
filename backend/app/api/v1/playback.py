@@ -54,8 +54,9 @@ async def prepare_compatible_playback(
     service: PlaybackPreparationServiceDependency,
     task_id: str,
     mode: Annotated[PlaybackMode, Query()] = "compatible",
+    track_id: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
 ) -> PlaybackPreparation:
-    return await service.prepare(task_id, mode)
+    return await service.prepare(task_id, mode, track_id)
 
 
 @router.get(
@@ -66,8 +67,9 @@ async def compatible_playback_status(
     service: PlaybackPreparationServiceDependency,
     task_id: str,
     mode: Annotated[PlaybackMode, Query()] = "compatible",
+    track_id: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
 ) -> PlaybackPreparation:
-    return await service.status(task_id, mode)
+    return await service.status(task_id, mode, track_id)
 
 
 @router.get(
@@ -80,12 +82,14 @@ async def stream_compatible_playback(
     task_id: str,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     mode: Annotated[PlaybackMode, Query()] = "compatible",
+    track_id: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
 ) -> StreamingResponse:
     prepared = await service.open(
         task_id,
         mode,
         range_header,
         request.app.state.stream_registry,
+        track_id,
     )
     headers = {
         "Accept-Ranges": "bytes",

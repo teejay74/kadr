@@ -12,3 +12,11 @@ class PlaybackArtifactNotReadyError(RuntimeError):
 
 class PlaybackTrackProbeError(RuntimeError):
     """Raised when local media tracks cannot be inspected safely."""
+
+
+class PlaybackTrackPreferenceError(RuntimeError):
+    """Raised when a requested media track does not belong to the source."""
+
+
+class PlaybackSubtitleError(RuntimeError):
+    """Raised when an explicitly selected subtitle cannot be prepared."""

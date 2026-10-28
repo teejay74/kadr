@@ -8,6 +8,7 @@ from app.core.database import get_session
 from app.repositories.episodes import EpisodeRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.metadata_cache import MetadataCacheRepository
+from app.repositories.playback import PlaybackTrackPreferenceRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.services.cache.manager import CacheManager
 from app.services.episodes.matcher import EpisodeMatcher
@@ -133,6 +134,7 @@ def get_playback_preparation_service(
         QBittorrentClient(request.app.state.torrent_http_client, settings),
         TorrentTaskRepository(session),
         settings,
+        request.app.state.playback_track_probe,
     )
 
 
@@ -154,6 +156,8 @@ def get_playback_track_service(
         LibraryRepository(session),
         QBittorrentClient(request.app.state.torrent_http_client, settings),
         settings,
+        PlaybackTrackPreferenceRepository(session),
+        request.app.state.subtitle_manager,
     )
 
 

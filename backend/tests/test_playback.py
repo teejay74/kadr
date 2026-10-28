@@ -1,12 +1,48 @@
 from pathlib import Path
 
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import Settings
+from app.models.torrent_task import TorrentTask
+from app.repositories.torrent_tasks import TorrentTaskRepository
+from app.schemas.playback import PlaybackPreparation, PlaybackTrack
+from app.services.playback.exceptions import PlaybackTrackPreferenceError
 from app.services.playback.manager import (
     CompatibilityManager,
     ProbeResult,
     select_strategy,
 )
+from app.services.playback.service import PlaybackPreparationService
+from app.services.playback.tracks import ProbedTracks
 from app.services.streaming.registry import StreamRegistry
+
+
+class FakePreparationManager:
+    def __init__(self) -> None:
+        self.start_args: tuple[object, ...] | None = None
+
+    async def start(self, *args: object) -> PlaybackPreparation:
+        self.start_args = args
+        return PlaybackPreparation(
+            mode="audio_track",
+            state="probing",
+            progress=0,
+            track_id=str(args[-1]),
+        )
+
+
+class FakePlaybackQBittorrent:
+    async def files(self, _: str) -> list[dict[str, object]]:
+        return [{"index": 7, "progress": 1}]
+
+
+class FakePlaybackTrackProbe:
+    def __init__(self, track: PlaybackTrack) -> None:
+        self.track = track
+
+    async def probe(self, _: Path) -> ProbedTracks:
+        return ProbedTracks(audio_tracks=[self.track], subtitle_tracks=[])
 
 
 def probe(
@@ -79,6 +115,30 @@ def test_ffmpeg_command_bounds_incompatible_video_conversion(tmp_path: Path) -> 
     assert command[command.index("-ac") + 1] == "2"
 
 
+def test_selected_audio_command_maps_exact_stream_and_copies_video(
+    tmp_path: Path,
+) -> None:
+    manager = CompatibilityManager(Settings(playback_cache_root=str(tmp_path)))
+
+    command = manager._ffmpeg_command(
+        Path("input.mkv"),
+        Path("audio-selected.part.mp4"),
+        "audio_transcode",
+        "h264",
+        5,
+    )
+
+    map_positions = [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "-map"
+    ]
+    assert map_positions == ["0:v:0", "0:5"]
+    assert command[command.index("-c:v") + 1] == "copy"
+    assert command[command.index("-c:a") + 1] == "aac"
+    assert "-sn" in command
+
+
 async def test_ready_compatible_file_supports_byte_ranges(tmp_path: Path) -> None:
     task_id = "task-1"
     selected_file_id = 3
@@ -145,3 +205,75 @@ def test_audio_only_artifact_is_separate_from_full_compatibility(
         "/api/v1/torrents/task-1/compatible/stream?mode=audio_only"
     )
     assert full.state == "idle"
+
+
+def test_selected_audio_artifacts_are_isolated_by_semantic_track_id(
+    tmp_path: Path,
+) -> None:
+    task_id = "task-1"
+    directory = tmp_path / task_id / "1"
+    directory.mkdir(parents=True)
+    (directory / "audio-a-one.mp4").write_bytes(b"one")
+    manager = CompatibilityManager(Settings(playback_cache_root=str(tmp_path)))
+
+    first = manager.status(task_id, 1, "audio_track", "a-one")
+    second = manager.status(task_id, 1, "audio_track", "a-two")
+
+    assert first.state == "ready"
+    assert first.track_id == "a-one"
+    assert first.stream_url == (
+        "/api/v1/torrents/task-1/compatible/stream"
+        "?mode=audio_track&track_id=a-one"
+    )
+    assert second.state == "idle"
+
+
+@pytest.mark.asyncio
+async def test_preparation_service_validates_opaque_audio_id_before_ffmpeg(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    download_root = tmp_path / "downloads"
+    storage = download_root / "cache"
+    storage.mkdir(parents=True)
+    (storage / "Movie.mkv").write_bytes(b"video")
+    task = TorrentTask(
+        id="00000000-0000-0000-0000-000000000801",
+        media_id=80,
+        media_kind="movie",
+        torrent_hash="selected-audio-hash",
+        source_id="f" * 24,
+        release_title="Movie",
+        selected_file_id=7,
+        selected_file_path="Movie.mkv",
+        storage_path=str(storage),
+        state="stoppedUP",
+    )
+    repository = TorrentTaskRepository(session)
+    await repository.create(task)
+    track = PlaybackTrack(
+        id="a-selected",
+        preference_key="semantic-selected",
+        stream_index=5,
+        kind="audio",
+        language="ru",
+        codec="ac3",
+        title="Studio",
+        delivery="native_or_compatible",
+    )
+    manager = FakePreparationManager()
+    service = PlaybackPreparationService(
+        manager,  # type: ignore[arg-type]
+        FakePlaybackQBittorrent(),  # type: ignore[arg-type]
+        repository,
+        Settings(torrent_storage_root=str(download_root)),
+        FakePlaybackTrackProbe(track),  # type: ignore[arg-type]
+    )
+
+    result = await service.prepare(task.id, "audio_track", track.id)
+
+    assert result.track_id == track.id
+    assert manager.start_args is not None
+    assert manager.start_args[-2:] == (5, track.id)
+    with pytest.raises(PlaybackTrackPreferenceError, match="does not belong"):
+        await service.prepare(task.id, "audio_track", "a-stale")

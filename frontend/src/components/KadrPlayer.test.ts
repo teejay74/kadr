@@ -258,6 +258,305 @@ test('quickly fixes audio without requesting a full video transcode', async () =
   )
 })
 
+test('lists tracks and switches a native audio track without losing position', async () => {
+  const tracks = {
+    source: 'torrent',
+    source_id: 'task-id',
+    file_id: 7,
+    audio_tracks: [
+      {
+        id: 'audio-ru',
+        preference_key: 'semantic-ru',
+        stream_index: 1,
+        kind: 'audio',
+        language: 'ru',
+        codec: 'ac3',
+        title: 'Студия',
+        is_default: true,
+        is_forced: false,
+        is_hearing_impaired: false,
+        channels: 2,
+        channel_layout: 'stereo',
+        delivery: 'native_or_compatible',
+      },
+      {
+        id: 'audio-en',
+        preference_key: 'semantic-en',
+        stream_index: 2,
+        kind: 'audio',
+        language: 'en',
+        codec: 'aac',
+        title: null,
+        is_default: false,
+        is_forced: false,
+        is_hearing_impaired: false,
+        channels: 2,
+        channel_layout: 'stereo',
+        delivery: 'native_or_compatible',
+      },
+    ],
+    subtitle_tracks: [],
+    selected_audio_track_id: 'audio-ru',
+    selected_subtitle_track_id: null,
+    subtitles_enabled: false,
+  }
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/compatible')) {
+      return new Response(JSON.stringify({ state: 'idle', progress: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/stream/readiness')) {
+      return new Response(JSON.stringify({
+        ready: true,
+        buffer_progress: 1,
+        file_progress: 1,
+        download_state: null,
+        download_speed_bytes: 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.includes('/tracks?profile_key=default')) {
+      return new Response(JSON.stringify(tracks), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/tracks/preferences') && init?.method === 'PUT') {
+      return new Response(JSON.stringify({
+        ...tracks,
+        selected_audio_track_id: 'audio-en',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'currentTime', { configurable: true, writable: true, value: 42 })
+  const russian = { id: 'native-ru', language: 'ru', label: 'Студия', enabled: true }
+  const english = { id: 'native-en', language: 'en', label: '', enabled: false }
+  Object.defineProperty(player, 'audioTracks', {
+    configurable: true,
+    value: { 0: russian, 1: english, length: 2 },
+  })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Аудио и субтитры' }))
+  await screen.findByLabelText('Английский · 2 каналов · AAC')
+  await fireEvent.click(screen.getByLabelText('Английский · 2 каналов · AAC'))
+
+  await screen.findByText('Выбор применён без перезапуска потока.')
+  expect(russian.enabled).toBe(false)
+  expect(english.enabled).toBe(true)
+  expect(player.currentTime).toBe(42)
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/v1/torrents/task-id/tracks/preferences',
+    expect.objectContaining({ method: 'PUT' }),
+  )
+})
+
+test('explicitly prepares a selected audio stream and restores position', async () => {
+  const tracks = {
+    source: 'torrent',
+    source_id: 'task-id',
+    file_id: 7,
+    audio_tracks: [
+      {
+        id: 'audio-ru',
+        preference_key: 'semantic-ru',
+        stream_index: 3,
+        kind: 'audio',
+        language: 'ru',
+        codec: 'ac3',
+        title: 'Studio',
+        is_default: true,
+        is_forced: false,
+        is_hearing_impaired: false,
+        channels: 2,
+        channel_layout: 'stereo',
+        delivery: 'native_or_compatible',
+      },
+      {
+        id: 'audio-en',
+        preference_key: 'semantic-en',
+        stream_index: 4,
+        kind: 'audio',
+        language: 'en',
+        codec: 'ac3',
+        title: null,
+        is_default: false,
+        is_forced: false,
+        is_hearing_impaired: false,
+        channels: 2,
+        channel_layout: 'stereo',
+        delivery: 'native_or_compatible',
+      },
+    ],
+    subtitle_tracks: [],
+    selected_audio_track_id: 'audio-ru',
+    selected_subtitle_track_id: null,
+    subtitles_enabled: false,
+  }
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/compatible')) {
+      return new Response(JSON.stringify({ state: 'idle', progress: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/stream/readiness')) {
+      return new Response(JSON.stringify({
+        ready: true,
+        buffer_progress: 1,
+        file_progress: 1,
+        download_state: null,
+        download_speed_bytes: 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.includes('/tracks?profile_key=default')) {
+      return new Response(JSON.stringify(tracks), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/tracks/preferences')) {
+      return new Response(JSON.stringify({
+        ...tracks,
+        selected_audio_track_id: 'audio-en',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (
+      url.endsWith('/compatible?mode=audio_track&track_id=audio-en')
+      && init?.method === 'POST'
+    ) {
+      return new Response(JSON.stringify({
+        mode: 'audio_track',
+        state: 'ready',
+        progress: 1,
+        strategy: 'audio_transcode',
+        video_codec: 'h264',
+        audio_codec: 'ac3',
+        message: null,
+        track_id: 'audio-en',
+        stream_url: '/api/v1/torrents/task-id/compatible/stream?mode=audio_track&track_id=audio-en',
+      }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const original = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(original, 'currentTime', { configurable: true, writable: true, value: 73 })
+  await fireEvent.click(screen.getByRole('button', { name: 'Аудио и субтитры' }))
+  await screen.findByLabelText('Английский · 2 каналов · AC3')
+  await fireEvent.click(screen.getByLabelText('Английский · 2 каналов · AC3'))
+  await screen.findByText(/не умеет переключить дорожку/)
+
+  await fireEvent.click(screen.getByRole('button', {
+    name: 'Подготовить выбранную аудиодорожку',
+  }))
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const compatiblePlayer = document.querySelector('video') as HTMLVideoElement
+  expect(compatiblePlayer.getAttribute('src')).toContain(
+    'mode=audio_track&track_id=audio-en&attempt=1',
+  )
+  Object.defineProperty(compatiblePlayer, 'duration', { configurable: true, value: 600 })
+  await fireEvent.loadedMetadata(compatiblePlayer)
+  expect(compatiblePlayer.currentTime).toBe(73)
+})
+
+test('explicitly prepares selected text subtitles and restores position', async () => {
+  const tracks = {
+    source: 'torrent',
+    source_id: 'task-id',
+    file_id: 7,
+    audio_tracks: [],
+    subtitle_tracks: [{
+      id: 'subtitle-ru',
+      preference_key: 'semantic-subtitle-ru',
+      stream_index: 4,
+      kind: 'subtitle',
+      language: 'ru',
+      codec: 'subrip',
+      title: null,
+      is_default: false,
+      is_forced: false,
+      is_hearing_impaired: false,
+      channels: null,
+      channel_layout: null,
+      delivery: 'external_webvtt',
+    }],
+    selected_audio_track_id: null,
+    selected_subtitle_track_id: null,
+    subtitles_enabled: false,
+  }
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/compatible')) {
+      return new Response(JSON.stringify({ state: 'idle', progress: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/stream/readiness')) {
+      return new Response(JSON.stringify({
+        ready: true,
+        buffer_progress: 1,
+        file_progress: 1,
+        download_state: null,
+        download_speed_bytes: 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.includes('/tracks?profile_key=default')) {
+      return new Response(JSON.stringify(tracks), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.endsWith('/tracks/preferences')) {
+      return new Response(JSON.stringify({
+        ...tracks,
+        selected_subtitle_track_id: 'subtitle-ru',
+        subtitles_enabled: true,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.endsWith('/tracks/subtitle-ru/subtitle') && init?.method === 'POST') {
+      return new Response(JSON.stringify({
+        track_id: 'subtitle-ru',
+        stream_url: '/api/v1/torrents/task-id/subtitles/artifact.vtt',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'currentTime', { configurable: true, writable: true, value: 91 })
+  await fireEvent.click(screen.getByRole('button', { name: 'Аудио и субтитры' }))
+  await fireEvent.click(await screen.findByLabelText('Русский · SUBRIP'))
+  await fireEvent.click(await screen.findByRole('button', {
+    name: 'Подготовить выбранные субтитры',
+  }))
+
+  await waitFor(() => expect(document.querySelector('track')?.getAttribute('src')).toBe(
+    '/api/v1/torrents/task-id/subtitles/artifact.vtt',
+  ))
+  Object.defineProperty(player, 'duration', { configurable: true, value: 600 })
+  await fireEvent.loadedMetadata(player)
+  expect(player.currentTime).toBe(91)
+})
+
 test('automatically reuses a compatible version on the next playback attempt', async () => {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input)

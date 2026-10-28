@@ -2,7 +2,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.dependencies import (
@@ -21,7 +21,11 @@ from app.schemas.library import (
     StorageResponse,
 )
 from app.schemas.media import MediaKind
-from app.schemas.playback import PlaybackTrackList
+from app.schemas.playback import (
+    PlaybackSubtitlePreparation,
+    PlaybackTrackList,
+    PlaybackTrackPreferenceRequest,
+)
 
 router = APIRouter()
 
@@ -77,8 +81,45 @@ async def stream_library_item(
 async def library_tracks(
     service: PlaybackTrackServiceDependency,
     item_id: str,
+    profile_key: Annotated[str, Query(min_length=1, max_length=64)] = "default",
 ) -> PlaybackTrackList:
-    return await service.library_tracks(item_id)
+    return await service.library_tracks(item_id, profile_key)
+
+
+@router.put("/library/{item_id}/tracks/preferences", response_model=PlaybackTrackList)
+async def save_library_track_preferences(
+    service: PlaybackTrackServiceDependency,
+    item_id: str,
+    body: PlaybackTrackPreferenceRequest,
+) -> PlaybackTrackList:
+    return await service.save_library_preferences(item_id, body)
+
+
+@router.post(
+    "/library/{item_id}/tracks/{track_id}/subtitle",
+    response_model=PlaybackSubtitlePreparation,
+)
+async def prepare_library_subtitle(
+    service: PlaybackTrackServiceDependency,
+    item_id: str,
+    track_id: str,
+) -> PlaybackSubtitlePreparation:
+    artifact = await service.prepare_library_subtitle(item_id, track_id)
+    item = quote(item_id, safe="")
+    return PlaybackSubtitlePreparation(
+        track_id=track_id,
+        stream_url=f"/api/v1/library/{item}/subtitles/{artifact.artifact_id}.vtt",
+    )
+
+
+@router.get("/library/{item_id}/subtitles/{artifact_id}.vtt")
+async def stream_library_subtitle(
+    service: PlaybackTrackServiceDependency,
+    item_id: str,
+    artifact_id: str,
+) -> FileResponse:
+    path = await service.open_library_subtitle(item_id, artifact_id)
+    return FileResponse(path, media_type="text/vtt", filename="subtitles.vtt")
 
 
 @router.get("/favorites", response_model=list[FavoriteResponse])

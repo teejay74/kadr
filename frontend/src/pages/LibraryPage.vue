@@ -67,6 +67,7 @@ onMounted(load)
             :download-progress="1"
             download-state="stoppedUP"
             :direct-stream-url="item.stream_url"
+            :library-item-id="item.id"
           />
           <div class="action-row">
             <RouterLink class="button secondary" :to="`/${item.media_kind === 'movie' ? 'movies' : 'series'}/${item.media_id}`">Карточка</RouterLink>

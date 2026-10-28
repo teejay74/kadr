@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     ffprobe_timeout_seconds: float = Field(default=15, gt=0, le=120)
+    subtitle_extraction_timeout_seconds: float = Field(default=120, gt=0, le=600)
     max_active_transcodes: int = Field(default=1, ge=1, le=2)
     transcode_video_threads: int = Field(default=2, ge=1, le=8)
     transcode_video_preset: str = "veryfast"

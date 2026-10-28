@@ -36,9 +36,12 @@ from app.services.playback.exceptions import (
     PlaybackArtifactNotReadyError,
     PlaybackPreparationError,
     PlaybackPreparationLimitError,
+    PlaybackSubtitleError,
+    PlaybackTrackPreferenceError,
     PlaybackTrackProbeError,
 )
 from app.services.playback.manager import CompatibilityManager
+from app.services.playback.subtitles import SubtitleManager
 from app.services.playback.tracks import PlaybackTrackProbe
 from app.services.sources.exceptions import (
     IndexerNotConfiguredError,
@@ -105,6 +108,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     )
     application.state.compatibility_manager = CompatibilityManager(settings)
     application.state.playback_track_probe = PlaybackTrackProbe(settings)
+    application.state.subtitle_manager = SubtitleManager(settings)
     async with httpx.AsyncClient(
         base_url=settings.tmdb_base_url,
         timeout=settings.tmdb_timeout_seconds,
@@ -306,6 +310,25 @@ def create_app() -> FastAPI:
         exc: PlaybackTrackProbeError,
     ) -> JSONResponse:
         error = ErrorResponse(code="playback_tracks_unavailable", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(PlaybackTrackPreferenceError)
+    async def playback_track_preference(
+        _: Request,
+        exc: PlaybackTrackPreferenceError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="invalid_playback_track", message=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=error.model_dump(),
+        )
+
+    @application.exception_handler(PlaybackSubtitleError)
+    async def playback_subtitle(
+        _: Request,
+        exc: PlaybackSubtitleError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="playback_subtitle_unavailable", message=str(exc))
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
 
     @application.exception_handler(LibraryNotFoundError)

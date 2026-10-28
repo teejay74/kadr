@@ -379,7 +379,11 @@ torrent paths or credentials.
 | Method and path | Purpose |
 | --- | --- |
 | `GET /torrents/{task_id}/tracks` | Inspect the completed selected torrent file |
+| `PUT /torrents/{task_id}/tracks/preferences` | Save this profile's selected tracks |
+| `POST /torrents/{task_id}/tracks/{track_id}/subtitle` | Explicitly prepare one text subtitle |
 | `GET /library/{id}/tracks` | Inspect one saved library file |
+| `PUT /library/{id}/tracks/preferences` | Save this profile's selected tracks |
+| `POST /library/{id}/tracks/{track_id}/subtitle` | Explicitly prepare one text subtitle |
 
 Track discovery is read-only and on-demand. Torrent inspection requires the
 selected file itself to be 100% complete; KADR never downloads or probes every
@@ -388,24 +392,47 @@ and returns separate `audio_tracks` and `subtitle_tracks` arrays. Each entry
 contains an opaque exact `id`, semantic `preference_key`, ffprobe
 `stream_index`, language when known, codec, optional title, default/forced and
 hearing-impaired flags, audio channel metadata, and a delivery capability.
+GET accepts `profile_key` (default `default`) and also returns
+`selected_audio_track_id`, `selected_subtitle_track_id`, and
+`subtitles_enabled` after resolving stored semantic preferences against this
+file's current tracks.
 
 The exact ID includes the stream index and identifies one stream in this file.
 The preference key excludes that index, so a later preferences stage can match
 the same language/label/codec semantics even when another file orders its
 streams differently. Text subtitles report `external_webvtt`, bitmap subtitles
-report `burn_in_required`, and unknown codecs report `unsupported`; this stage
-does not yet create either derived stream. Missing titles remain `null`.
+report `burn_in_required`, and unknown codecs report `unsupported`. Missing
+titles remain `null`.
 Failures use `playback_tracks_unavailable` (409). Unsafe paths continue to use
 the existing torrent/library storage errors. Track discovery never starts
 FFmpeg and does not change the Direct Play Range contract.
+
+Preference PUT bodies contain `profile_key`, optional `audio_track_id`,
+optional `subtitle_track_id`, and `subtitles_enabled`. Enabling subtitles
+requires a subtitle ID from this file. KADR validates submitted opaque IDs
+against the freshly discovered list before persistence; an ID belonging to a
+different file returns `422 invalid_playback_track`. The database stores the
+semantic key plus normalized language/title/codec, not a numeric stream index.
+Exact semantic identity is preferred on later files, followed by conservative
+language/title/codec matching and then that file's default stream. Profiles are
+independent, and disabling subtitles retains the last semantic subtitle choice.
+
+The subtitle POST is the only operation that starts extraction. It re-probes
+the current source, rejects stale/cross-file or non-text track IDs, invokes a
+bounded FFmpeg process for that exact stream, and returns a same-origin WebVTT
+URL. Outputs are atomic and cached by source size, modification time, and track
+identity. Opening track discovery, saving a preference, and ordinary Direct
+Play do not start FFmpeg. The returned WebVTT GET uses
+`/torrents/{task_id}/subtitles/{artifact_id}.vtt` or the corresponding library
+path. Failures use `playback_subtitle_unavailable` (409).
 
 ## Compatible-playback endpoints
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /torrents/{task_id}/compatible?mode=…` | Explicitly start or reuse preparation |
-| `GET /torrents/{task_id}/compatible?mode=…` | Read probe/conversion progress and strategy |
-| `GET /torrents/{task_id}/compatible/stream?mode=…` | Stream the ready MP4 with byte ranges |
+| `POST /torrents/{task_id}/compatible?mode=…&track_id=…` | Explicitly start or reuse preparation |
+| `GET /torrents/{task_id}/compatible?mode=…&track_id=…` | Read probe/conversion progress and strategy |
+| `GET /torrents/{task_id}/compatible/stream?mode=…&track_id=…` | Stream the ready MP4 with byte ranges |
 
 Preparation requires a selected, fully downloaded video. A `202` response has
 `state` (`probing`, `processing`, `ready`, or `failed`), normalized progress,
@@ -414,7 +441,12 @@ video/audio codecs, an optional message, and a stream URL only when ready.
 The default `mode=compatible` selects the safest remux/transcode strategy.
 `mode=audio_only` preserves the video stream and converts only the first audio
 track to AAC stereo; it is intended for a source whose image already works in
-the current browser. The two modes use separate cached artifacts.
+the current browser. `mode=audio_track` requires an opaque `track_id` returned
+by the current file's track endpoint. KADR re-probes the source, rejects stale
+or cross-file IDs with `422 invalid_playback_track`, maps that exact audio
+stream, copies the video, and converts the selected audio to AAC stereo. Each
+selected track uses a separate cache artifact and job identity; the response
+echoes `track_id`. These modes do not make an unsupported video codec playable.
 
 Only the POST starts FFmpeg; GET is read-only. One preparation runs at a time
 by default. Errors use `playback_preparation_failed` or

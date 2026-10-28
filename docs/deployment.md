@@ -104,7 +104,7 @@ commands; never substitute a Photodom path.
    ```
 
 5. Rebuild and replace only KADR's API and web services. The API entrypoint runs
-   Alembic through `0006_episode_matcher` before Uvicorn starts; Prowlarr,
+   Alembic through `0007_playback_track_preferences` before Uvicorn starts; Prowlarr,
    qBittorrent, Photodom, mounts, firewall, and Debian configuration are not
    changed:
 
@@ -116,7 +116,7 @@ commands; never substitute a Photodom path.
    docker compose exec -T api alembic current
    ```
 
-   The expected Alembic revision is `0006_episode_matcher`, all KADR core
+   The expected Alembic revision is `0007_playback_track_preferences`, all KADR core
    services should be healthy, and the public health request should return
    HTTP 200.
 

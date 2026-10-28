@@ -3,6 +3,7 @@ from app.models.base import Base
 from app.models.episodes import EpisodeFileBinding, MediaEpisode, TorrentFileVariant
 from app.models.library import Favorite, LibraryItem, WatchHistory
 from app.models.metadata_cache import MetadataCache
+from app.models.playback import PlaybackTrackPreference
 from app.models.torrent_task import TorrentTask
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "LibraryItem",
     "MediaEpisode",
     "MetadataCache",
+    "PlaybackTrackPreference",
     "TorrentTask",
     "TorrentFileVariant",
     "WatchHistory",

@@ -11,9 +11,17 @@ from app.main import app
 from app.models.library import LibraryItem
 from app.models.torrent_task import TorrentTask
 from app.repositories.library import LibraryRepository
+from app.repositories.playback import PlaybackTrackPreferenceRepository
 from app.repositories.torrent_tasks import TorrentTaskRepository
-from app.schemas.playback import PlaybackTrack, PlaybackTrackList
-from app.services.playback.exceptions import PlaybackTrackProbeError
+from app.schemas.playback import (
+    PlaybackTrack,
+    PlaybackTrackList,
+    PlaybackTrackPreferenceRequest,
+)
+from app.services.playback.exceptions import (
+    PlaybackTrackPreferenceError,
+    PlaybackTrackProbeError,
+)
 from app.services.playback.tracks import (
     PlaybackTrackProbe,
     PlaybackTrackService,
@@ -57,7 +65,12 @@ class FakeQBittorrent:
 
 
 class FakeTrackEndpointService:
-    async def torrent_tracks(self, task_id: str) -> PlaybackTrackList:
+    async def torrent_tracks(
+        self,
+        task_id: str,
+        profile_key: str = "default",
+    ) -> PlaybackTrackList:
+        del profile_key
         return PlaybackTrackList(
             source="torrent",
             source_id=task_id,
@@ -65,13 +78,37 @@ class FakeTrackEndpointService:
             audio_tracks=[sample_audio_track()],
         )
 
-    async def library_tracks(self, item_id: str) -> PlaybackTrackList:
+    async def library_tracks(
+        self,
+        item_id: str,
+        profile_key: str = "default",
+    ) -> PlaybackTrackList:
+        del profile_key
         return PlaybackTrackList(
             source="library",
             source_id=item_id,
             file_id=7,
             subtitle_tracks=[sample_subtitle_track()],
         )
+
+    async def save_torrent_preferences(
+        self,
+        task_id: str,
+        request: PlaybackTrackPreferenceRequest,
+    ) -> PlaybackTrackList:
+        result = await self.torrent_tracks(task_id, request.profile_key)
+        result.selected_audio_track_id = request.audio_track_id
+        return result
+
+    async def save_library_preferences(
+        self,
+        item_id: str,
+        request: PlaybackTrackPreferenceRequest,
+    ) -> PlaybackTrackList:
+        result = await self.library_tracks(item_id, request.profile_key)
+        result.selected_subtitle_track_id = request.subtitle_track_id
+        result.subtitles_enabled = request.subtitles_enabled
+        return result
 
 
 def sample_audio_track() -> PlaybackTrack:
@@ -101,6 +138,30 @@ def sample_subtitle_track() -> PlaybackTrack:
         title=None,
         is_forced=True,
         delivery="external_webvtt",
+    )
+
+
+def alternate_audio_track(
+    track_id: str,
+    preference_key: str,
+    stream_index: int,
+    language: str,
+    title: str | None,
+    *,
+    is_default: bool = False,
+) -> PlaybackTrack:
+    return PlaybackTrack(
+        id=track_id,
+        preference_key=preference_key,
+        stream_index=stream_index,
+        kind="audio",
+        language=language,
+        codec="ac3",
+        title=title,
+        is_default=is_default,
+        channels=2,
+        channel_layout="stereo",
+        delivery="native_or_compatible",
     )
 
 
@@ -239,6 +300,7 @@ async def test_torrent_tracks_require_complete_selected_file(
         LibraryRepository(session),
         FakeQBittorrent([{"index": 7, "progress": 0.99}]),  # type: ignore[arg-type]
         Settings(torrent_storage_root=str(download_root)),
+        PlaybackTrackPreferenceRepository(session),
     )
 
     with pytest.raises(PlaybackTrackProbeError, match="finish downloading"):
@@ -296,6 +358,7 @@ async def test_track_service_resolves_safe_torrent_and_library_sources(
             torrent_storage_root=str(download_root),
             library_root=str(library_root),
         ),
+        PlaybackTrackPreferenceRepository(session),
     )
 
     torrent_result = await service.torrent_tracks(task.id)
@@ -337,10 +400,158 @@ async def test_torrent_tracks_reject_unsafe_relative_path(
         LibraryRepository(session),
         FakeQBittorrent([{"index": 7, "progress": 1}]),  # type: ignore[arg-type]
         Settings(torrent_storage_root=str(download_root)),
+        PlaybackTrackPreferenceRepository(session),
     )
 
     with pytest.raises(TorrentFileError, match="unsafe"):
         await service.torrent_tracks(task.id)
+
+
+@pytest.mark.asyncio
+async def test_preferences_persist_by_profile_and_follow_semantic_track(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    download_root = tmp_path / "downloads"
+    library_root = tmp_path / "library"
+    download_root.mkdir()
+    library_root.mkdir()
+    task = TorrentTask(
+        id="00000000-0000-0000-0000-000000000705",
+        media_id=77,
+        media_kind="series",
+        torrent_hash="preference-track-hash",
+        source_id="d" * 24,
+        release_title="Series",
+        selected_file_id=7,
+        selected_file_path="Series.S01E07.mkv",
+        storage_path=str(download_root),
+        state="stoppedUP",
+    )
+    await TorrentTaskRepository(session).create(task)
+    item = LibraryItem(
+        id="00000000-0000-0000-0000-000000000706",
+        task_id=task.id,
+        file_id=7,
+        media_id=77,
+        media_kind="series",
+        title="Series",
+        original_title="Series",
+        file_path=str(library_root / "Series.S01E07.mkv"),
+        size_bytes=100,
+    )
+    await LibraryRepository(session).add_library(item)
+    russian = alternate_audio_track("a-russian-1", "semantic-russian", 1, "ru", "Studio")
+    english = alternate_audio_track(
+        "a-english-1",
+        "semantic-english",
+        2,
+        "en",
+        None,
+        is_default=True,
+    )
+    subtitle = sample_subtitle_track()
+    probe = FakeProbe(ProbedTracks([russian, english], [subtitle]))
+    service = PlaybackTrackService(
+        probe,  # type: ignore[arg-type]
+        TorrentTaskRepository(session),
+        LibraryRepository(session),
+        FakeQBittorrent([{"index": 7, "progress": 1}]),  # type: ignore[arg-type]
+        Settings(
+            torrent_storage_root=str(download_root),
+            library_root=str(library_root),
+        ),
+        PlaybackTrackPreferenceRepository(session),
+    )
+
+    saved = await service.save_library_preferences(
+        item.id,
+        PlaybackTrackPreferenceRequest(
+            profile_key="default",
+            audio_track_id=russian.id,
+            subtitle_track_id=subtitle.id,
+            subtitles_enabled=True,
+        ),
+    )
+    await service.save_library_preferences(
+        item.id,
+        PlaybackTrackPreferenceRequest(
+            profile_key="guest",
+            audio_track_id=english.id,
+        ),
+    )
+    assert saved.selected_audio_track_id == russian.id
+    assert saved.selected_subtitle_track_id == subtitle.id
+
+    moved_russian = russian.model_copy(
+        update={"id": "a-russian-9", "stream_index": 9}
+    )
+    moved_english = english.model_copy(
+        update={"id": "a-english-8", "stream_index": 8}
+    )
+    probe.tracks = ProbedTracks([moved_english, moved_russian], [subtitle])
+
+    default_result = await service.library_tracks(item.id, "default")
+    guest_result = await service.library_tracks(item.id, "guest")
+
+    assert default_result.selected_audio_track_id == moved_russian.id
+    assert default_result.selected_subtitle_track_id == subtitle.id
+    assert default_result.subtitles_enabled is True
+    assert guest_result.selected_audio_track_id == moved_english.id
+    assert guest_result.subtitles_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_preference_rejects_track_from_another_file(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    download_root = tmp_path / "downloads"
+    library_root = tmp_path / "library"
+    download_root.mkdir()
+    library_root.mkdir()
+    task = TorrentTask(
+        id="00000000-0000-0000-0000-000000000707",
+        media_id=78,
+        media_kind="movie",
+        torrent_hash="invalid-preference-hash",
+        source_id="e" * 24,
+        release_title="Movie",
+        selected_file_id=1,
+        selected_file_path="Movie.mkv",
+        storage_path=str(download_root),
+        state="stoppedUP",
+    )
+    await TorrentTaskRepository(session).create(task)
+    item = LibraryItem(
+        id="00000000-0000-0000-0000-000000000708",
+        task_id=task.id,
+        file_id=1,
+        media_id=78,
+        media_kind="movie",
+        title="Movie",
+        original_title="Movie",
+        file_path=str(library_root / "Movie.mkv"),
+        size_bytes=100,
+    )
+    await LibraryRepository(session).add_library(item)
+    service = PlaybackTrackService(
+        FakeProbe(ProbedTracks([sample_audio_track()], [])),  # type: ignore[arg-type]
+        TorrentTaskRepository(session),
+        LibraryRepository(session),
+        FakeQBittorrent([{"index": 1, "progress": 1}]),  # type: ignore[arg-type]
+        Settings(
+            torrent_storage_root=str(download_root),
+            library_root=str(library_root),
+        ),
+        PlaybackTrackPreferenceRepository(session),
+    )
+
+    with pytest.raises(PlaybackTrackPreferenceError, match="does not belong"):
+        await service.save_library_preferences(
+            item.id,
+            PlaybackTrackPreferenceRequest(audio_track_id="a-from-another-file"),
+        )
 
 
 @pytest.mark.asyncio
@@ -349,9 +560,22 @@ async def test_track_endpoints_return_source_specific_lists(client: AsyncClient)
 
     torrent_response = await client.get("/api/v1/torrents/task-1/tracks")
     library_response = await client.get("/api/v1/library/item-1/tracks")
+    save_torrent_response = await client.put(
+        "/api/v1/torrents/task-1/tracks/preferences",
+        json={"audio_track_id": "a-one"},
+    )
+    save_library_response = await client.put(
+        "/api/v1/library/item-1/tracks/preferences",
+        json={
+            "subtitle_track_id": "s-one",
+            "subtitles_enabled": True,
+        },
+    )
 
     assert torrent_response.status_code == 200
     assert torrent_response.json()["audio_tracks"][0]["language"] == "ru"
     assert library_response.status_code == 200
     assert library_response.json()["subtitle_tracks"][0]["is_forced"] is True
+    assert save_torrent_response.json()["selected_audio_track_id"] == "a-one"
+    assert save_library_response.json()["selected_subtitle_track_id"] == "s-one"
 

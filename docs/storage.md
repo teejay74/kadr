@@ -26,6 +26,12 @@ segment indexes. A binding remains keyed through the persisted torrent task
 survives application restarts. One file may bind to several logical episodes,
 and one logical episode may bind to several file variants.
 
+Migration `0007_playback_track_preferences` adds a new isolated table for one
+semantic audio/subtitle preference set per profile. It does not rewrite library,
+history, episode, or torrent rows. The unique profile key is non-null, avoiding
+SQLite nullable-unique behavior; language, title, codec, and semantic keys may
+remain null when metadata is absent.
+
 Use WAL only on a compatible local filesystem (the planned Debian ext4 storage
 is appropriate after verification). Backups must use SQLite's online backup
 mechanism or a coordinated checkpoint/copy, not an arbitrary live-file copy.

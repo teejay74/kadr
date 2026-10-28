@@ -337,6 +337,15 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .player-toolbar-title small { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .player-toolbar, .resume-prompt { display: flex; align-items: center; gap: .7rem; }
 .player-toolbar { justify-content: space-between; }
+.player-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
+.track-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; padding: 1rem; border-top: 1px solid var(--border-color); background: #101117; }
+.track-group { display: grid; align-content: start; gap: .45rem; min-width: 0; margin: 0; padding: .8rem; border: 1px solid var(--border-color); border-radius: .75rem; }
+.track-group legend { padding: 0 .35rem; color: var(--text-primary); font-weight: 700; }
+.track-group p { margin: 0; color: var(--text-secondary); }
+.track-option { display: flex; align-items: flex-start; gap: .55rem; color: var(--text-secondary); cursor: pointer; }
+.track-option input { margin-top: .2rem; accent-color: var(--accent); }
+.track-option:has(input:checked) { color: var(--text-primary); }
+.track-status { grid-column: 1 / -1; color: var(--text-secondary); }
 .video-frame { position: relative; display: grid; min-height: clamp(15rem, 42vw, 42rem); overflow: hidden; place-items: center; border-radius: .75rem; background: #000; }
 .video-frame video { display: block; width: 100%; max-height: min(72vh, 52rem); aspect-ratio: 16 / 9; background: #000; }
 .player-status { position: absolute; z-index: 1; display: grid; max-width: min(32rem, calc(100% - 2rem)); gap: .35rem; margin: 0; padding: 1rem 1.15rem; text-align: center; border: 1px solid rgb(255 255 255 / .12); border-radius: .85rem; background: rgb(17 24 39 / .92); color: #fff; font-size: .82rem; backdrop-filter: blur(8px); }
@@ -389,6 +398,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
   .sources-heading, .source-intro { align-items: stretch; flex-direction: column; }
   .source-sort select { width: 100%; }
   .player-launch, .player-toolbar, .player-error { align-items: stretch; flex-direction: column; }
+  .track-menu { grid-template-columns: 1fr; }
   .player-launch-actions { justify-items: stretch; }
   .compatibility-help { max-width: none; text-align: left; }
   .compatibility-actions { justify-content: flex-start; }

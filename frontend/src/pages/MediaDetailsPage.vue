@@ -540,6 +540,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         :download-state="playback.download_state ?? ''"
         :download-speed-bytes="playback.download_speed_bytes"
         :direct-stream-url="playback.source === 'library' ? playback.stream_url ?? '' : ''"
+        :library-item-id="playback.source === 'library' ? playback.library_item_id ?? '' : ''"
         :initial-resume-seconds="playback.resume_position_seconds"
         auto-activate
         @near-end="prepareNextEpisode"

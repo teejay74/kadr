@@ -236,6 +236,25 @@ not corrupt. Do not make the downloads mount writable and do not probe an
 entire season as a workaround. Unknown language or absent studio/title is
 returned as `null`, not treated as an error.
 
+If the “Аудио и субтитры” menu says that a choice was saved but could not be
+applied, the browser did not expose a matching native track for this container.
+The current playback position and Direct Play stream remain unchanged. This is
+expected for many MKV/browser combinations; do not start a whole-season
+conversion as a workaround. For a completed torrent file, use «Подготовить
+выбранную аудиодорожку». KADR should report preparation progress and restore
+the current position after switching. A `422 invalid_playback_track` means the
+file or its track layout changed; reopen the menu and select a track from the
+fresh list. This selected-audio fallback does not repair an unsupported video
+codec and is not yet available for saved library files.
+
+For a text subtitle marked as WebVTT-compatible, use «Подготовить выбранные
+субтитры» after selecting it. A failure does not change Direct Play or the
+saved position. Check API logs and `docker compose exec -T api ffmpeg -version`;
+the bounded timeout is controlled by
+`KADR_SUBTITLE_EXTRACTION_TIMEOUT_SECONDS`. Bitmap PGS/DVD/DVB subtitles cannot
+use this path and require the later explicit burn-in mode. Do not convert a
+whole season or make the download/library mounts writable as a workaround.
+
 ## Resume position is missing
 
 Stage 6 stores resume state in SQLite and keeps browser-local state as a

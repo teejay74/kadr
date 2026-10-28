@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.schemas.media import EpisodeSummary, MediaKind
 
 PlaybackState = Literal["idle", "probing", "processing", "ready", "failed"]
-PlaybackMode = Literal["compatible", "audio_only"]
+PlaybackMode = Literal["compatible", "audio_only", "audio_track"]
 PlaybackStrategy = Literal["remux", "audio_transcode", "transcode"]
 PlaybackResolutionState = Literal[
     "ready",
@@ -93,6 +93,7 @@ class PlaybackPreparation(BaseModel):
     audio_codec: str | None = None
     message: str | None = None
     stream_url: str | None = None
+    track_id: str | None = None
 
 
 class PlaybackTrack(BaseModel):
@@ -117,3 +118,24 @@ class PlaybackTrackList(BaseModel):
     file_id: int | None = Field(default=None, ge=0)
     audio_tracks: list[PlaybackTrack] = Field(default_factory=list)
     subtitle_tracks: list[PlaybackTrack] = Field(default_factory=list)
+    selected_audio_track_id: str | None = None
+    selected_subtitle_track_id: str | None = None
+    subtitles_enabled: bool = False
+
+
+class PlaybackTrackPreferenceRequest(BaseModel):
+    profile_key: str = Field(default="default", min_length=1, max_length=64)
+    audio_track_id: str | None = Field(default=None, min_length=1, max_length=64)
+    subtitle_track_id: str | None = Field(default=None, min_length=1, max_length=64)
+    subtitles_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_subtitle_selection(self) -> "PlaybackTrackPreferenceRequest":
+        if self.subtitles_enabled and self.subtitle_track_id is None:
+            raise ValueError("subtitle_track_id is required when subtitles are enabled")
+        return self
+
+
+class PlaybackSubtitlePreparation(BaseModel):
+    track_id: str
+    stream_url: str

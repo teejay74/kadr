@@ -9,14 +9,17 @@ import {
   deleteTorrentFile,
   getMediaPage,
   getHistoryItem,
+  getPlaybackTracks,
   getSeriesSeason,
   getSources,
   getTorrentEpisodeFiles,
   getTorrents,
   prefetchNextEpisode,
+  preparePlaybackSubtitle,
   resolvePlayback,
   resolveNextEpisode,
   selectTorrentFile,
+  savePlaybackTrackPreferences,
   startCompatiblePlayback,
 } from './api'
 
@@ -166,6 +169,39 @@ test('requests persisted episode-to-file bindings for a torrent task', async () 
 
   const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/torrents/task/id/episode-files')
+})
+
+test('requests profile track resolution for torrent and library sources', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getPlaybackTracks('task/id', '', 'guest')
+  await getPlaybackTracks('task/id', 'library/id', 'default')
+
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/torrents/task%2Fid/tracks?profile_key=guest')
+  expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/library/library%2Fid/tracks?profile_key=default')
+})
+
+test('saves semantic track choices without exposing stream indexes', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await savePlaybackTrackPreferences('task', '', {
+    profile_key: 'default',
+    audio_track_id: 'audio-opaque',
+    subtitle_track_id: 'subtitle-opaque',
+    subtitles_enabled: true,
+  })
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task/tracks/preferences')
+  expect(init.method).toBe('PUT')
+  expect(JSON.parse(String(init.body))).toEqual({
+    profile_key: 'default',
+    audio_track_id: 'audio-opaque',
+    subtitle_track_id: 'subtitle-opaque',
+    subtitles_enabled: true,
+  })
 })
 
 test('requests server-side episode matching for a torrent task', async () => {
@@ -338,5 +374,35 @@ test('requests the audio-only FFmpeg preparation mode explicitly', async () => {
 
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/torrents/task%2Fid/compatible?mode=audio_only')
+  expect(init.method).toBe('POST')
+})
+
+test('passes the opaque selected audio id to explicit preparation', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ mode: 'audio_track', state: 'processing', progress: 0.1 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await startCompatiblePlayback('task/id', 'audio_track', 'a-opaque')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe(
+    '/api/v1/torrents/task%2Fid/compatible?mode=audio_track&track_id=a-opaque',
+  )
+  expect(init.method).toBe('POST')
+})
+
+test('prepares one explicit subtitle track for a library item', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ track_id: 's-opaque', stream_url: '/subtitle.vtt' }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await preparePlaybackSubtitle('task/id', 'library/id', 's opaque')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/library/library%2Fid/tracks/s%20opaque/subtitle')
   expect(init.method).toBe('POST')
 })

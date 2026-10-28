@@ -215,7 +215,7 @@ export interface StreamReadiness {
 }
 
 export type PlaybackPreparationState = 'idle' | 'probing' | 'processing' | 'ready' | 'failed'
-export type PlaybackMode = 'compatible' | 'audio_only'
+export type PlaybackMode = 'compatible' | 'audio_only' | 'audio_track'
 export type PlaybackStrategy = 'remux' | 'audio_transcode' | 'transcode'
 
 export interface PlaybackPreparation {
@@ -227,6 +227,53 @@ export interface PlaybackPreparation {
   audio_codec: string | null
   message: string | null
   stream_url: string | null
+  track_id: string | null
+}
+
+export type PlaybackTrackKind = 'audio' | 'subtitle'
+export type PlaybackTrackDelivery =
+  | 'native_or_compatible'
+  | 'external_webvtt'
+  | 'burn_in_required'
+  | 'unsupported'
+
+export interface PlaybackTrack {
+  id: string
+  preference_key: string
+  stream_index: number
+  kind: PlaybackTrackKind
+  language: string | null
+  codec: string
+  title: string | null
+  is_default: boolean
+  is_forced: boolean
+  is_hearing_impaired: boolean
+  channels: number | null
+  channel_layout: string | null
+  delivery: PlaybackTrackDelivery
+}
+
+export interface PlaybackTrackList {
+  source: 'library' | 'torrent'
+  source_id: string
+  file_id: number | null
+  audio_tracks: PlaybackTrack[]
+  subtitle_tracks: PlaybackTrack[]
+  selected_audio_track_id: string | null
+  selected_subtitle_track_id: string | null
+  subtitles_enabled: boolean
+}
+
+export interface PlaybackTrackPreferencePayload {
+  profile_key: string
+  audio_track_id: string | null
+  subtitle_track_id: string | null
+  subtitles_enabled: boolean
+}
+
+export interface PlaybackSubtitlePreparation {
+  track_id: string
+  stream_url: string
 }
 
 export type PlaybackResolutionStatus =

@@ -1,6 +1,8 @@
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Path, Query
+from fastapi.responses import FileResponse
 
 from app.api.dependencies import (
     CacheManagerDependency,
@@ -14,7 +16,11 @@ from app.schemas.episode_matcher import (
 )
 from app.schemas.library import CacheFileDeletionResponse
 from app.schemas.media import MediaKind
-from app.schemas.playback import PlaybackTrackList
+from app.schemas.playback import (
+    PlaybackSubtitlePreparation,
+    PlaybackTrackList,
+    PlaybackTrackPreferenceRequest,
+)
 from app.schemas.torrents import (
     AddTorrentRequest,
     EpisodeFileBindingResponse,
@@ -75,8 +81,45 @@ async def torrent_files(
 async def torrent_tracks(
     service: PlaybackTrackServiceDependency,
     task_id: str,
+    profile_key: Annotated[str, Query(min_length=1, max_length=64)] = "default",
 ) -> PlaybackTrackList:
-    return await service.torrent_tracks(task_id)
+    return await service.torrent_tracks(task_id, profile_key)
+
+
+@router.put("/torrents/{task_id}/tracks/preferences", response_model=PlaybackTrackList)
+async def save_torrent_track_preferences(
+    service: PlaybackTrackServiceDependency,
+    task_id: str,
+    body: PlaybackTrackPreferenceRequest,
+) -> PlaybackTrackList:
+    return await service.save_torrent_preferences(task_id, body)
+
+
+@router.post(
+    "/torrents/{task_id}/tracks/{track_id}/subtitle",
+    response_model=PlaybackSubtitlePreparation,
+)
+async def prepare_torrent_subtitle(
+    service: PlaybackTrackServiceDependency,
+    task_id: str,
+    track_id: str,
+) -> PlaybackSubtitlePreparation:
+    artifact = await service.prepare_torrent_subtitle(task_id, track_id)
+    task = quote(task_id, safe="")
+    return PlaybackSubtitlePreparation(
+        track_id=track_id,
+        stream_url=f"/api/v1/torrents/{task}/subtitles/{artifact.artifact_id}.vtt",
+    )
+
+
+@router.get("/torrents/{task_id}/subtitles/{artifact_id}.vtt")
+async def stream_torrent_subtitle(
+    service: PlaybackTrackServiceDependency,
+    task_id: str,
+    artifact_id: str,
+) -> FileResponse:
+    path = await service.open_torrent_subtitle(task_id, artifact_id)
+    return FileResponse(path, media_type="text/vtt", filename="subtitles.vtt")
 
 
 @router.get(

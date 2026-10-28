@@ -164,6 +164,12 @@ is written to a temporary file under the separate writable playback cache and
 atomically renamed only on success. Generated MP4 ranges share the Streaming
 Manager's request registry. Opening Direct Play never starts FFmpeg.
 
+Selected-audio compatibility is also explicit. The preparation service
+resolves the opaque track ID through a fresh bounded track probe before giving
+the exact global stream index to the Compatibility Manager. The manager copies
+the video, converts only that audio stream, and isolates cache/job identities
+by semantic track ID. A stale or cross-file ID never reaches FFmpeg.
+
 The Playback Track service is a separate read-only discovery layer. It accepts
 only the currently selected, fully downloaded torrent file or one explicit
 library item, canonicalizes the source under its KADR-owned root, and invokes
@@ -173,6 +179,21 @@ from semantic preference keys, allowing a later preference resolver and native
 Android TV client to select by language/title/codec instead of assuming that
 stream indexes are stable. Discovery classifies text, bitmap, and unsupported
 subtitle delivery but never starts FFmpeg or changes Direct Play.
+
+Profile-scoped track preferences live in SQLite separately from media files.
+They retain semantic hashes and normalized language/title/codec hints for audio
+and subtitles, plus the explicit subtitle-enabled state; raw stream indexes are
+not persisted. Resolution first matches the semantic hash, then uses decreasing
+language/title/codec specificity, and finally the source default. Submitted
+track IDs are accepted only after they are found in the probed current file.
+The profile key is uniquely indexed, so application profiles remain independent.
+
+The Subtitle Manager is an explicit derived-file path for text subtitles. It
+accepts only a freshly validated `external_webvtt` track, maps its exact global
+stream index without a shell, bounds FFmpeg execution and concurrency, and
+publishes the WebVTT artifact atomically under the playback cache. Artifact
+directories use hashes of controlled source identities; API inputs cannot form
+filesystem paths. Torrent and library source files remain read-only.
 
 The Library Manager accepts only a fully downloaded selected file whose
 canonical source remains beneath the configured KADR download root. It writes
