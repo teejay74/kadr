@@ -36,8 +36,29 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  delete document.documentElement.dataset.tv
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+test('maps Android TV remote keys to seek, volume, and playback controls', async () => {
+  document.documentElement.dataset.tv = 'true'
+  render(KadrPlayer, { props: { taskId: 'tv-task', title: 'TV video' } })
+  await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'currentTime', { configurable: true, writable: true, value: 60 })
+  Object.defineProperty(player, 'duration', { configurable: true, value: 600 })
+  Object.defineProperty(player, 'volume', { configurable: true, writable: true, value: 0.5 })
+
+  await fireEvent.keyDown(player, { key: 'ArrowRight' })
+  expect(player.currentTime).toBe(70)
+  await fireEvent.keyDown(player, { key: 'ArrowLeft' })
+  expect(player.currentTime).toBe(60)
+  await fireEvent.keyDown(player, { key: 'ArrowUp' })
+  expect(player.volume).toBeCloseTo(0.6)
+  await fireEvent.keyDown(player, { key: 'Enter' })
+  expect(player.play).toHaveBeenCalled()
 })
 
 test('opens the stream only after an explicit user action and closes it', async () => {

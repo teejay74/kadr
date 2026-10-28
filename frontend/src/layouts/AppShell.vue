@@ -3,9 +3,11 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import TmdbCredit from '../components/TmdbCredit.vue'
+import { useTvNavigation } from '../composables/useTvNavigation'
 
 const router = useRouter()
 const search = ref('')
+const { tvMode } = useTvNavigation(router)
 
 function submitSearch(): void {
   const query = search.value.trim()
@@ -30,6 +32,7 @@ function submitSearch(): void {
         <label class="sr-only" for="global-search">Поиск фильмов и сериалов</label>
         <input id="global-search" v-model="search" minlength="2" placeholder="Найти…" />
       </form>
+      <span v-if="tvMode" class="tv-mode-badge" aria-label="Включён режим телевизора">TV</span>
     </header>
     <main>
       <slot />

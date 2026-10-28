@@ -86,7 +86,7 @@ onBeforeUnmount(stopCountdown)
         >
           Выбрать источник
         </button>
-        <button class="button secondary focus-ring" type="button" @click="emit('close')">
+        <button class="button secondary focus-ring" type="button" data-tv-back-action @click="emit('close')">
           Закрыть
         </button>
       </div>

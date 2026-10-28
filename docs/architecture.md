@@ -1,6 +1,21 @@
 # Architecture
 
-## Stage 6 boundaries
+## Stage 7 boundaries
+
+The first Stage 7 increment remains a browser client. A single global TV
+navigation composable detects supported television-style environments (with an
+explicit query-string override for testing), performs geometric focus movement,
+and delegates Back to the uppermost visible dialog or player before route
+navigation. TV styling is opt-in through the root `data-tv` attribute, so the
+desktop and mobile layouts keep their existing behavior. The HTML video element
+owns remote seek, volume, and play/pause keys while focused.
+
+This increment does not claim a native Android TV application or measured codec
+compatibility. A future Media3 client must reuse the existing server-owned
+playback resolution and streaming API instead of duplicating torrent or storage
+logic.
+
+## Stage 6 foundations
 
 The current increment keeps the frontend, API, and indexer integration
 independently testable:

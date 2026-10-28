@@ -1,7 +1,8 @@
 # KADR
 
 KADR is a self-hosted personal media platform. The repository currently
-contains the **Stage 6 media-library increment**: a working FastAPI + Vue 3 + TypeScript
+contains the first **Stage 7 Android TV web-client increment** on top of the
+Stage 6 media library: a working FastAPI + Vue 3 + TypeScript
 application with a TMDB catalogue, isolated Prowlarr source search,
 server-side qBittorrent control, availability-aware HTTP byte ranges, and a
 Direct Play browser player. An explicit “Совместимая версия” action uses
@@ -62,6 +63,12 @@ D3.5 adds explicit text-subtitle preparation for torrent and saved-library
 sources. KADR revalidates the selected track, extracts only that stream to a
 cached WebVTT file, attaches it to the player, and restores playback position.
 Bitmap subtitles remain a separate future burn-in path.
+Stage 7.1 adds an Android TV / Google TV web mode with directional D-pad focus,
+OK/Select activation, Back handling, larger focus targets, and remote shortcuts
+for seeking, volume, and play/pause. TV user agents and large coarse-pointer
+screens enable it automatically; append `?tv=1` for desktop or device testing
+and `?tv=0` to disable automatic detection. This is the TV-adapted web client,
+not the future native Media3 application.
 
 ## Quick start
 
@@ -157,6 +164,7 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 5 report](docs/stage-5-report.md)
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 - [Stage 6 report](docs/stage-6-report.md)
+- [Stage 7 TV report](docs/stage-7-tv-report.md)
 - [UI redesign B1 report](docs/ui-redesign-b1-report.md)
 - [UI redesign B2 report](docs/ui-redesign-b2-report.md)
 - [UI redesign C1 report](docs/ui-redesign-c1-report.md)

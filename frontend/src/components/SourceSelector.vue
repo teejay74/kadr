@@ -58,7 +58,7 @@ function releaseLabel(source: SourceRelease): string {
           <h2 id="source-selector-title">Выберите источник</h2>
           <p>{{ title }}</p>
         </div>
-        <button class="button secondary focus-ring" type="button" :disabled="busySourceId !== null" @click="emit('close')">
+        <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busySourceId !== null" @click="emit('close')">
           Закрыть
         </button>
       </header>

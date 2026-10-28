@@ -84,7 +84,7 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
           <p class="eyebrow">Episode Matcher</p>
           <h2 id="episode-match-title">Проверьте соответствия серий</h2>
         </div>
-        <button class="button secondary focus-ring" type="button" :disabled="busy" @click="emit('close')">
+        <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busy" @click="emit('close')">
           Закрыть
         </button>
       </header>
@@ -132,7 +132,7 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
       </div>
       <p v-if="error" class="torrent-error" role="alert">{{ error }}</p>
       <footer>
-        <button class="button secondary focus-ring" type="button" :disabled="busy" @click="emit('close')">
+        <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busy" @click="emit('close')">
           Решить позже
         </button>
         <button

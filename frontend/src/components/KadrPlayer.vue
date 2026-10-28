@@ -421,6 +421,32 @@ async function startVideoElement(): Promise<void> {
   }
 }
 
+async function onVideoRemoteKeydown(event: KeyboardEvent): Promise<void> {
+  const element = video.value
+  if (!element || document.documentElement.dataset.tv !== 'true') return
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    event.stopPropagation()
+    const delta = event.key === 'ArrowLeft' ? -10 : 10
+    const duration = Number.isFinite(element.duration) ? element.duration : Number.POSITIVE_INFINITY
+    element.currentTime = Math.max(0, Math.min(element.currentTime + delta, duration))
+    return
+  }
+  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    event.stopPropagation()
+    const delta = event.key === 'ArrowUp' ? 0.1 : -0.1
+    element.volume = Math.max(0, Math.min(1, element.volume + delta))
+    return
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    event.stopPropagation()
+    if (element.paused) await element.play()
+    else element.pause()
+  }
+}
+
 async function activate(): Promise<void> {
   error.value = ''
   waiting.value = true
@@ -784,7 +810,7 @@ onBeforeUnmount(stopPlayback)
           >
             Аудио и субтитры
           </button>
-          <button class="button secondary focus-ring" type="button" @click="stopPlayback">
+          <button class="button secondary focus-ring" type="button" data-tv-back-action @click="stopPlayback">
             Закрыть плеер
           </button>
         </div>
@@ -870,6 +896,7 @@ onBeforeUnmount(stopPlayback)
           @timeupdate="onTimeUpdate"
           @ended="onEnded"
           @error="onPlaybackError"
+          @keydown="onVideoRemoteKeydown"
         >
           <track
             v-if="externalSubtitleUrl"
@@ -881,6 +908,9 @@ onBeforeUnmount(stopPlayback)
           >
           Ваш браузер не поддерживает воспроизведение видео.
         </video>
+        <p v-if="streamReady" class="tv-player-hint">
+          ← → перемотка 10 сек · ↑ ↓ громкость · OK пауза/продолжить · Back закрыть
+        </p>
         <div v-if="waiting" class="player-status" role="status">
           <strong>
             {{ streamReady
