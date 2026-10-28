@@ -394,6 +394,21 @@ export function getCompatiblePlayback(
   )
 }
 
+export function cancelCompatiblePlayback(
+  taskId: string,
+  mode: PlaybackMode = 'compatible',
+  trackId = '',
+): Promise<PlaybackPreparation> {
+  const params = new URLSearchParams()
+  if (mode !== 'compatible') params.set('mode', mode)
+  if (trackId) params.set('track_id', trackId)
+  const query = params.size ? `?${params}` : ''
+  return request<PlaybackPreparation>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}/compatible${query}`,
+    { method: 'DELETE' },
+  )
+}
+
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/v1/system/health')
 }
@@ -468,7 +483,7 @@ export function friendlyApiError(error: unknown): string {
     return error.message
   }
   if (error instanceof ApiError && error.code === 'playback_preparation_limit') {
-    return 'Уже подготавливается другая совместимая версия. Дождитесь её завершения.'
+    return 'Очередь подготовки совместимых версий заполнена. Дождитесь завершения одной из задач.'
   }
   if (error instanceof ApiError && error.code === 'playback_tracks_unavailable') {
     return 'Список дорожек станет доступен после полной загрузки выбранного файла.'

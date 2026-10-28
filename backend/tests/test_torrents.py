@@ -56,6 +56,21 @@ class FakeRepository:
             None,
         )
 
+    async def get_latest_by_source(
+        self,
+        media_id: int,
+        media_kind: str,
+        source_id: str,
+    ) -> TorrentTask | None:
+        matches = [
+            task
+            for task in self.tasks.values()
+            if task.media_id == media_id
+            and task.media_kind == media_kind
+            and task.source_id == source_id
+        ]
+        return matches[-1] if matches else None
+
     async def get_latest_by_media(
         self,
         media_id: int,
@@ -484,6 +499,110 @@ async def test_existing_torrent_bypasses_new_download_limit() -> None:
     status = await manager.add(42, "movie", "a" * 24)
 
     assert status.id == "existing-task"
+
+
+async def test_existing_source_without_info_hash_restores_live_task() -> None:
+    class SourceWithoutHash(FakeSources):
+        async def resolve(
+            self,
+            media_id: int,
+            media_kind: str,
+            source_id: str,
+            season_number: int | None = None,
+        ) -> ResolvedSource:
+            source = await super().resolve(media_id, media_kind, source_id, season_number)
+            return ResolvedSource(source.release, source.uri, None)
+
+    class DuplicateRejectingClient(FakeTorrentClient):
+        async def add(self, uri: str, tag: str) -> None:
+            raise AssertionError("A live source task must not be added as a duplicate")
+
+    repository = FakeRepository()
+    repository.tasks["existing-task"] = TorrentTask(
+        id="existing-task",
+        media_id=42,
+        media_kind="series",
+        torrent_hash="abc123",
+        source_id="a" * 24,
+        release_title="Series S01",
+        storage_path="/tmp/cache",
+        state="stoppedUP",
+    )
+    manager = TorrentManager(
+        DuplicateRejectingClient(),
+        SourceWithoutHash(),
+        repository,
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+
+    status = await manager.add(42, "series", "a" * 24, 1)
+
+    assert status.id == "existing-task"
+
+
+async def test_stale_source_without_info_hash_is_added_again() -> None:
+    class SourceWithoutHash(FakeSources):
+        async def resolve(
+            self,
+            media_id: int,
+            media_kind: str,
+            source_id: str,
+            season_number: int | None = None,
+        ) -> ResolvedSource:
+            source = await super().resolve(media_id, media_kind, source_id, season_number)
+            return ResolvedSource(source.release, source.uri, None)
+
+    class StaleTaskClient(FakeTorrentClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.add_calls = 0
+
+        async def add(self, uri: str, tag: str) -> None:
+            self.add_calls += 1
+
+        async def list(
+            self,
+            *,
+            torrent_hash: str | None = None,
+            tag: str | None = None,
+        ) -> list[dict[str, Any]]:
+            if torrent_hash == "missing-hash":
+                return []
+            return await super().list(torrent_hash=torrent_hash, tag=tag)
+
+    repository = FakeRepository()
+    repository.tasks["stale-task"] = TorrentTask(
+        id="stale-task",
+        media_id=42,
+        media_kind="series",
+        torrent_hash="missing-hash",
+        source_id="a" * 24,
+        release_title="Series S01",
+        storage_path="/tmp/cache",
+        state="stoppedUP",
+    )
+    client = StaleTaskClient()
+    manager = TorrentManager(
+        client,
+        SourceWithoutHash(),
+        repository,
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+
+    status = await manager.add(42, "series", "a" * 24, 1)
+
+    assert client.add_calls == 1
+    assert status.id != "stale-task"
 
 
 def test_active_download_limit_ignores_completed_seeding_torrents() -> None:

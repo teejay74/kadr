@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -7,9 +8,13 @@ from app.core.config import Settings
 from app.models.torrent_task import TorrentTask
 from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.schemas.playback import PlaybackPreparation, PlaybackTrack
-from app.services.playback.exceptions import PlaybackTrackPreferenceError
+from app.services.playback.exceptions import (
+    PlaybackPreparationLimitError,
+    PlaybackTrackPreferenceError,
+)
 from app.services.playback.manager import (
     CompatibilityManager,
+    PreparationJob,
     ProbeResult,
     select_strategy,
 )
@@ -226,6 +231,126 @@ def test_selected_audio_artifacts_are_isolated_by_semantic_track_id(
         "?mode=audio_track&track_id=a-one"
     )
     assert second.state == "idle"
+
+
+class ControlledCompatibilityManager(CompatibilityManager):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
+        self.started: list[str] = []
+        self.releases: dict[str, asyncio.Event] = {}
+
+    async def _run(
+        self,
+        task_id: str,
+        selected_file_id: int,
+        source: Path,
+        mode: str,
+        job: PreparationJob,
+        audio_stream_index: int | None,
+        track_id: str | None,
+    ) -> None:
+        self.started.append(task_id)
+        job.state = "processing"
+        event = self.releases.setdefault(task_id, asyncio.Event())
+        await event.wait()
+        job.state = "ready"
+        job.progress = 1
+
+
+@pytest.mark.asyncio
+async def test_compatible_preparations_run_in_bounded_fifo_queue(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.mkv"
+    second_source = tmp_path / "second.mkv"
+    first_source.write_bytes(b"first")
+    second_source.write_bytes(b"second")
+    manager = ControlledCompatibilityManager(
+        Settings(
+            playback_cache_root=str(tmp_path / "playback"),
+            playback_min_free_space_gb=0,
+            max_active_transcodes=1,
+            max_queued_transcodes=5,
+        )
+    )
+
+    first = await manager.start("first", 1, first_source)
+    second = await manager.start("second", 2, second_source)
+    duplicate = await manager.start("second", 2, second_source)
+
+    assert first.state == "probing"
+    assert second.state == "queued"
+    assert second.queue_position == 1
+    assert duplicate.state == "queued"
+    assert duplicate.queue_position == 1
+    await asyncio.sleep(0)
+    assert manager.started == ["first"]
+
+    manager.releases.setdefault("first", asyncio.Event()).set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert manager.started == ["first", "second"]
+    assert manager.status("second", 2).state == "processing"
+    manager.releases.setdefault("second", asyncio.Event()).set()
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_queued_compatible_preparation_can_be_cancelled(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.mkv"
+    second_source = tmp_path / "second.mkv"
+    first_source.write_bytes(b"first")
+    second_source.write_bytes(b"second")
+    manager = ControlledCompatibilityManager(
+        Settings(
+            playback_cache_root=str(tmp_path / "playback"),
+            playback_min_free_space_gb=0,
+            max_active_transcodes=1,
+        )
+    )
+    await manager.start("first", 1, first_source)
+    await manager.start("second", 2, second_source)
+
+    cancelled = await manager.cancel("second", 2)
+
+    assert cancelled.state == "idle"
+    assert manager.status("second", 2).state == "idle"
+    manager.releases.setdefault("first", asyncio.Event()).set()
+    await manager.close()
+    assert manager.started == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_compatible_preparation_queue_rejects_unbounded_growth(
+    tmp_path: Path,
+) -> None:
+    sources = []
+    for index in range(3):
+        source = tmp_path / f"{index}.mkv"
+        source.write_bytes(str(index).encode())
+        sources.append(source)
+    manager = ControlledCompatibilityManager(
+        Settings(
+            playback_cache_root=str(tmp_path / "playback"),
+            playback_min_free_space_gb=0,
+            max_active_transcodes=1,
+            max_queued_transcodes=1,
+        )
+    )
+    await manager.start("first", 1, sources[0])
+    await manager.start("second", 2, sources[1])
+
+    with pytest.raises(PlaybackPreparationLimitError, match="queue is full"):
+        await manager.start("third", 3, sources[2])
+
+    manager.releases.setdefault("first", asyncio.Event()).set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    manager.releases.setdefault("second", asyncio.Event()).set()
+    await manager.close()
 
 
 @pytest.mark.asyncio

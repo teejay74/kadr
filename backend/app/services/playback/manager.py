@@ -50,6 +50,12 @@ class PreparationJob:
     task: asyncio.Task[None] | None = None
     process: asyncio.subprocess.Process | None = None
     stderr: list[str] = field(default_factory=list)
+    task_id: str | None = None
+    selected_file_id: int | None = None
+    source: Path | None = None
+    mode: PlaybackMode = "compatible"
+    audio_stream_index: int | None = None
+    track_id: str | None = None
 
 
 def select_strategy(probe: ProbeResult) -> PlaybackStrategy:
@@ -71,6 +77,7 @@ class CompatibilityManager:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._jobs: dict[str, PreparationJob] = {}
+        self._queue: list[str] = []
         self._lock = asyncio.Lock()
 
     async def start(
@@ -89,35 +96,51 @@ class CompatibilityManager:
             job = self._jobs.setdefault(job_id, PreparationJob())
             job.state = "ready"
             job.progress = 1.0
-            return self._to_status(task_id, mode, job, track_id)
+            return self._to_status(
+                task_id,
+                selected_file_id,
+                mode,
+                job,
+                track_id,
+            )
 
         async with self._lock:
             current = self._jobs.get(job_id)
-            if current is not None and current.task is not None and not current.task.done():
-                return self._to_status(task_id, mode, current, track_id)
-            running = sum(
-                job.task is not None and not job.task.done()
-                for job in self._jobs.values()
-            )
-            if running >= self._settings.max_active_transcodes:
-                raise PlaybackPreparationLimitError(
-                    "The compatible-playback preparation limit has been reached"
-                )
-            job = PreparationJob(state="probing")
-            await self._ensure_output_space(source)
-            self._jobs[job_id] = job
-            job.task = asyncio.create_task(
-                self._run(
+            if current is not None and (
+                current.state == "queued"
+                or (current.task is not None and not current.task.done())
+            ):
+                return self._to_status(
                     task_id,
                     selected_file_id,
-                    source,
                     mode,
-                    job,
-                    audio_stream_index,
+                    current,
                     track_id,
                 )
+            if len(self._queue) >= self._settings.max_queued_transcodes:
+                raise PlaybackPreparationLimitError(
+                    "The compatible-playback preparation queue is full"
+                )
+            await self._ensure_output_space(source)
+            job = PreparationJob(
+                state="queued",
+                task_id=task_id,
+                selected_file_id=selected_file_id,
+                source=source,
+                mode=mode,
+                audio_stream_index=audio_stream_index,
+                track_id=track_id,
             )
-            return self._to_status(task_id, mode, job, track_id)
+            self._jobs[job_id] = job
+            self._queue.append(job_id)
+            self._start_available_locked()
+            return self._to_status(
+                task_id,
+                selected_file_id,
+                mode,
+                job,
+                track_id,
+            )
 
     def status(
         self,
@@ -134,7 +157,39 @@ class CompatibilityManager:
                 job = PreparationJob(state="ready", progress=1.0)
             else:
                 job = PreparationJob()
-        return self._to_status(task_id, mode, job, track_id)
+        return self._to_status(
+            task_id,
+            selected_file_id,
+            mode,
+            job,
+            track_id,
+        )
+
+    async def cancel(
+        self,
+        task_id: str,
+        selected_file_id: int,
+        mode: PlaybackMode = "compatible",
+        track_id: str | None = None,
+    ) -> PlaybackPreparation:
+        self._validate_track_mode(mode, None, track_id, preparing=False)
+        job_id = self._job_id(task_id, selected_file_id, mode, track_id)
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return PlaybackPreparation(mode=mode, state="idle", progress=0)
+            if job.state != "queued":
+                raise PlaybackPreparationError(
+                    "Only a queued compatible-playback preparation can be cancelled"
+                )
+            self._queue.remove(job_id)
+            self._jobs.pop(job_id, None)
+            return PlaybackPreparation(
+                mode=mode,
+                state="idle",
+                progress=0,
+                track_id=track_id,
+            )
 
     async def open(
         self,
@@ -165,6 +220,7 @@ class CompatibilityManager:
         )
 
     async def close(self) -> None:
+        self._queue.clear()
         tasks = [job.task for job in self._jobs.values() if job.task is not None]
         for job in self._jobs.values():
             if job.process is not None and job.process.returncode is None:
@@ -172,12 +228,53 @@ class CompatibilityManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    def _start_available_locked(self) -> None:
+        running = sum(
+            job.task is not None and not job.task.done()
+            for job in self._jobs.values()
+        )
+        while running < self._settings.max_active_transcodes and self._queue:
+            job_id = self._queue.pop(0)
+            job = self._jobs.get(job_id)
+            if (
+                job is None
+                or job.task_id is None
+                or job.selected_file_id is None
+                or job.source is None
+            ):
+                continue
+            job.state = "probing"
+            job.task = asyncio.create_task(self._execute_job(job_id, job))
+            running += 1
+
+    async def _execute_job(self, job_id: str, job: PreparationJob) -> None:
+        assert job.task_id is not None
+        assert job.selected_file_id is not None
+        assert job.source is not None
+        try:
+            await self._run(
+                job.task_id,
+                job.selected_file_id,
+                job.source,
+                job.mode,
+                job,
+                job.audio_stream_index,
+                job.track_id,
+            )
+        finally:
+            async with self._lock:
+                if self._jobs.get(job_id) is job:
+                    job.task = None
+                self._start_available_locked()
+
     def is_preparing(self, task_id: str, selected_file_id: int) -> bool:
         prefix = f"{task_id}:{selected_file_id}:"
         return any(
             key.startswith(prefix)
-            and job.task is not None
-            and not job.task.done()
+            and (
+                job.state == "queued"
+                or (job.task is not None and not job.task.done())
+            )
             for key, job in self._jobs.items()
         )
 
@@ -436,12 +533,23 @@ class CompatibilityManager:
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
             usage = await asyncio.to_thread(shutil.disk_usage, root)
             source_size = (await asyncio.to_thread(source.stat)).st_size
+            pending_sources = [
+                job.source
+                for job in self._jobs.values()
+                if job.source is not None
+                and job.state in {"queued", "probing", "processing"}
+            ]
+            pending_bytes = 0
+            for pending_source in pending_sources:
+                pending_bytes += (
+                    await asyncio.to_thread(pending_source.stat)
+                ).st_size
         except OSError as exc:
             raise PlaybackPreparationError(
                 "The compatible-playback cache is unavailable"
             ) from exc
         reserve = int(self._settings.playback_min_free_space_gb * 1024**3)
-        if usage.free < source_size + reserve:
+        if usage.free < source_size + pending_bytes + reserve:
             raise PlaybackPreparationError(
                 "Not enough free space to prepare a compatible playback file"
             )
@@ -497,10 +605,15 @@ class CompatibilityManager:
     def _to_status(
         self,
         task_id: str,
+        selected_file_id: int,
         mode: PlaybackMode,
         job: PreparationJob,
         track_id: str | None = None,
     ) -> PlaybackPreparation:
+        job_id = self._job_id(task_id, selected_file_id, mode, track_id)
+        queue_position = None
+        if job.state == "queued" and job_id in self._queue:
+            queue_position = self._queue.index(job_id) + 1
         return PlaybackPreparation(
             mode=mode,
             state=job.state,
@@ -510,6 +623,7 @@ class CompatibilityManager:
             audio_codec=job.audio_codec,
             message=job.message,
             track_id=track_id,
+            queue_position=queue_position,
             stream_url=(
                 f"/api/v1/torrents/{task_id}/compatible/stream"
                 + self._stream_query(mode, track_id)

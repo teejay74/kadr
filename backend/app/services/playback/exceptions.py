@@ -3,7 +3,7 @@ class PlaybackPreparationError(RuntimeError):
 
 
 class PlaybackPreparationLimitError(RuntimeError):
-    """Raised when the configured FFmpeg concurrency limit is reached."""
+    """Raised when the bounded FFmpeg preparation queue is full."""
 
 
 class PlaybackArtifactNotReadyError(RuntimeError):

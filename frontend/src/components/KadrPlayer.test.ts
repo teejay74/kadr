@@ -230,6 +230,41 @@ test('explicitly prepares and opens a compatible FFmpeg version', async () => {
   )
 })
 
+test('shows and cancels a queued compatible preparation', async () => {
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/compatible') && init?.method === 'POST') {
+      return new Response(JSON.stringify({
+        mode: 'compatible',
+        state: 'queued',
+        progress: 0,
+        queue_position: 2,
+      }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.endsWith('/compatible') && init?.method === 'DELETE') {
+      return new Response(JSON.stringify({
+        mode: 'compatible',
+        state: 'idle',
+        progress: 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mkv' } })
+
+  await fireEvent.click(screen.getByText('Если нет изображения или звука'))
+  await fireEvent.click(screen.getByRole('button', { name: 'Полная совместимая версия' }))
+
+  expect(await screen.findByText(/В очереди на подготовку/)).toBeTruthy()
+  expect(screen.getByText(/позиция 2/)).toBeTruthy()
+  await fireEvent.click(screen.getByRole('button', { name: 'Убрать из очереди' }))
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    '/api/v1/torrents/task-id/compatible',
+    expect.objectContaining({ method: 'DELETE' }),
+  ))
+})
+
 test('quickly fixes audio without requesting a full video transcode', async () => {
   vi.mocked(fetch).mockImplementation(async (input, init) => {
     const url = String(input)

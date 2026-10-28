@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
+  cancelCompatiblePlayback,
   friendlyApiError,
   getCompatiblePlayback,
   getHistoryItem,
@@ -506,6 +507,20 @@ async function pollCompatibility(): Promise<void> {
   }
 }
 
+async function cancelQueuedPreparation(): Promise<void> {
+  if (compatible.value?.state !== 'queued') return
+  if (compatibilityTimer) clearTimeout(compatibilityTimer)
+  try {
+    compatible.value = await cancelCompatiblePlayback(
+      props.taskId,
+      compatibleMode.value,
+      compatibleTrackId.value,
+    )
+  } catch (reason) {
+    error.value = friendlyApiError(reason)
+  }
+}
+
 async function handleCompatibility(status: PlaybackPreparation): Promise<void> {
   compatible.value = status
   if (status.state === 'failed') {
@@ -877,20 +892,33 @@ onBeforeUnmount(stopPlayback)
             KADR автоматически проверяет готовность потока каждые 5 секунд.
           </small>
         </div>
-        <p
-          v-else-if="compatible && ['probing', 'processing'].includes(compatible.state)"
+        <div
+          v-else-if="compatible && ['queued', 'probing', 'processing'].includes(compatible.state)"
           class="player-status"
           role="status"
         >
-          FFmpeg: {{ compatible.state === 'probing'
-            ? 'анализ'
-            : compatible.mode === 'audio_only'
-              ? 'исправляем звук'
-              : compatible.mode === 'audio_track'
-                ? 'готовим выбранную аудиодорожку'
-                : 'подготовка' }}…
-          {{ Math.round(compatible.progress * 100) }}%
-        </p>
+          <span v-if="compatible.state === 'queued'">
+            В очереди на подготовку<span v-if="compatible.queue_position">, позиция {{ compatible.queue_position }}</span>.
+          </span>
+          <span v-else>
+            FFmpeg: {{ compatible.state === 'probing'
+              ? 'анализ'
+              : compatible.mode === 'audio_only'
+                ? 'исправляем звук'
+                : compatible.mode === 'audio_track'
+                  ? 'готовим выбранную аудиодорожку'
+                  : 'подготовка' }}…
+            {{ Math.round(compatible.progress * 100) }}%
+          </span>
+          <button
+            v-if="compatible.state === 'queued'"
+            class="button secondary focus-ring"
+            type="button"
+            @click="cancelQueuedPreparation"
+          >
+            Убрать из очереди
+          </button>
+        </div>
       </div>
       <div v-if="resumeAt" class="resume-prompt" role="status">
         <span>Продолжить с {{ formatTime(resumeAt) }}?</span>

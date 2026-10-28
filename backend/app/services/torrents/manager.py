@@ -67,6 +67,19 @@ class TorrentManager:
         )
         if source is None:
             raise TorrentNotFoundError("The selected source is no longer available")
+        existing_source = await self._repository.get_latest_by_source(
+            media_id,
+            media_kind,
+            source_id,
+        )
+        if existing_source is not None:
+            try:
+                return await self.status(existing_source.id)
+            except TorrentNotFoundError:
+                # The database can outlive a manually removed qBittorrent item.
+                # In that case, continue with a fresh add instead of restoring
+                # the stale task.
+                pass
         known_hash = (source.info_hash or "").lower()
         if known_hash:
             existing = await self._repository.get_by_hash(known_hash)

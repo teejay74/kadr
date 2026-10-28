@@ -169,8 +169,10 @@ fully converted compatibility file. This mode does not make an unsupported
 video codec playable; use full compatibility preparation in that case.
 
 Full video conversion is CPU-intensive and completes before playback begins.
-The default is one concurrent preparation, two video threads, CRF 23,
-`veryfast`, and at most 1920×1080. Embedded subtitles are not yet delivered,
+The default is one concurrent preparation with up to five waiting in a bounded
+FIFO queue, two video threads, CRF 23, `veryfast`, and at most 1920×1080.
+Queued jobs are process-local, can be cancelled before they start, and are
+discarded on an API restart; completed artifacts remain reusable. Embedded subtitles are not yet delivered,
 HDR is not tone-mapped, and compatibility cannot be guaranteed for every
 browser/device.
 
@@ -181,6 +183,7 @@ browser/device.
 | `KADR_FFPROBE_TIMEOUT_SECONDS` | `15` | Maximum time for one on-demand metadata probe |
 | `KADR_SUBTITLE_EXTRACTION_TIMEOUT_SECONDS` | `120` | Maximum time for one explicitly requested text-subtitle extraction |
 | `KADR_MAX_ACTIVE_TRANSCODES` | `1` | Concurrent FFmpeg preparations |
+| `KADR_MAX_QUEUED_TRANSCODES` | `5` | Waiting compatible-playback preparations |
 | `KADR_TRANSCODE_VIDEO_THREADS` | `2` | FFmpeg video encoder threads |
 | `KADR_TRANSCODE_VIDEO_PRESET` | `veryfast` | H.264 encoder speed/efficiency trade-off |
 | `KADR_TRANSCODE_VIDEO_CRF` | `23` | H.264 quality factor |

@@ -214,7 +214,7 @@ export interface StreamReadiness {
   download_speed_bytes: number
 }
 
-export type PlaybackPreparationState = 'idle' | 'probing' | 'processing' | 'ready' | 'failed'
+export type PlaybackPreparationState = 'idle' | 'queued' | 'probing' | 'processing' | 'ready' | 'failed'
 export type PlaybackMode = 'compatible' | 'audio_only' | 'audio_track'
 export type PlaybackStrategy = 'remux' | 'audio_transcode' | 'transcode'
 
@@ -228,6 +228,7 @@ export interface PlaybackPreparation {
   message: string | null
   stream_url: string | null
   track_id: string | null
+  queue_position: number | null
 }
 
 export type PlaybackTrackKind = 'audio' | 'subtitle'

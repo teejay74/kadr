@@ -94,6 +94,22 @@ class PlaybackPreparationService:
             return PlaybackPreparation(mode=mode, state="idle", progress=0)
         return self._manager.status(task_id, task.selected_file_id, mode, track_id)
 
+    async def cancel(
+        self,
+        task_id: str,
+        mode: PlaybackMode = "compatible",
+        track_id: str | None = None,
+    ) -> PlaybackPreparation:
+        task = await self._repository.get(task_id)
+        if task is None or task.selected_file_id is None:
+            return PlaybackPreparation(mode=mode, state="idle", progress=0)
+        return await self._manager.cancel(
+            task_id,
+            task.selected_file_id,
+            mode,
+            track_id,
+        )
+
     async def open(
         self,
         task_id: str,

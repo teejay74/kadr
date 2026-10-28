@@ -72,6 +72,19 @@ async def compatible_playback_status(
     return await service.status(task_id, mode, track_id)
 
 
+@router.delete(
+    "/torrents/{task_id}/compatible",
+    response_model=PlaybackPreparation,
+)
+async def cancel_compatible_playback(
+    service: PlaybackPreparationServiceDependency,
+    task_id: str,
+    mode: Annotated[PlaybackMode, Query()] = "compatible",
+    track_id: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
+) -> PlaybackPreparation:
+    return await service.cancel(task_id, mode, track_id)
+
+
 @router.get(
     "/torrents/{task_id}/compatible/stream",
     response_class=StreamingResponse,

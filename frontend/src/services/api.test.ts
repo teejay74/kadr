@@ -4,6 +4,7 @@ import {
   addTorrent,
   analyzeEpisodeMatches,
   ApiError,
+  cancelCompatiblePlayback,
   configureTorrentPrefetch,
   confirmEpisodeMatches,
   deleteTorrentFile,
@@ -391,6 +392,20 @@ test('passes the opaque selected audio id to explicit preparation', async () => 
     '/api/v1/torrents/task%2Fid/compatible?mode=audio_track&track_id=a-opaque',
   )
   expect(init.method).toBe('POST')
+})
+
+test('cancels one queued compatible preparation', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ mode: 'audio_only', state: 'idle', progress: 0 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await cancelCompatiblePlayback('task/id', 'audio_only')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task%2Fid/compatible?mode=audio_only')
+  expect(init.method).toBe('DELETE')
 })
 
 test('prepares one explicit subtitle track for a library item', async () => {

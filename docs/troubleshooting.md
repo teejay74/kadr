@@ -92,6 +92,24 @@ Set a private account in qBittorrent's Web UI, copy the same values to
 API container. A rejected login is reported as a controlled 503; credentials
 must not be pasted into logs or committed.
 
+## Selecting an already-added source times out
+
+KADR restores an existing live torrent task by media and opaque source ID even
+when Prowlarr does not provide an info hash. If the matching database task no
+longer exists in qBittorrent, KADR treats it as stale and performs a fresh add.
+If selection still returns `torrent_unavailable`, inspect the API and
+qBittorrent logs for a duplicate-torrent message and confirm that the deployed
+API includes the source-task recovery behavior before removing any data.
+
+## Another compatible version is already being prepared
+
+KADR runs one FFmpeg preparation by default and places additional distinct
+requests into a bounded FIFO queue. The player shows the current queue position
+and can remove a waiting job before it starts. Repeating the same request does
+not create a duplicate. If the queue is full, wait for a job to finish or
+cancel an unneeded waiting job; increasing `KADR_MAX_ACTIVE_TRANSCODES` can
+overload the target host and should follow measured capacity testing.
+
 ## A torrent has no selectable files
 
 Metadata may still be loading. The open task refreshes automatically every five

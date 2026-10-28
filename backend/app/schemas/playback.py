@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.media import EpisodeSummary, MediaKind
 
-PlaybackState = Literal["idle", "probing", "processing", "ready", "failed"]
+PlaybackState = Literal["idle", "queued", "probing", "processing", "ready", "failed"]
 PlaybackMode = Literal["compatible", "audio_only", "audio_track"]
 PlaybackStrategy = Literal["remux", "audio_transcode", "transcode"]
 PlaybackResolutionState = Literal[
@@ -94,6 +94,7 @@ class PlaybackPreparation(BaseModel):
     message: str | None = None
     stream_url: str | None = None
     track_id: str | None = None
+    queue_position: int | None = Field(default=None, ge=1)
 
 
 class PlaybackTrack(BaseModel):

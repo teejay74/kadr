@@ -432,12 +432,14 @@ path. Failures use `playback_subtitle_unavailable` (409).
 | --- | --- |
 | `POST /torrents/{task_id}/compatible?mode=…&track_id=…` | Explicitly start or reuse preparation |
 | `GET /torrents/{task_id}/compatible?mode=…&track_id=…` | Read probe/conversion progress and strategy |
+| `DELETE /torrents/{task_id}/compatible?mode=…&track_id=…` | Cancel a queued preparation before it starts |
 | `GET /torrents/{task_id}/compatible/stream?mode=…&track_id=…` | Stream the ready MP4 with byte ranges |
 
 Preparation requires a selected, fully downloaded video. A `202` response has
-`state` (`probing`, `processing`, `ready`, or `failed`), normalized progress,
+`state` (`queued`, `probing`, `processing`, `ready`, or `failed`), normalized progress,
 the chosen `strategy` (`remux`, `audio_transcode`, or `transcode`), detected
-video/audio codecs, an optional message, and a stream URL only when ready.
+video/audio codecs, an optional one-based `queue_position`, an optional message,
+and a stream URL only when ready.
 The default `mode=compatible` selects the safest remux/transcode strategy.
 `mode=audio_only` preserves the video stream and converts only the first audio
 track to AAC stereo; it is intended for a source whose image already works in
@@ -448,9 +450,12 @@ stream, copies the video, and converts the selected audio to AAC stereo. Each
 selected track uses a separate cache artifact and job identity; the response
 echoes `track_id`. These modes do not make an unsupported video codec playable.
 
-Only the POST starts FFmpeg; GET is read-only. One preparation runs at a time
-by default. Errors use `playback_preparation_failed` or
-`playback_preparation_limit` (409). The compatible stream returns `200`/`206`
+Only the POST creates a job; GET is read-only. One preparation runs at a time
+by default, while up to five distinct jobs wait in a bounded in-memory FIFO
+queue. Repeating the same request reuses its active or queued job. DELETE only
+cancels a job that has not started. A process restart drops queued jobs but
+keeps completed cache artifacts. Errors use `playback_preparation_failed` or
+`playback_preparation_limit` (409 when the queue is full). The compatible stream returns `200`/`206`
 and the same Range headers as Direct Play; requesting it before completion
 returns `playback_artifact_not_ready` (409).
 
