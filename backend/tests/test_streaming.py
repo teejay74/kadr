@@ -38,7 +38,7 @@ class FakeTorrentManager:
 
     async def start(self, task_id: str) -> Any:
         self.started += 1
-        return SimpleNamespace(download_speed_bytes=self.speed)
+        return SimpleNamespace(download_speed_bytes=self.speed, state="downloading")
 
 
 class FakeQBittorrent:
@@ -190,6 +190,9 @@ async def test_readiness_starts_download_and_reports_required_pieces(
 
     assert readiness.ready is False
     assert readiness.buffer_progress == 0.5
+    assert readiness.file_progress == 0.25
+    assert readiness.download_state == "downloading"
+    assert readiness.download_speed_bytes == 4
     assert torrents.started == 1
     assert qbit.streaming_mode_calls == 1
 
@@ -201,6 +204,9 @@ async def test_readiness_reports_complete_file_as_playable(tmp_path: Path) -> No
 
     assert readiness.ready is True
     assert readiness.buffer_progress == 1
+    assert readiness.file_progress == 1
+    assert readiness.download_state is None
+    assert readiness.download_speed_bytes == 0
     assert torrents.started == 0
 
 
@@ -215,6 +221,33 @@ def test_initial_buffer_adapts_to_speed_and_caps_at_configured_target(
     assert manager._initial_buffer_bytes(large_range, 0) == 1 * 1024**2
     assert manager._initial_buffer_bytes(large_range, 2 * 1024**2) == 8 * 1024**2
     assert manager._initial_buffer_bytes(large_range, 20 * 1024**2) == 32 * 1024**2
+
+
+def test_mkv_readiness_needs_only_head_pieces_while_mp4_keeps_tail_probe(
+    tmp_path: Path,
+) -> None:
+    manager, _, _ = make_manager(tmp_path)
+    file_size = 16 * 1024 * 1024
+    piece_size = 1024 * 1024
+    initial_bytes = 1024 * 1024
+
+    head_only = manager._required_probe_pieces(
+        file_size,
+        piece_size,
+        0,
+        initial_bytes,
+        include_tail=manager._requires_tail_probe("episode.mkv"),
+    )
+    with_tail = manager._required_probe_pieces(
+        file_size,
+        piece_size,
+        0,
+        initial_bytes,
+        include_tail=manager._requires_tail_probe("movie.mp4"),
+    )
+
+    assert head_only == {0}
+    assert with_tail == {0, 12, 13, 14, 15}
 
 
 async def test_times_out_when_requested_pieces_are_unavailable(tmp_path: Path) -> None:
@@ -318,4 +351,10 @@ async def test_stream_readiness_endpoint(client: AsyncClient, tmp_path: Path) ->
     response = await client.get("/api/v1/torrents/task-1/stream/readiness")
 
     assert response.status_code == 200
-    assert response.json() == {"ready": True, "buffer_progress": 1.0}
+    assert response.json() == {
+        "ready": True,
+        "buffer_progress": 1.0,
+        "file_progress": 1.0,
+        "download_state": None,
+        "download_speed_bytes": 0,
+    }

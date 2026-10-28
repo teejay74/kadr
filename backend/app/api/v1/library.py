@@ -5,7 +5,11 @@ from fastapi import APIRouter, Header, HTTPException, Path, Query, Response, sta
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
-from app.api.dependencies import CacheManagerDependency, LibraryManagerDependency
+from app.api.dependencies import (
+    CacheManagerDependency,
+    LibraryManagerDependency,
+    PlaybackTrackServiceDependency,
+)
 from app.schemas.library import (
     CacheCleanupResponse,
     FavoriteRequest,
@@ -17,6 +21,7 @@ from app.schemas.library import (
     StorageResponse,
 )
 from app.schemas.media import MediaKind
+from app.schemas.playback import PlaybackTrackList
 
 router = APIRouter()
 
@@ -66,6 +71,14 @@ async def stream_library_item(
         headers=headers,
         background=BackgroundTask(prepared.release),
     )
+
+
+@router.get("/library/{item_id}/tracks", response_model=PlaybackTrackList)
+async def library_tracks(
+    service: PlaybackTrackServiceDependency,
+    item_id: str,
+) -> PlaybackTrackList:
+    return await service.library_tracks(item_id)
 
 
 @router.get("/favorites", response_model=list[FavoriteResponse])

@@ -113,7 +113,10 @@ returning `ready` or `buffering`; missing and stale sources return explicit
 `source_required` or `unavailable` states. The browser does not choose a file
 or infer readiness from overall download percentage. Player readiness polling
 is bounded to twelve five-second checks so a stalled source does not leave an
-unending loading state.
+unending loading state. Readiness also returns the exact selected-file progress;
+prefetched files no longer distort the player percentage. MKV/WebM and transport
+streams gate startup on their initial pieces, while containers with trailing
+metadata requirements retain a bounded tail probe.
 
 Source search is explicitly user-triggered. The source service first resolves
 the trusted title and year from the metadata service, then calls Prowlarr over
@@ -160,6 +163,16 @@ conversion. A process-local scheduler permits one FFmpeg job by default. Work
 is written to a temporary file under the separate writable playback cache and
 atomically renamed only on success. Generated MP4 ranges share the Streaming
 Manager's request registry. Opening Direct Play never starts FFmpeg.
+
+The Playback Track service is a separate read-only discovery layer. It accepts
+only the currently selected, fully downloaded torrent file or one explicit
+library item, canonicalizes the source under its KADR-owned root, and invokes
+`ffprobe` with a bounded timeout and no shell. Results are cached in process by
+canonical path, size, and modification time. Exact per-file IDs remain distinct
+from semantic preference keys, allowing a later preference resolver and native
+Android TV client to select by language/title/codec instead of assuming that
+stream indexes are stable. Discovery classifies text, bitmap, and unsupported
+subtitle delivery but never starts FFmpeg or changes Direct Play.
 
 The Library Manager accepts only a fully downloaded selected file whose
 canonical source remains beneath the configured KADR download root. It writes
@@ -211,6 +224,7 @@ browser profiles. A hard Cloudflare IP block can still reject the request.
 | Browser/TV codec fragmentation | Unsupported playback | Direct Play first; explicit ffprobe/FFmpeg fallback produces H.264/AAC MP4, with honest errors for remaining device limits. |
 | FFmpeg CPU, memory, and disk-I/O pressure | Existing services become slow or playback cache fills storage | Explicit-only jobs, one-job/two-thread defaults, 1080p cap, container CPU/RAM limits, free-space reserve, separate cache; validate production host headroom. |
 | Corrupt or malicious media input | FFmpeg failure or excessive processing | Unprivileged container, no-new-privileges, read-only source mount, bounded concurrency, exact argv execution without a shell, controlled failure state. |
+| Slow or malformed track metadata | API worker starvation or unsafe labels | Bounded asynchronous ffprobe subprocess, sanitized/length-limited tags, canonical KADR-root paths, and a small file-identity cache. |
 | qBittorrent Web API cannot prioritize an arbitrary piece range | A long seek into an incomplete file can time out | Enable sequential and first/last-piece modes, reassert maximum file priority, wait only for verified pieces, and evaluate a libtorrent-capable adapter before claiming arbitrary seek-priority optimization. |
 | A stream fails after response headers are sent | Browser sees a network/media error rather than a JSON body | Validate the initial buffer before returning headers; surface later starvation as a player error and keep timeout bounded. |
 | Process restart loses active-stream counters | Temporary concurrency accounting reset | Registry is deliberately process-local for the single-worker MVP; use shared coordination before adding API replicas. |

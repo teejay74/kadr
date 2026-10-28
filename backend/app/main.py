@@ -36,8 +36,10 @@ from app.services.playback.exceptions import (
     PlaybackArtifactNotReadyError,
     PlaybackPreparationError,
     PlaybackPreparationLimitError,
+    PlaybackTrackProbeError,
 )
 from app.services.playback.manager import CompatibilityManager
+from app.services.playback.tracks import PlaybackTrackProbe
 from app.services.sources.exceptions import (
     IndexerNotConfiguredError,
     IndexerUnavailableError,
@@ -102,6 +104,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         settings.max_range_requests_per_stream,
     )
     application.state.compatibility_manager = CompatibilityManager(settings)
+    application.state.playback_track_probe = PlaybackTrackProbe(settings)
     async with httpx.AsyncClient(
         base_url=settings.tmdb_base_url,
         timeout=settings.tmdb_timeout_seconds,
@@ -295,6 +298,14 @@ def create_app() -> FastAPI:
         exc: PlaybackArtifactNotReadyError,
     ) -> JSONResponse:
         error = ErrorResponse(code="playback_artifact_not_ready", message=str(exc))
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
+
+    @application.exception_handler(PlaybackTrackProbeError)
+    async def playback_track_probe(
+        _: Request,
+        exc: PlaybackTrackProbeError,
+    ) -> JSONResponse:
+        error = ErrorResponse(code="playback_tracks_unavailable", message=str(exc))
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error.model_dump())
 
     @application.exception_handler(LibraryNotFoundError)

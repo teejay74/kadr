@@ -209,6 +209,9 @@ export interface CacheFileDeletion {
 export interface StreamReadiness {
   ready: boolean
   buffer_progress: number
+  file_progress: number
+  download_state: string | null
+  download_speed_bytes: number
 }
 
 export type PlaybackPreparationState = 'idle' | 'probing' | 'processing' | 'ready' | 'failed'

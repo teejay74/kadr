@@ -25,6 +25,9 @@ beforeEach(() => {
       return new Response(JSON.stringify({
         ready: true,
         buffer_progress: 1,
+        file_progress: 1,
+        download_state: null,
+        download_speed_bytes: 0,
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     throw new Error(`Unexpected request: ${url}`)
@@ -159,6 +162,9 @@ test('waits for the startup buffer before attaching the video stream', async () 
     return new Response(JSON.stringify({
       ready: false,
       buffer_progress: 0.25,
+      file_progress: 0.4,
+      download_state: 'downloading',
+      download_speed_bytes: 1_048_576,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   })
   render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mp4' } })
@@ -166,7 +172,7 @@ test('waits for the startup buffer before attaching the video stream', async () 
   await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
 
   await screen.findByText('Подготавливаем начальный буфер… 25%')
-  expect(screen.getAllByText(/Скачано 0%/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/Скачано 40% · эпизод загружается · 1.0 МБ\/с/).length).toBeGreaterThan(0)
   expect(screen.getByText('KADR автоматически проверяет готовность потока каждые 5 секунд.')).toBeTruthy()
   expect(document.querySelector('video')).toBeNull()
   expect(fetch).toHaveBeenCalledWith(
@@ -192,7 +198,7 @@ test('explains when the browser blocks automatic playback', async () => {
   expect((await screen.findByRole('alert')).textContent).toContain(
     'браузер заблокировал автоматический запуск',
   )
-  expect(screen.getByText('Скачано 40% · эпизод загружается · 1.0 МБ/с')).toBeTruthy()
+  expect(screen.getByText('Скачано 100% · файл загружен полностью')).toBeTruthy()
   expect(document.querySelector('video')).not.toBeNull()
 })
 

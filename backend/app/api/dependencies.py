@@ -18,6 +18,7 @@ from app.services.playback.manager import CompatibilityManager
 from app.services.playback.navigation import EpisodeNavigationService
 from app.services.playback.resolver import PlaybackResolver
 from app.services.playback.service import PlaybackPreparationService
+from app.services.playback.tracks import PlaybackTrackProbe, PlaybackTrackService
 from app.services.sources.prowlarr import ProwlarrClient
 from app.services.sources.search import SourceSearchService
 from app.services.streaming.manager import StreamingManager
@@ -138,6 +139,27 @@ def get_playback_preparation_service(
 PlaybackPreparationServiceDependency = Annotated[
     PlaybackPreparationService,
     Depends(get_playback_preparation_service),
+]
+
+
+def get_playback_track_service(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlaybackTrackService:
+    settings = get_settings()
+    probe: PlaybackTrackProbe = request.app.state.playback_track_probe
+    return PlaybackTrackService(
+        probe,
+        TorrentTaskRepository(session),
+        LibraryRepository(session),
+        QBittorrentClient(request.app.state.torrent_http_client, settings),
+        settings,
+    )
+
+
+PlaybackTrackServiceDependency = Annotated[
+    PlaybackTrackService,
+    Depends(get_playback_track_service),
 ]
 
 

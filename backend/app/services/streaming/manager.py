@@ -36,6 +36,8 @@ VIDEO_MEDIA_TYPES = {
     ".webm": "video/webm",
 }
 
+TAIL_PROBE_EXTENSIONS = {".avi", ".m4v", ".mov", ".mp4"}
+
 
 def media_type_for(path: Path) -> str:
     return VIDEO_MEDIA_TYPES.get(
@@ -134,10 +136,12 @@ class StreamingManager:
             task.torrent_hash, [task.selected_file_id], 1
         )
         speed = 0
+        download_state: str | None = None
         if float(selected.get("progress") or 0) < 1:
             await self._client.prepare_for_streaming(task.torrent_hash)
             status = await self._torrents.start(task_id)
             speed = status.download_speed_bytes
+            download_state = status.state
 
         states = await self._client.piece_states(task.torrent_hash)
         initial_bytes = self._initial_buffer_bytes(size, speed)
@@ -146,6 +150,7 @@ class StreamingManager:
             piece_size,
             file_offset,
             initial_bytes,
+            include_tail=self._requires_tail_probe(task.selected_file_path),
         )
         completed = sum(
             index < len(states) and states[index] == 2 for index in required
@@ -156,6 +161,9 @@ class StreamingManager:
         return StreamReadiness(
             ready=file_exists and completed == len(required),
             buffer_progress=progress,
+            file_progress=min(max(float(selected.get("progress") or 0), 0), 1),
+            download_state=download_state,
+            download_speed_bytes=speed,
         )
 
     async def open(self, task_id: str, range_header: str | None) -> PreparedStream:
@@ -260,6 +268,8 @@ class StreamingManager:
         piece_size: int,
         file_offset: int,
         initial_bytes: int,
+        *,
+        include_tail: bool = True,
     ) -> set[int]:
         tail_bytes = min(
             file_size,
@@ -272,8 +282,13 @@ class StreamingManager:
             return range(first, last + 1)
 
         required = set(pieces(0, initial_bytes - 1))
-        required.update(pieces(file_size - tail_bytes, file_size - 1))
+        if include_tail:
+            required.update(pieces(file_size - tail_bytes, file_size - 1))
         return required
+
+    @staticmethod
+    def _requires_tail_probe(relative_path: str) -> bool:
+        return PurePosixPath(relative_path).suffix.lower() in TAIL_PROBE_EXTENSIONS
 
     async def _wait_for_file(self, path: Path) -> None:
         deadline = time.monotonic() + self._settings.stream_read_timeout_seconds

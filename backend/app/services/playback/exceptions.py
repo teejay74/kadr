@@ -8,3 +8,7 @@ class PlaybackPreparationLimitError(RuntimeError):
 
 class PlaybackArtifactNotReadyError(RuntimeError):
     """Raised when the compatible playback artifact is not ready."""
+
+
+class PlaybackTrackProbeError(RuntimeError):
+    """Raised when local media tracks cannot be inspected safely."""

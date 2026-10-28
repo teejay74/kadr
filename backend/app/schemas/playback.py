@@ -14,6 +14,13 @@ PlaybackResolutionState = Literal[
     "unavailable",
 ]
 PlaybackSource = Literal["library", "torrent"]
+PlaybackTrackKind = Literal["audio", "subtitle"]
+PlaybackTrackDelivery = Literal[
+    "native_or_compatible",
+    "external_webvtt",
+    "burn_in_required",
+    "unsupported",
+]
 
 
 class PlaybackResolveRequest(BaseModel):
@@ -86,3 +93,27 @@ class PlaybackPreparation(BaseModel):
     audio_codec: str | None = None
     message: str | None = None
     stream_url: str | None = None
+
+
+class PlaybackTrack(BaseModel):
+    id: str
+    preference_key: str
+    stream_index: int = Field(ge=0)
+    kind: PlaybackTrackKind
+    language: str | None = None
+    codec: str
+    title: str | None = None
+    is_default: bool = False
+    is_forced: bool = False
+    is_hearing_impaired: bool = False
+    channels: int | None = Field(default=None, ge=1)
+    channel_layout: str | None = None
+    delivery: PlaybackTrackDelivery
+
+
+class PlaybackTrackList(BaseModel):
+    source: PlaybackSource
+    source_id: str
+    file_id: int | None = Field(default=None, ge=0)
+    audio_tracks: list[PlaybackTrack] = Field(default_factory=list)
+    subtitle_tracks: list[PlaybackTrack] = Field(default_factory=list)

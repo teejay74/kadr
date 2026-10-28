@@ -91,6 +91,9 @@ class FakeStreamingManager:
         return StreamReadiness(
             ready=self.ready,
             buffer_progress=1 if self.ready else 0.4,
+            file_progress=0.7,
+            download_state="downloading",
+            download_speed_bytes=200,
         )
 
 
@@ -206,6 +209,9 @@ async def test_resolver_reuses_bound_episode_file_and_reports_buffering(
     assert result.task_id == task.id
     assert result.file_id == 1
     assert result.buffer_progress == 0.4
+    assert result.download_progress == 0.7
+    assert result.download_state == "downloading"
+    assert result.download_speed_bytes == 200
     assert torrents.calls[0][0:5] == (task.id, 1, 1, 2, 1002)
     assert streaming.calls == [task.id]
 

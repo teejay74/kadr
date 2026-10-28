@@ -120,8 +120,11 @@ non-destructive and keeps downloaded data.
 The player polls stream readiness every five seconds and shows the percentage
 of required startup pieces. Confirm that peers are present if that percentage
 does not change. KADR does not attach the browser media source or send
-unavailable sparse bytes until the beginning and required container tail are
-ready. The shared player stops automatic readiness polling after twelve checks
+unavailable sparse bytes until the required startup pieces are ready. MKV and
+WebM require their initial pieces only; MP4/MOV and AVI also retain a bounded
+tail check for container metadata. The displayed download percentage belongs
+to the selected file and is independent of a prefetched next episode. The
+shared player stops automatic readiness polling after twelve checks
 (about one minute) and offers an explicit retry instead of loading forever. It
 enables qBittorrent's sequential and first/last-piece modes for incomplete
 streams. A distant seek can still time out because qBittorrent's Web API cannot
@@ -221,6 +224,17 @@ filesystem cleanup commands.
 The compatible profile uses the first audio stream, AAC-LC stereo, and H.264
 8-bit video when conversion is needed. Alternate tracks, embedded subtitles,
 HDR tone mapping, and every browser/device combination are not yet supported.
+
+## Track discovery is unavailable
+
+`GET /api/v1/torrents/{task_id}/tracks` intentionally returns 409 until the
+selected file reaches 100%. This does not block ordinary partial-file Direct
+Play. For a completed torrent or library item, inspect API logs and run
+`docker compose exec -T api ffprobe -version`. A timeout can be adjusted with
+`KADR_FFPROBE_TIMEOUT_SECONDS`, but first check that the file is readable and
+not corrupt. Do not make the downloads mount writable and do not probe an
+entire season as a workaround. Unknown language or absent studio/title is
+returned as `null`, not treated as an error.
 
 ## Resume position is missing
 

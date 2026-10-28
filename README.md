@@ -39,6 +39,15 @@ inspection, and completed-cache deletion to a dedicated **Downloads** page.
 Film and series pages retain only playback, source choice, and a link to that
 technical workspace. The legacy `SourcesPanel` source remains in the tree for
 live-playback rollback until Debian acceptance is complete.
+Playback stabilization D2.1 reports selected-file progress during readiness
+polling and lets MKV/WebM sources start from their initial pieces without
+waiting for unrelated trailing data. MP4/MOV and AVI keep their bounded tail
+probe.
+Audio/subtitle stage D3.1 adds on-demand, bounded `ffprobe` discovery for a
+completed selected torrent file or one saved library item. It returns stable
+semantic preference keys plus exact stream IDs, languages, codecs, labels,
+defaults, and delivery capabilities without starting FFmpeg or scanning a
+season in the background.
 
 ## Quick start
 
@@ -141,5 +150,7 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [UI redesign C2 report](docs/ui-redesign-c2-report.md)
 - [UI redesign D1 report](docs/ui-redesign-d1-report.md)
 - [UI redesign D2 report](docs/ui-redesign-d2-report.md)
+- [UI redesign D2.1 report](docs/ui-redesign-d2-1-report.md)
+- [Audio/subtitle D3.1 report](docs/ui-redesign-d3-1-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 

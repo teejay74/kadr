@@ -12,7 +12,7 @@ opening the player or by background automation.
 2. The frontend polls `GET /api/v1/torrents/{task_id}/stream/readiness` every
    five seconds while the startup pieces are unavailable. This also starts or
    resumes the selected download.
-3. Once the beginning and container tail are ready, the browser requests
+3. Once the beginning and any container-specific metadata are ready, the browser requests
    `GET /api/v1/torrents/{task_id}/stream`, usually with a byte range.
 4. KADR validates the range and canonical selected-file path.
 5. KADR maps that file range to torrent piece numbers and queries
@@ -24,6 +24,12 @@ opening the player or by background automation.
    availability again before every chunk read.
 8. Completion, closing the player, navigation, or a disconnected client
    releases the active-stream slot.
+
+Matroska/WebM and transport-stream sources can start from their initial buffer;
+they do not wait for the end of a multi-gigabyte episode. Containers that can
+depend on trailing indexes or metadata, including MP4/MOV and AVI, retain the
+tail probe. Any later browser Range request is still gated by its actual piece
+availability.
 
 KADR never treats file length or sparse bytes as proof that data is ready. A
 piece is readable only when qBittorrent reports state `2` (downloaded).
@@ -71,8 +77,9 @@ and any supported embedded track controls. KADR stores the last meaningful
 position in that browser's local storage and offers to continue on the next
 opening. Before attaching the media source, the player displays real startup
 buffer readiness and waits automatically instead of turning a preparation
-timeout into a browser format error. The visible player frame reports the
-selected-file download percentage, torrent state, speed, buffer progress, and
+timeout into a browser format error. The readiness response and visible player
+frame report the selected-file download percentage rather than the aggregate
+selected-torrent percentage, plus torrent state, speed, buffer progress, and
 five-second retry behavior. Once ready, KADR attempts playback and reports an
 explicit browser autoplay block instead of leaving an empty player area.
 Closing the player cancels readiness polling and removes its media source.
@@ -82,6 +89,23 @@ codec support still depends on the browser/TV; an unsupported file produces a
 codec-specific player error. The retry action creates a fresh media request,
 and “Change source” returns to the release list without deleting the existing
 KADR download.
+
+## Track discovery
+
+KADR can inspect audio and subtitle streams on demand through the selected
+torrent or library track endpoint. Torrent probing is delayed until that one
+selected file reaches 100%; it never triggers a download or a season-wide
+scan. The asynchronous ffprobe call has a configurable timeout and its parsed
+result is cached only while path, size, and modification time stay unchanged.
+
+The API distinguishes an exact per-file stream ID from a semantic preference
+key. The latter is derived from normalized language, optional title, codec,
+channel layout, and disposition flags rather than a numeric stream index. This
+is the foundation for remembering an audio language or studio across files and
+for a future Media3 client. Text subtitles are marked for a future WebVTT
+endpoint; bitmap subtitles are marked as requiring an explicit burn-in mode.
+D3.1 only discovers and classifies tracks: the current player does not yet show
+the menu, and neither ffmpeg nor a derived stream starts during Direct Play.
 
 Saved-library cards use the same controlled player around the independent
 library stream instead of exposing a blank native video element. Unsupported
@@ -122,6 +146,7 @@ be guaranteed for every browser/device.
 | --- | ---: | --- |
 | `KADR_PLAYBACK_CACHE_ROOT` | `/playback` | Separate compatible-file output root |
 | `KADR_PLAYBACK_MIN_FREE_SPACE_GB` | `5` | Free space retained after estimated output |
+| `KADR_FFPROBE_TIMEOUT_SECONDS` | `15` | Maximum time for one on-demand metadata probe |
 | `KADR_MAX_ACTIVE_TRANSCODES` | `1` | Concurrent FFmpeg preparations |
 | `KADR_TRANSCODE_VIDEO_THREADS` | `2` | FFmpeg video encoder threads |
 | `KADR_TRANSCODE_VIDEO_PRESET` | `veryfast` | H.264 encoder speed/efficiency trade-off |

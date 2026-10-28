@@ -146,9 +146,11 @@ class PlaybackResolver:
             file_id=file_id,
             resume_position_seconds=resume_position,
             buffer_progress=readiness.buffer_progress,
-            download_progress=status.progress,
-            download_state=status.state,
-            download_speed_bytes=status.download_speed_bytes,
+            download_progress=readiness.file_progress,
+            download_state=readiness.download_state or status.state,
+            download_speed_bytes=(
+                readiness.download_speed_bytes or status.download_speed_bytes
+            ),
         )
 
     async def _episode(

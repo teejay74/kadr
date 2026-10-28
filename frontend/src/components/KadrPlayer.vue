@@ -64,6 +64,9 @@ const streamAttempt = ref(0)
 const compatible = ref<PlaybackPreparation | null>(null)
 const compatibleMode = ref<PlaybackMode>('compatible')
 const usingCompatible = ref(false)
+const currentDownloadProgress = ref(props.downloadProgress)
+const currentDownloadState = ref(props.downloadState)
+const currentDownloadSpeedBytes = ref(props.downloadSpeedBytes)
 let lastSavedSecond = -1
 let playbackEnded = false
 let nearEndEmitted = false
@@ -91,22 +94,22 @@ const storageKey = computed(() => {
     ? `kadr:playback:${props.taskId}:f${props.fileId}`
     : `kadr:playback:${props.taskId}`
 })
-const downloadPercent = computed(() => Math.round(props.downloadProgress * 100))
+const downloadPercent = computed(() => Math.round(currentDownloadProgress.value * 100))
 const downloadStateLabel = computed(() => {
-  if (props.downloadProgress >= 1) return 'файл загружен полностью'
-  if (['downloading', 'forcedDL'].includes(props.downloadState)) return 'эпизод загружается'
-  if (['queuedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'].includes(props.downloadState)) {
+  if (currentDownloadProgress.value >= 1) return 'файл загружен полностью'
+  if (['downloading', 'forcedDL'].includes(currentDownloadState.value)) return 'эпизод загружается'
+  if (['queuedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'].includes(currentDownloadState.value)) {
     return 'ожидаем данные от источников'
   }
-  if (['stoppedDL', 'pausedDL'].includes(props.downloadState)) return 'загрузка приостановлена'
-  if (props.downloadState === 'error' || props.downloadState === 'missingFiles') {
+  if (['stoppedDL', 'pausedDL'].includes(currentDownloadState.value)) return 'загрузка приостановлена'
+  if (currentDownloadState.value === 'error' || currentDownloadState.value === 'missingFiles') {
     return 'ошибка загрузки'
   }
   return 'проверяем состояние загрузки'
 })
 const downloadStatus = computed(() => {
-  const speed = props.downloadSpeedBytes > 0
-    ? ` · ${formatBytes(props.downloadSpeedBytes)}/с`
+  const speed = currentDownloadSpeedBytes.value > 0
+    ? ` · ${formatBytes(currentDownloadSpeedBytes.value)}/с`
     : ''
   return `Скачано ${downloadPercent.value}% · ${downloadStateLabel.value}${speed}`
 })
@@ -254,6 +257,9 @@ async function prepareStream(id = ++preparationId): Promise<void> {
     const readiness = await getStreamReadiness(props.taskId)
     if (!active.value || id !== preparationId) return
     bufferProgress.value = readiness.buffer_progress
+    currentDownloadProgress.value = readiness.file_progress
+    if (readiness.download_state) currentDownloadState.value = readiness.download_state
+    currentDownloadSpeedBytes.value = readiness.download_speed_bytes
     if (!readiness.ready) {
       readinessAttempts += 1
       if (readinessAttempts >= maxReadinessAttempts) {
@@ -432,7 +438,7 @@ onBeforeUnmount(stopPlayback)
         <p v-else>Просмотр можно начать до завершения загрузки — KADR сам подготовит начальный буфер.</p>
         <strong v-if="selectionLabel" class="player-selection-label">{{ selectionLabel }}</strong>
         <small>{{ fileName || title }}</small>
-        <span class="player-download-status" :class="{ complete: downloadProgress >= 1 }">
+        <span class="player-download-status" :class="{ complete: currentDownloadProgress >= 1 }">
           {{ downloadStatus }}
         </span>
       </div>
@@ -459,7 +465,7 @@ onBeforeUnmount(stopPlayback)
         <div class="player-toolbar-title">
           <strong>{{ selectionLabel || title }}</strong>
           <small v-if="selectionLabel">{{ fileName || title }}</small>
-          <span class="player-download-status" :class="{ complete: downloadProgress >= 1 }">
+          <span class="player-download-status" :class="{ complete: currentDownloadProgress >= 1 }">
             {{ downloadStatus }}
           </span>
         </div>

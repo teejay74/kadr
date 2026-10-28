@@ -343,10 +343,14 @@ arbitrary whole-torrent delete endpoint.
 ### `GET /api/v1/torrents/{task_id}/stream/readiness`
 
 Starts or resumes preparation of the selected file and reports whether the
-startup buffer can be opened safely. The response contains `ready` and
-`buffer_progress`. KADR checks both the beginning of the adaptive startup
-buffer and the tail needed by containers such as MP4 before the player attaches
-the media source.
+startup buffer can be opened safely. The response contains `ready`,
+`buffer_progress`, `file_progress`, `download_state`, and
+`download_speed_bytes`. `file_progress` always belongs to the selected video,
+not the aggregate set of current and prefetched files. KADR checks the
+beginning of the adaptive startup buffer and, only for containers that may
+depend on trailing metadata such as MP4/MOV or AVI, a bounded tail probe before
+the player attaches the media source. MKV/WebM and transport streams can start
+from their available beginning.
 
 ### `GET /api/v1/torrents/{task_id}/stream`
 
@@ -369,6 +373,31 @@ error because HTTP headers can no longer be replaced with JSON.
 
 This Direct Play endpoint does not remux or transcode and does not expose
 torrent paths or credentials.
+
+## Audio and subtitle track discovery
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /torrents/{task_id}/tracks` | Inspect the completed selected torrent file |
+| `GET /library/{id}/tracks` | Inspect one saved library file |
+
+Track discovery is read-only and on-demand. Torrent inspection requires the
+selected file itself to be 100% complete; KADR never downloads or probes every
+file in a season for this endpoint. The server runs a bounded `ffprobe` process
+and returns separate `audio_tracks` and `subtitle_tracks` arrays. Each entry
+contains an opaque exact `id`, semantic `preference_key`, ffprobe
+`stream_index`, language when known, codec, optional title, default/forced and
+hearing-impaired flags, audio channel metadata, and a delivery capability.
+
+The exact ID includes the stream index and identifies one stream in this file.
+The preference key excludes that index, so a later preferences stage can match
+the same language/label/codec semantics even when another file orders its
+streams differently. Text subtitles report `external_webvtt`, bitmap subtitles
+report `burn_in_required`, and unknown codecs report `unsupported`; this stage
+does not yet create either derived stream. Missing titles remain `null`.
+Failures use `playback_tracks_unavailable` (409). Unsafe paths continue to use
+the existing torrent/library storage errors. Track discovery never starts
+FFmpeg and does not change the Direct Play Range contract.
 
 ## Compatible-playback endpoints
 
@@ -400,6 +429,7 @@ returns `playback_artifact_not_ready` (409).
 | `GET /library` | List saved local media and byte sizes |
 | `POST /library` | Save one fully downloaded selected file |
 | `GET /library/{id}/stream` | Range-stream a saved file without qBittorrent |
+| `GET /library/{id}/tracks` | Inspect audio/subtitle streams on demand |
 | `DELETE /library/{id}` | Delete one inactive saved file |
 | `GET /favorites` | List favorites |
 | `POST /favorites` | Add an idempotent favorite snapshot |

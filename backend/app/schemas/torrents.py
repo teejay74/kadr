@@ -77,6 +77,9 @@ class TorrentStatus(BaseModel):
 class StreamReadiness(BaseModel):
     ready: bool
     buffer_progress: float = Field(ge=0, le=1)
+    file_progress: float = Field(ge=0, le=1)
+    download_state: str | None = None
+    download_speed_bytes: int = Field(default=0, ge=0)
 
 
 TorrentAction = Literal["start", "stop"]

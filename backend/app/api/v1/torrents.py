@@ -5,6 +5,7 @@ from fastapi import APIRouter, Path, Query
 from app.api.dependencies import (
     CacheManagerDependency,
     EpisodeMatcherDependency,
+    PlaybackTrackServiceDependency,
     TorrentManagerDependency,
 )
 from app.schemas.episode_matcher import (
@@ -13,6 +14,7 @@ from app.schemas.episode_matcher import (
 )
 from app.schemas.library import CacheFileDeletionResponse
 from app.schemas.media import MediaKind
+from app.schemas.playback import PlaybackTrackList
 from app.schemas.torrents import (
     AddTorrentRequest,
     EpisodeFileBindingResponse,
@@ -67,6 +69,14 @@ async def torrent_files(
     task_id: str,
 ) -> list[TorrentFile]:
     return await manager.files(task_id)
+
+
+@router.get("/torrents/{task_id}/tracks", response_model=PlaybackTrackList)
+async def torrent_tracks(
+    service: PlaybackTrackServiceDependency,
+    task_id: str,
+) -> PlaybackTrackList:
+    return await service.torrent_tracks(task_id)
 
 
 @router.get(
