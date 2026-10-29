@@ -69,6 +69,14 @@ for seeking, volume, and play/pause. TV user agents and large coarse-pointer
 screens enable it automatically; append `?tv=1` for desktop or device testing
 and `?tv=0` to disable automatic detection. This is the TV-adapted web client,
 not the future native Media3 application.
+Native Android TV stage A now adds a separately built Leanback APK under
+`android-tv/`. It connects to a user-configured LAN, Tailscale, MagicDNS, or
+HTTPS KADR address, verifies server health, loads the real catalogue/details,
+searches and selects film sources through the server, waits for startup
+buffering, and opens the stream fullscreen in Media3 ExoPlayer. Native series
+playback includes season/episode selection and server-owned episode matching.
+It is an incremental client foundation; native library and track workflows are
+listed explicitly as pending rather than represented by mocks.
 
 ## Quick start
 
@@ -165,6 +173,8 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 - [Stage 6 report](docs/stage-6-report.md)
 - [Stage 7 TV report](docs/stage-7-tv-report.md)
+- [Native Android TV guide](docs/android-tv.md)
+- [Native Android TV stage A report](docs/android-tv-stage-a-report.md)
 - [UI redesign B1 report](docs/ui-redesign-b1-report.md)
 - [UI redesign B2 report](docs/ui-redesign-b2-report.md)
 - [UI redesign C1 report](docs/ui-redesign-c1-report.md)
