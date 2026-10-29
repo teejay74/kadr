@@ -88,6 +88,7 @@ class SourceReleaseTest {
         overview = "",
         runtimeMinutes = 48,
         rating = 8.0,
+        stillUrl = null,
     )
 
     private fun identity() = EpisodeMatchIdentity(

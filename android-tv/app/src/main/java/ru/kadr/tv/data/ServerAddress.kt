@@ -27,6 +27,19 @@ object ServerAddress {
     fun resolve(baseUrl: String, path: String): String =
         URI("${normalize(baseUrl)}/").resolve(path.removePrefix("/")).toString()
 
+    fun resolveImage(baseUrl: String, value: String?): String? {
+        val candidate = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (candidate.startsWith('/')) return resolve(baseUrl, candidate)
+        val image = runCatching { URI(candidate) }.getOrNull() ?: return null
+        if (image.userInfo != null || image.host.isNullOrBlank()) return null
+        if (image.scheme == "https") return image.toString()
+        if (image.scheme != "http") return null
+        val server = URI(normalize(baseUrl))
+        return image.toString().takeIf {
+            image.host.equals(server.host, ignoreCase = true) && image.port == server.port
+        }
+    }
+
     private fun isPrivateNetworkHost(host: String): Boolean {
         val normalized = host.lowercase()
         if (!normalized.contains('.') || normalized.endsWith(".local") || normalized.endsWith(".lan") || normalized.endsWith(".ts.net")) {

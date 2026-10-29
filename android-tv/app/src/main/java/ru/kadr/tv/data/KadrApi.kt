@@ -72,6 +72,7 @@ class KadrApi(private val serverUrl: String) {
                     overview = item.optString("overview"),
                     runtimeMinutes = item.optNullableInt("runtime_minutes"),
                     rating = item.optDouble("rating", 0.0),
+                    stillUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("still_url")),
                 )
             },
         )
@@ -249,8 +250,8 @@ class KadrApi(private val serverUrl: String) {
         overview = body.optString("overview"),
         year = body.optNullableInt("year"),
         rating = body.optDouble("rating", 0.0),
-        posterUrl = body.optNullableString("poster_url"),
-        backdropUrl = body.optNullableString("backdrop_url"),
+        posterUrl = ServerAddress.resolveImage(serverUrl, body.optNullableString("poster_url")),
+        backdropUrl = ServerAddress.resolveImage(serverUrl, body.optNullableString("backdrop_url")),
     )
 
     private fun parsePlayback(body: JSONObject): PlaybackResolution = PlaybackResolution(

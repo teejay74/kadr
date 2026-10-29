@@ -53,6 +53,7 @@ data class EpisodeSummary(
     val overview: String,
     val runtimeMinutes: Int?,
     val rating: Double,
+    val stillUrl: String?,
 )
 
 data class SeasonDetails(

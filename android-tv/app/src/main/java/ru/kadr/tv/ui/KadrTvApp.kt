@@ -37,11 +37,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +56,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import kotlinx.coroutines.delay
 import ru.kadr.tv.MainViewModel
 import ru.kadr.tv.Screen
@@ -236,7 +242,22 @@ private fun EpisodeTile(
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.width(54.dp),
             )
-            Column(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .width(160.dp)
+                    .height(90.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF30323D)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("KADR", color = SecondaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                RemoteImage(
+                    url = episode.stillUrl,
+                    contentDescription = "Кадр серии ${episode.number}",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
                 Text(episode.name.ifBlank { "Серия ${episode.number}" }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(
                     listOfNotNull(
@@ -727,12 +748,13 @@ private fun MediaTile(
             }
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interaction)
-            .padding(18.dp),
+            .padding(12.dp),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(140.dp)
+                .height(260.dp)
+                .clip(RoundedCornerShape(10.dp))
                 .background(
                     Brush.linearGradient(listOf(Accent, Color(0xFF281B43), Background)),
                     RoundedCornerShape(10.dp),
@@ -740,6 +762,11 @@ private fun MediaTile(
             contentAlignment = Alignment.Center,
         ) {
             Text(media.title.take(1), color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
+            RemoteImage(
+                url = media.posterUrl,
+                contentDescription = "Постер: ${media.title}",
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         Text(
             media.title,
@@ -760,19 +787,62 @@ private fun MediaTile(
 }
 
 @Composable
+private fun RemoteImage(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    alpha: Float = 1f,
+) {
+    val context = LocalContext.current
+    val request = remember(url, context) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .crossfade(220)
+            .build()
+    }
+    AsyncImage(
+        model = request,
+        contentDescription = contentDescription,
+        contentScale = contentScale,
+        alpha = alpha,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun DetailsScreen(
     details: MediaDetails,
     state: UiState,
     onPlay: () -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.horizontalGradient(listOf(Color(0xFF281B43), Background)))
-            .padding(horizontal = 80.dp, vertical = 64.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        RemoteImage(
+            url = details.card.backdropUrl ?: details.card.posterUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            alpha = 0.62f,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Background,
+                            Background.copy(alpha = 0.92f),
+                            Background.copy(alpha = 0.35f),
+                        ),
+                    ),
+                ),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 80.dp, vertical = 64.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
         Text(
             if (details.card.kind == ru.kadr.tv.data.MediaKind.MOVIE) "ФИЛЬМ" else "СЕРИАЛ",
             color = Color(0xFFC4B5FD),
@@ -825,6 +895,7 @@ private fun DetailsScreen(
                     Text("Закрыть")
                 }
             }
+        }
         }
     }
 }

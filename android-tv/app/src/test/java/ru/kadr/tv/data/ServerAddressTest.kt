@@ -18,6 +18,21 @@ class ServerAddressTest {
             "http://100.64.0.10:8180/api/v1/library/item/stream",
             ServerAddress.resolve("http://100.64.0.10:8180", "/api/v1/library/item/stream"),
         )
+        assertEquals(
+            "https://image.tmdb.org/t/p/w500/poster.jpg",
+            ServerAddress.resolveImage(
+                "http://100.64.0.10:8180",
+                "https://image.tmdb.org/t/p/w500/poster.jpg",
+            ),
+        )
+        assertEquals(
+            "http://100.64.0.10:8180/images/poster.jpg",
+            ServerAddress.resolveImage("http://100.64.0.10:8180", "/images/poster.jpg"),
+        )
+        assertEquals(
+            null,
+            ServerAddress.resolveImage("http://100.64.0.10:8180", "http://public.example.com/poster.jpg"),
+        )
     }
 
     @Test

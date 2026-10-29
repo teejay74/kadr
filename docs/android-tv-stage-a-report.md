@@ -2,6 +2,17 @@
 
 Date: 2026-10-28
 
+## Native artwork stage — 2026-10-29
+
+- Added Coil 3 Compose and its OkHttp network module for asynchronous artwork.
+- Added cached posters to catalogue and search tiles, backdrops to details, and
+  still images to episode rows.
+- Retained branded local placeholders while images load or when artwork is
+  absent/unavailable.
+- Restricted artwork URLs to HTTPS or the configured KADR server origin;
+  arbitrary public cleartext image hosts are rejected.
+- Increased the APK to version `0.3.2` (`versionCode 7`).
+
 ## Native catalogue search stage — 2026-10-29
 
 - Added a dedicated TV search screen reachable from the catalogue header.
@@ -103,9 +114,11 @@ Date: 2026-10-28
   endpoint progressed to `ready=true`; no KADR service was changed or restarted.
 - The production LAN search API was checked read-only with the Cyrillic query
   `Дюна`: it returned 13 films and 3 series.
+- A real TMDB `w500` poster URL returned by KADR was fetched successfully over
+  HTTPS (`200 image/jpeg`); no image was copied into the APK.
 - Debug APK produced at
-  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (14,986,523 bytes,
-  SHA-256 `332182c89bfef57f47ea082b31dd6ca103780bbffbea720a4616d0c2b4ddcd51`).
+  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,914,590 bytes,
+  SHA-256 `b14f68798dbd2c485a6c1703a9ae2fa83099fe3c1cc45b2df2549d3318690167`).
 - Physical Android TV installation and remote/device codec acceptance remain
   pending.
 
@@ -114,8 +127,6 @@ Date: 2026-10-28
 - Combined files containing multiple episodes can be associated with the
   selected episode, but native chapter/time-boundary navigation is not yet
   available.
-- Poster/backdrop image loading is not yet included; the first catalogue uses
-  branded title tiles backed by real metadata.
 - Native audio/subtitle selection, history writes, next episode, library,
   downloads, and explicit compatibility preparation remain future increments.
 - This debug APK is development-signed and is not a Play Store release bundle.
