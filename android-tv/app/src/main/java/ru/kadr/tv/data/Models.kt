@@ -12,6 +12,12 @@ enum class MediaKind(val apiValue: String) {
     SERIES("series"),
 }
 
+const val MAX_SEARCH_QUERY_LENGTH = 120
+
+fun normalizeSearchInput(input: String): String = input.take(MAX_SEARCH_QUERY_LENGTH)
+
+fun searchableQuery(input: String): String? = input.trim().takeIf { it.length >= 2 }
+
 data class MediaCard(
     val id: Int,
     val kind: MediaKind,

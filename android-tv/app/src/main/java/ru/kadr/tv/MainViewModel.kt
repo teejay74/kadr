@@ -25,12 +25,15 @@ import ru.kadr.tv.data.ServerStore
 import ru.kadr.tv.data.SeasonDetails
 import ru.kadr.tv.data.SourceRelease
 import ru.kadr.tv.data.monotonicBufferProgress
+import ru.kadr.tv.data.normalizeSearchInput
 import ru.kadr.tv.data.recommendedSourceId
 import ru.kadr.tv.data.hasConfirmedEpisode
+import ru.kadr.tv.data.searchableQuery
 
 enum class Screen {
     SETUP,
     CATALOG,
+    SEARCH,
     DETAILS,
     EPISODES,
     SOURCES,
@@ -44,7 +47,12 @@ data class UiState(
     val serverUrl: String? = null,
     val movies: List<MediaCard> = emptyList(),
     val series: List<MediaCard> = emptyList(),
+    val searchQuery: String = "",
+    val searchMovies: List<MediaCard> = emptyList(),
+    val searchSeries: List<MediaCard> = emptyList(),
+    val searchLoading: Boolean = false,
     val selected: MediaDetails? = null,
+    val detailsOrigin: Screen = Screen.CATALOG,
     val selectedSeasonNumber: Int? = null,
     val seasonDetails: SeasonDetails? = null,
     val selectedEpisode: EpisodeSummary? = null,
@@ -62,6 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val serverStore = ServerStore(application)
     private var api: KadrApi? = null
     private var playbackJob: Job? = null
+    private var searchJob: Job? = null
     private val mutableState = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = mutableState.asStateFlow()
 
@@ -127,6 +136,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openMedia(media: MediaCard) {
         val currentApi = api ?: return
+        val origin = if (mutableState.value.screen == Screen.SEARCH) Screen.SEARCH else Screen.CATALOG
         mutableState.value = mutableState.value.copy(loading = true, message = null)
         viewModelScope.launch {
             runCatching { currentApi.details(media.kind, media.id) }
@@ -134,6 +144,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mutableState.value = mutableState.value.copy(
                         screen = Screen.DETAILS,
                         selected = details,
+                        detailsOrigin = origin,
                         selectedSeasonNumber = null,
                         seasonDetails = null,
                         selectedEpisode = null,
@@ -152,6 +163,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
     }
+
+    fun openSearch() {
+        mutableState.value = mutableState.value.copy(screen = Screen.SEARCH, message = null)
+    }
+
+    fun updateSearchQuery(query: String) {
+        searchJob?.cancel()
+        val normalized = normalizeSearchInput(query)
+        val searchable = searchableQuery(normalized)
+        mutableState.value = mutableState.value.copy(
+            searchQuery = normalized,
+            searchLoading = searchable != null,
+            message = null,
+            searchMovies = if (searchable != null) {
+                mutableState.value.searchMovies
+            } else {
+                emptyList()
+            },
+            searchSeries = if (searchable != null) {
+                mutableState.value.searchSeries
+            } else {
+                emptyList()
+            },
+        )
+        if (searchable == null) return
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            performSearch(searchable)
+        }
+    }
+
+    fun submitSearch() {
+        val query = searchableQuery(mutableState.value.searchQuery) ?: return
+        searchJob?.cancel()
+        mutableState.value = mutableState.value.copy(searchLoading = true, message = null)
+        searchJob = viewModelScope.launch { performSearch(query) }
+    }
+
+    fun retrySearch() = submitSearch()
 
     fun playSelected() {
         val currentApi = api ?: return
@@ -333,6 +383,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeServer() {
         playbackJob?.cancel()
+        searchJob?.cancel()
         serverStore.clear()
         api = null
         mutableState.value = UiState(screen = Screen.SETUP)
@@ -355,7 +406,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             true
         }
         Screen.DETAILS -> {
-            mutableState.value = mutableState.value.copy(screen = Screen.CATALOG, selected = null, message = null)
+            mutableState.value = mutableState.value.copy(
+                screen = mutableState.value.detailsOrigin,
+                selected = null,
+                message = null,
+            )
             true
         }
         Screen.SOURCES -> {
@@ -386,6 +441,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> Screen.DETAILS
             }
             mutableState.value = mutableState.value.copy(screen = destination, message = null)
+            true
+        }
+        Screen.SEARCH -> {
+            searchJob?.cancel()
+            mutableState.value = mutableState.value.copy(
+                screen = Screen.CATALOG,
+                searchLoading = false,
+                message = null,
+            )
             true
         }
         Screen.SETUP, Screen.CATALOG -> false
@@ -574,6 +638,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         movies.await() to series.await()
     }
 
+    private suspend fun performSearch(query: String) {
+        val currentApi = api ?: return
+        try {
+            val (movies, series) = coroutineScope {
+                val movieRequest = async { currentApi.search(MediaKind.MOVIE, query) }
+                val seriesRequest = async { currentApi.search(MediaKind.SERIES, query) }
+                movieRequest.await() to seriesRequest.await()
+            }
+            if (mutableState.value.searchQuery.trim() != query) return
+            mutableState.value = mutableState.value.copy(
+                searchMovies = movies,
+                searchSeries = series,
+                searchLoading = false,
+                message = if (movies.isEmpty() && series.isEmpty()) {
+                    "По запросу «$query» ничего не найдено"
+                } else {
+                    null
+                },
+            )
+        } catch (reason: CancellationException) {
+            throw reason
+        } catch (reason: Exception) {
+            mutableState.value = mutableState.value.copy(
+                searchLoading = false,
+                message = reason.message ?: "Не удалось выполнить поиск",
+            )
+        }
+    }
+
     private companion object {
         const val METADATA_ATTEMPTS = 12
         const val METADATA_GRACE_ATTEMPTS = 6
@@ -581,5 +674,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val TORRENT_FILE_ATTEMPTS = 12
         const val TORRENT_FILE_POLL_INTERVAL_MS = 1_000L
         const val PLAYBACK_POLL_INTERVAL_MS = 5_000L
+        const val SEARCH_DEBOUNCE_MS = 600L
     }
 }

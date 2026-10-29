@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class ApiException(
     val statusCode: Int,
@@ -28,6 +29,13 @@ class KadrApi(private val serverUrl: String) {
         request("/api/v1/${kindPath(kind)}?page=1&sort=popular") { body ->
             body.getJSONArray("items").mapObjects { parseCard(it) }
         }
+
+    suspend fun search(kind: MediaKind, query: String): List<MediaCard> {
+        val encoded = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
+        return request("/api/v1/${kindPath(kind)}/search?q=$encoded&page=1") { body ->
+            body.getJSONArray("items").mapObjects { parseCard(it) }
+        }
+    }
 
     suspend fun details(kind: MediaKind, mediaId: Int): MediaDetails =
         request("/api/v1/${kindPath(kind)}/$mediaId") { body ->

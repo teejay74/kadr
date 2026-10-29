@@ -58,6 +58,17 @@ class SourceReleaseTest {
         assertEquals(episode.number, file.mappingFor(episode).single().episodeNumber)
     }
 
+    @Test
+    fun `search query trims whitespace and requires two characters`() {
+        assertEquals("Дюна", searchableQuery("  Дюна  "))
+        assertEquals(null, searchableQuery(" Д "))
+    }
+
+    @Test
+    fun `search input is bounded before sending to server`() {
+        assertEquals(MAX_SEARCH_QUERY_LENGTH, normalizeSearchInput("а".repeat(200)).length)
+    }
+
     private fun source(id: String, resolution: String, seeders: Int) = SourceRelease(
         id = id,
         sizeBytes = 1_000,

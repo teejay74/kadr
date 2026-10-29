@@ -75,8 +75,9 @@ HTTPS KADR address, verifies server health, loads the real catalogue/details,
 searches and selects film sources through the server, waits for startup
 buffering, and opens the stream fullscreen in Media3 ExoPlayer. Native series
 playback includes season/episode selection and server-owned episode matching.
-It is an incremental client foundation; native library and track workflows are
-listed explicitly as pending rather than represented by mocks.
+Native catalogue search covers films and series with TV-keyboard input. It is
+an incremental client foundation; native library and track workflows are listed
+explicitly as pending rather than represented by mocks.
 
 ## Quick start
 

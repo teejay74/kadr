@@ -26,6 +26,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,9 +42,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,7 +72,8 @@ private val SecondaryText = Color(0xFFA1A1AA)
 fun KadrTvApp(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(
-        enabled = state.screen == Screen.DETAILS ||
+        enabled = state.screen == Screen.SEARCH ||
+            state.screen == Screen.DETAILS ||
             state.screen == Screen.EPISODES ||
             state.screen == Screen.SOURCES ||
             state.screen == Screen.MATCH_FILES ||
@@ -89,7 +94,15 @@ fun KadrTvApp(viewModel: MainViewModel) {
                     state = state,
                     onOpen = viewModel::openMedia,
                     onRetry = viewModel::retryCatalog,
+                    onSearch = viewModel::openSearch,
                     onChangeServer = viewModel::changeServer,
+                )
+                Screen.SEARCH -> SearchScreen(
+                    state = state,
+                    onQuery = viewModel::updateSearchQuery,
+                    onSubmit = viewModel::submitSearch,
+                    onRetry = viewModel::retrySearch,
+                    onOpen = viewModel::openMedia,
                 )
                 Screen.DETAILS -> state.selected?.let { details ->
                     DetailsScreen(details, state, viewModel::playSelected, viewModel::clearMessage)
@@ -468,10 +481,128 @@ private fun SetupScreen(state: UiState, onConnect: (String) -> Unit) {
 }
 
 @Composable
+private fun SearchScreen(
+    state: UiState,
+    onQuery: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onRetry: () -> Unit,
+    onOpen: (MediaCard) -> Unit,
+) {
+    val fieldFocus = remember { FocusRequester() }
+    val firstMovieFocus = remember { FocusRequester() }
+    val firstSeriesFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val resultsFocus = when {
+        state.searchMovies.isNotEmpty() -> firstMovieFocus
+        state.searchSeries.isNotEmpty() -> firstSeriesFocus
+        else -> FocusRequester.Default
+    }
+    LaunchedEffect(Unit) {
+        delay(250)
+        runCatching { fieldFocus.requestFocus() }
+        keyboard?.show()
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 40.dp),
+    ) {
+        item(key = "search-header") {
+            Column(modifier = Modifier.padding(horizontal = 64.dp)) {
+                Text("Поиск", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "Введите название фильма или сериала",
+                    color = SecondaryText,
+                    fontSize = 17.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Row(
+                    modifier = Modifier.padding(top = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicTextField(
+                        value = state.searchQuery,
+                        onValueChange = onQuery,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                        textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
+                        modifier = Modifier
+                            .width(720.dp)
+                            .background(Surface, RoundedCornerShape(12.dp))
+                            .border(2.dp, Accent, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 20.dp, vertical = 17.dp)
+                            .focusProperties { down = resultsFocus }
+                            .focusRequester(fieldFocus),
+                        decorationBox = { inner ->
+                            Box {
+                                if (state.searchQuery.isBlank()) {
+                                    Text("Например: Интерстеллар", color = SecondaryText, fontSize = 22.sp)
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                    Button(onClick = onSubmit, modifier = Modifier.padding(start = 16.dp)) {
+                        Text("Искать")
+                    }
+                }
+                if (state.searchLoading) {
+                    Text(
+                        "Ищем…",
+                        color = SecondaryText,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
+            }
+        }
+        if (state.searchMovies.isNotEmpty()) {
+            item(key = "search-movies") {
+                MediaRail(
+                    title = "Фильмы",
+                    items = state.searchMovies,
+                    onOpen = onOpen,
+                    firstItemFocus = firstMovieFocus,
+                    upFocus = fieldFocus,
+                    downFocus = firstSeriesFocus.takeIf { state.searchSeries.isNotEmpty() },
+                )
+            }
+        }
+        if (state.searchSeries.isNotEmpty()) {
+            item(key = "search-series") {
+                MediaRail(
+                    title = "Сериалы",
+                    items = state.searchSeries,
+                    onOpen = onOpen,
+                    firstItemFocus = firstSeriesFocus,
+                    upFocus = if (state.searchMovies.isNotEmpty()) firstMovieFocus else fieldFocus,
+                )
+            }
+        }
+        state.message?.let { message ->
+            item(key = "search-message") {
+                Row(
+                    modifier = Modifier.padding(horizontal = 64.dp, vertical = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
+                    if (state.searchQuery.trim().length >= 2 && state.searchMovies.isEmpty() && state.searchSeries.isEmpty()) {
+                        Button(onClick = onRetry, modifier = Modifier.padding(start = 20.dp)) {
+                            Text("Повторить")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun CatalogScreen(
     state: UiState,
     onOpen: (MediaCard) -> Unit,
     onRetry: () -> Unit,
+    onSearch: () -> Unit,
     onChangeServer: () -> Unit,
 ) {
     val firstMovieFocus = remember { FocusRequester() }
@@ -495,6 +626,9 @@ private fun CatalogScreen(
                 Text("KADR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
                 Spacer(Modifier.weight(1f))
                 Text(state.serverUrl.orEmpty(), color = SecondaryText, fontSize = 14.sp)
+                Button(onClick = onSearch, modifier = Modifier.padding(start = 20.dp)) {
+                    Text("Поиск")
+                }
                 Button(onClick = onChangeServer, modifier = Modifier.padding(start = 20.dp)) {
                     Text("Сменить сервер")
                 }

@@ -2,6 +2,16 @@
 
 Date: 2026-10-28
 
+## Native catalogue search stage — 2026-10-29
+
+- Added a dedicated TV search screen reachable from the catalogue header.
+- Added bounded text input with the system TV keyboard and a 600 ms debounce.
+- Movie and series searches run concurrently through the existing versioned
+  KADR API and render in separate D-pad rails.
+- Opening a result preserves search query/results and Back returns to search.
+- Added empty-result, retry, loading, cancellation, and server-error states.
+- Increased the APK to version `0.3.1` (`versionCode 6`).
+
 ## Native series playback stage — 2026-10-29
 
 - Added D-pad season and episode selection backed by real TMDB catalogue data.
@@ -82,7 +92,7 @@ Date: 2026-10-28
 
 ## Verification
 
-- `testDebugUnitTest`: passed (7 tests).
+- `testDebugUnitTest`: passed (9 tests).
 - `assembleDebug`: passed with Android SDK 36 and JDK 17.
 - `lintDebug`: passed without errors. Remaining warnings report the deliberately
   pinned SDK/Compose toolchain and available future dependency updates.
@@ -91,9 +101,11 @@ Date: 2026-10-28
 - The production LAN API was checked read-only after the reported buffering
   failure: the selected torrent remained active and its dedicated readiness
   endpoint progressed to `ready=true`; no KADR service was changed or restarted.
+- The production LAN search API was checked read-only with the Cyrillic query
+  `Дюна`: it returned 13 films and 3 series.
 - Debug APK produced at
-  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (14,970,139 bytes,
-  SHA-256 `24fc29267d030168650cc17a4bd1d2939618e9d3705dc015ad9a16a4051e16fb`).
+  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (14,986,523 bytes,
+  SHA-256 `332182c89bfef57f47ea082b31dd6ca103780bbffbea720a4616d0c2b4ddcd51`).
 - Physical Android TV installation and remote/device codec acceptance remain
   pending.
 
