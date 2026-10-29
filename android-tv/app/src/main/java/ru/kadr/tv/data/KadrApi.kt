@@ -30,6 +30,79 @@ class KadrApi(private val serverUrl: String) {
             body.getJSONArray("items").mapObjects { parseCard(it) }
         }
 
+    suspend fun library(): List<SavedLibraryItem> = requestArray("/api/v1/library") { items ->
+        items.mapObjects { item ->
+            val episode = item.optJSONObject("episode")
+            SavedLibraryItem(
+                id = item.getString("id"),
+                taskId = item.getString("task_id"),
+                mediaId = item.getInt("media_id"),
+                mediaKind = parseKind(item.getString("media_kind")),
+                title = item.getString("title"),
+                originalTitle = item.optString("original_title"),
+                posterUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("poster_url")),
+                backdropUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("backdrop_url")),
+                sizeBytes = item.optLong("size_bytes", 0),
+                streamUrl = ServerAddress.resolve(serverUrl, item.getString("stream_url")),
+                seasonNumber = episode?.optNullableInt("season_number"),
+                episodeNumber = episode?.optNullableInt("episode_number"),
+                catalogEpisodeId = episode?.optNullableInt("catalog_episode_id"),
+            )
+        }
+    }
+
+    suspend fun favorites(): List<MediaCard> = requestArray("/api/v1/favorites") { items ->
+        items.mapObjects { item -> parseSnapshotCard(item) }
+    }
+
+    suspend fun history(): List<HistoryItem> = requestArray(
+        "/api/v1/history?profile_key=default",
+    ) { items ->
+        items.mapObjects { item ->
+            HistoryItem(
+                mediaId = item.getInt("media_id"),
+                mediaKind = parseKind(item.getString("media_kind")),
+                title = item.getString("title"),
+                posterUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("poster_url")),
+                seasonNumber = item.optNullableInt("season_number"),
+                episodeNumber = item.optNullableInt("episode_number"),
+                catalogEpisodeId = item.optNullableInt("catalog_episode_id"),
+                positionSeconds = item.optLong("position_seconds", 0),
+                durationSeconds = item.optLong("duration_seconds", 0),
+                completed = item.optBoolean("completed", false),
+            )
+        }
+    }
+
+    suspend fun updateHistory(
+        media: MediaCard,
+        episode: EpisodeSummary?,
+        positionSeconds: Long,
+        durationSeconds: Long,
+        completed: Boolean,
+    ) {
+        request(
+            path = "/api/v1/history/${media.id}",
+            method = "PUT",
+            requestBody = JSONObject()
+                .put("media_kind", media.kind.apiValue)
+                .put("profile_key", "default")
+                .put("title", media.title)
+                .put("poster_url", media.posterUrl)
+                .put("position_seconds", positionSeconds.coerceIn(0, 86_400))
+                .put("duration_seconds", durationSeconds.coerceIn(0, 86_400))
+                .put("completed", completed)
+                .apply {
+                    if (episode != null) {
+                        put("season_number", episode.seasonNumber)
+                        put("episode_number", episode.number)
+                        if (episode.id > 0) put("catalog_episode_id", episode.id)
+                    }
+                }
+                .toString(),
+        ) { Unit }
+    }
+
     suspend fun search(kind: MediaKind, query: String): List<MediaCard> {
         val encoded = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
         return request("/api/v1/${kindPath(kind)}/search?q=$encoded&page=1") { body ->
@@ -84,7 +157,7 @@ class KadrApi(private val serverUrl: String) {
         requestBody = JSONObject()
             .put("media_kind", "movie")
             .put("media_id", mediaId)
-            .put("profile_key", "android-tv")
+            .put("profile_key", "default")
             .toString(),
     ) { parsePlayback(it) }
 
@@ -97,7 +170,7 @@ class KadrApi(private val serverUrl: String) {
             .put("season_number", episode.seasonNumber)
             .put("episode_number", episode.number)
             .put("catalog_episode_id", episode.id)
-            .put("profile_key", "android-tv")
+            .put("profile_key", "default")
             .toString(),
     ) { parsePlayback(it) }
 
@@ -240,12 +313,25 @@ class KadrApi(private val serverUrl: String) {
         MediaKind.SERIES -> "series"
     }
 
+    private fun parseKind(value: String): MediaKind = when (value) {
+        "series" -> MediaKind.SERIES
+        else -> MediaKind.MOVIE
+    }
+
+    private fun parseSnapshotCard(body: JSONObject): MediaCard = MediaCard(
+        id = body.getInt("media_id"),
+        kind = parseKind(body.getString("media_kind")),
+        title = body.getString("title"),
+        overview = "",
+        year = null,
+        rating = 0.0,
+        posterUrl = ServerAddress.resolveImage(serverUrl, body.optNullableString("poster_url")),
+        backdropUrl = ServerAddress.resolveImage(serverUrl, body.optNullableString("backdrop_url")),
+    )
+
     private fun parseCard(body: JSONObject): MediaCard = MediaCard(
         id = body.getInt("id"),
-        kind = when (body.getString("kind")) {
-            "series" -> MediaKind.SERIES
-            else -> MediaKind.MOVIE
-        },
+        kind = parseKind(body.getString("kind")),
         title = body.getString("title"),
         overview = body.optString("overview"),
         year = body.optNullableInt("year"),

@@ -67,7 +67,10 @@ import ru.kadr.tv.data.MediaCard
 import ru.kadr.tv.data.MediaDetails
 import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
+import ru.kadr.tv.data.HistoryItem
+import ru.kadr.tv.data.SavedLibraryItem
 import ru.kadr.tv.data.SourceRelease
+import ru.kadr.tv.data.progressPercent
 
 private val Background = Color(0xFF101116)
 private val Surface = Color(0xFF20222B)
@@ -79,6 +82,7 @@ fun KadrTvApp(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(
         enabled = state.screen == Screen.SEARCH ||
+            state.screen == Screen.LIBRARY ||
             state.screen == Screen.DETAILS ||
             state.screen == Screen.EPISODES ||
             state.screen == Screen.SOURCES ||
@@ -101,6 +105,7 @@ fun KadrTvApp(viewModel: MainViewModel) {
                     onOpen = viewModel::openMedia,
                     onRetry = viewModel::retryCatalog,
                     onSearch = viewModel::openSearch,
+                    onLibrary = viewModel::openLibrary,
                     onChangeServer = viewModel::changeServer,
                 )
                 Screen.SEARCH -> SearchScreen(
@@ -109,6 +114,13 @@ fun KadrTvApp(viewModel: MainViewModel) {
                     onSubmit = viewModel::submitSearch,
                     onRetry = viewModel::retrySearch,
                     onOpen = viewModel::openMedia,
+                )
+                Screen.LIBRARY -> LibraryScreen(
+                    state = state,
+                    onSaved = viewModel::openLibraryItem,
+                    onHistory = viewModel::openHistoryItem,
+                    onFavorite = viewModel::openMedia,
+                    onRetry = viewModel::retryLibrary,
                 )
                 Screen.DETAILS -> state.selected?.let { details ->
                     DetailsScreen(details, state, viewModel::playSelected, viewModel::clearMessage)
@@ -122,7 +134,7 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 Screen.MATCH_FILES -> MatchFilesScreen(state, viewModel::selectEpisodeFile)
                 Screen.PREPARING -> PreparingScreen(state)
                 Screen.PLAYER -> state.playerUrl?.let { url ->
-                    PlayerScreen(url, state.resumePositionMs)
+                    PlayerScreen(url, state.resumePositionMs, viewModel::reportPlaybackProgress)
                 }
             }
             if (state.loading) LoadingOverlay()
@@ -502,6 +514,145 @@ private fun SetupScreen(state: UiState, onConnect: (String) -> Unit) {
 }
 
 @Composable
+private fun LibraryScreen(
+    state: UiState,
+    onSaved: (SavedLibraryItem) -> Unit,
+    onHistory: (HistoryItem) -> Unit,
+    onFavorite: (MediaCard) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val hasContent = state.libraryItems.isNotEmpty() ||
+        state.historyItems.isNotEmpty() ||
+        state.favoriteItems.isNotEmpty()
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 64.dp, vertical = 42.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "library-header") {
+            Column(modifier = Modifier.padding(bottom = 10.dp)) {
+                Text("Моя библиотека", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "Синхронизировано с сервером KADR",
+                    color = SecondaryText,
+                    fontSize = 17.sp,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+            }
+        }
+        if (state.historyItems.isNotEmpty()) {
+            item(key = "history-title") { LibrarySectionTitle("Продолжить просмотр") }
+            items(state.historyItems, key = {
+                "history-${it.mediaKind}-${it.mediaId}-${it.seasonNumber}-${it.episodeNumber}"
+            }) { item ->
+                LibraryRow(
+                    title = item.title,
+                    subtitle = listOfNotNull(
+                        item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
+                        "Продолжить с ${formatDuration(item.positionSeconds)}",
+                        "${item.progressPercent()}%",
+                    ).joinToString(" · "),
+                    posterUrl = item.posterUrl,
+                    onClick = { onHistory(item) },
+                )
+            }
+        }
+        if (state.libraryItems.isNotEmpty()) {
+            item(key = "saved-title") { LibrarySectionTitle("Сохранено на сервере") }
+            items(state.libraryItems, key = { "saved-${it.id}" }) { item ->
+                LibraryRow(
+                    title = item.title,
+                    subtitle = listOfNotNull(
+                        item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
+                        formatSize(item.sizeBytes),
+                    ).joinToString(" · "),
+                    posterUrl = item.posterUrl,
+                    onClick = { onSaved(item) },
+                )
+            }
+        }
+        if (state.favoriteItems.isNotEmpty()) {
+            item(key = "favorites-title") { LibrarySectionTitle("Избранное") }
+            items(state.favoriteItems, key = { "favorite-${it.kind}-${it.id}" }) { item ->
+                LibraryRow(
+                    title = item.title,
+                    subtitle = if (item.kind == ru.kadr.tv.data.MediaKind.MOVIE) "Фильм" else "Сериал",
+                    posterUrl = item.posterUrl,
+                    onClick = { onFavorite(item) },
+                )
+            }
+        }
+        if (!hasContent && state.message == null && !state.loading) {
+            item(key = "library-empty") {
+                Text(
+                    "Библиотека и избранное пока пусты.",
+                    color = SecondaryText,
+                    fontSize = 20.sp,
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
+        }
+        state.message?.let { message ->
+            item(key = "library-error") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
+                    Button(onClick = onRetry, modifier = Modifier.padding(start = 20.dp)) {
+                        Text("Повторить")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySectionTitle(title: String) {
+    Text(
+        title,
+        color = Color.White,
+        fontSize = 25.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun LibraryRow(title: String, subtitle: String, posterUrl: String?, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(72.dp)
+                    .height(108.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF30323D)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(title.take(1), fontSize = 26.sp, fontWeight = FontWeight.Black)
+                RemoteImage(
+                    url = posterUrl,
+                    contentDescription = "Постер: $title",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Column(modifier = Modifier.padding(start = 18.dp).weight(1f)) {
+                Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                if (subtitle.isNotBlank()) {
+                    Text(subtitle, fontSize = 15.sp, modifier = Modifier.padding(top = 5.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun formatDuration(seconds: Long): String =
+    if (seconds >= 3_600) "%d:%02d:%02d".format(seconds / 3_600, seconds / 60 % 60, seconds % 60)
+    else "%d:%02d".format(seconds / 60, seconds % 60)
+
+@Composable
 private fun SearchScreen(
     state: UiState,
     onQuery: (String) -> Unit,
@@ -624,6 +775,7 @@ private fun CatalogScreen(
     onOpen: (MediaCard) -> Unit,
     onRetry: () -> Unit,
     onSearch: () -> Unit,
+    onLibrary: () -> Unit,
     onChangeServer: () -> Unit,
 ) {
     val firstMovieFocus = remember { FocusRequester() }
@@ -649,6 +801,9 @@ private fun CatalogScreen(
                 Text(state.serverUrl.orEmpty(), color = SecondaryText, fontSize = 14.sp)
                 Button(onClick = onSearch, modifier = Modifier.padding(start = 20.dp)) {
                     Text("Поиск")
+                }
+                Button(onClick = onLibrary, modifier = Modifier.padding(start = 14.dp)) {
+                    Text("Моя библиотека")
                 }
                 Button(onClick = onChangeServer, modifier = Modifier.padding(start = 20.dp)) {
                     Text("Сменить сервер")

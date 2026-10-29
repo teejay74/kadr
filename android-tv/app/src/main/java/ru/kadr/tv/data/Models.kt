@@ -114,6 +114,69 @@ data class StreamReadiness(
     val downloadSpeedBytes: Long,
 )
 
+data class SavedLibraryItem(
+    val id: String,
+    val taskId: String,
+    val mediaId: Int,
+    val mediaKind: MediaKind,
+    val title: String,
+    val originalTitle: String,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+    val sizeBytes: Long,
+    val streamUrl: String,
+    val seasonNumber: Int?,
+    val episodeNumber: Int?,
+    val catalogEpisodeId: Int?,
+)
+
+data class HistoryItem(
+    val mediaId: Int,
+    val mediaKind: MediaKind,
+    val title: String,
+    val posterUrl: String?,
+    val seasonNumber: Int?,
+    val episodeNumber: Int?,
+    val catalogEpisodeId: Int?,
+    val positionSeconds: Long,
+    val durationSeconds: Long,
+    val completed: Boolean,
+)
+
+fun HistoryItem.matches(item: SavedLibraryItem): Boolean =
+    mediaId == item.mediaId &&
+        mediaKind == item.mediaKind &&
+        seasonNumber == item.seasonNumber &&
+        episodeNumber == item.episodeNumber
+
+fun HistoryItem.progressPercent(): Int = if (durationSeconds > 0) {
+    (positionSeconds * 100 / durationSeconds).coerceIn(0, 100).toInt()
+} else {
+    0
+}
+
+fun SavedLibraryItem.asMediaCard(): MediaCard = MediaCard(
+    id = mediaId,
+    kind = mediaKind,
+    title = title,
+    overview = "",
+    year = null,
+    rating = 0.0,
+    posterUrl = posterUrl,
+    backdropUrl = backdropUrl,
+)
+
+fun HistoryItem.asMediaCard(): MediaCard = MediaCard(
+    id = mediaId,
+    kind = mediaKind,
+    title = title,
+    overview = "",
+    year = null,
+    rating = 0.0,
+    posterUrl = posterUrl,
+    backdropUrl = null,
+)
+
 data class EpisodeMatchIdentity(
     val seasonNumber: Int,
     val episodeNumber: Int,

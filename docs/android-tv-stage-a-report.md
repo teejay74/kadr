@@ -2,6 +2,23 @@
 
 Date: 2026-10-28
 
+## Native playback continuity and library stage — 2026-10-29
+
+- Kept the display awake only while the fullscreen Media3 player is active,
+  preventing the television screensaver from interrupting long playback.
+- Set symmetric 10-second remote seek increments and nearest-sync-frame seek
+  parameters for predictable TV playback.
+- Added a D-pad **Моя библиотека** screen backed by the real saved-library,
+  favorites, and watch-history endpoints.
+- Saved-library files open their server Range stream directly and restore the
+  matching film or episode position.
+- Unified native resolve/history requests on profile `default`; playback
+  progress is written every five seconds, on completion, and on player exit so
+  the web and TV clients share resume state.
+- Added tests for episode-aware saved/history matching and bounded progress
+  calculation.
+- Increased the APK to version `0.4.0` (`versionCode 8`).
+
 ## Native artwork stage — 2026-10-29
 
 - Added Coil 3 Compose and its OkHttp network module for asynchronous artwork.
@@ -89,7 +106,7 @@ Date: 2026-10-28
   stream paths to the configured server origin.
 - Added fullscreen Media3 playback with server resume position.
 - Added unit tests for LAN/Tailscale/HTTPS address validation, stream URL
-  resolution, and source recommendation.
+  resolution, source recommendation, and library/history synchronization.
 
 ## Safety and architecture
 
@@ -103,7 +120,7 @@ Date: 2026-10-28
 
 ## Verification
 
-- `testDebugUnitTest`: passed (9 tests).
+- `testDebugUnitTest`: passed (11 tests).
 - `assembleDebug`: passed with Android SDK 36 and JDK 17.
 - `lintDebug`: passed without errors. Remaining warnings report the deliberately
   pinned SDK/Compose toolchain and available future dependency updates.
@@ -116,9 +133,13 @@ Date: 2026-10-28
   `Дюна`: it returned 13 films and 3 series.
 - A real TMDB `w500` poster URL returned by KADR was fetched successfully over
   HTTPS (`200 image/jpeg`); no image was copied into the APK.
+- The production LAN library, favorites, and `default` profile history APIs
+  were checked read-only: all three returned valid arrays with the fields used
+  by the native client (2 saved items, 4 favorites, and 12 history entries at
+  verification time).
 - Debug APK produced at
-  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,914,590 bytes,
-  SHA-256 `b14f68798dbd2c485a6c1703a9ae2fa83099fe3c1cc45b2df2549d3318690167`).
+  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,947,358 bytes,
+  SHA-256 `73709e94efd662198113750ced856cccb50a66981d8128d31ad4930504876c5a`).
 - Physical Android TV installation and remote/device codec acceptance remain
   pending.
 
@@ -127,13 +148,13 @@ Date: 2026-10-28
 - Combined files containing multiple episodes can be associated with the
   selected episode, but native chapter/time-boundary navigation is not yet
   available.
-- Native audio/subtitle selection, history writes, next episode, library,
-  downloads, and explicit compatibility preparation remain future increments.
+- Native audio/subtitle selection, next episode, downloads, and explicit
+  compatibility preparation remain future increments.
 - This debug APK is development-signed and is not a Play Store release bundle.
 
 ## Next actions
 
 1. Install the debug APK on the target television and record LAN/Tailscale,
    D-pad, Back, fullscreen, Range-seek, and codec results.
-2. Add audio/subtitle selection, history updates, next episode, and a measured
-   compatibility fallback flow. FFmpeg must remain explicit and opt-in.
+2. Add audio/subtitle selection, next episode, and a measured compatibility
+   fallback flow. FFmpeg must remain explicit and opt-in.

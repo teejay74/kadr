@@ -1,6 +1,7 @@
 package ru.kadr.tv
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 import ru.kadr.tv.data.KadrApi
 import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
+import ru.kadr.tv.data.HistoryItem
 import ru.kadr.tv.data.MediaCard
 import ru.kadr.tv.data.MediaDetails
 import ru.kadr.tv.data.MediaKind
@@ -23,17 +25,21 @@ import ru.kadr.tv.data.PlaybackStatus
 import ru.kadr.tv.data.ServerAddress
 import ru.kadr.tv.data.ServerStore
 import ru.kadr.tv.data.SeasonDetails
+import ru.kadr.tv.data.SavedLibraryItem
 import ru.kadr.tv.data.SourceRelease
 import ru.kadr.tv.data.monotonicBufferProgress
 import ru.kadr.tv.data.normalizeSearchInput
 import ru.kadr.tv.data.recommendedSourceId
 import ru.kadr.tv.data.hasConfirmedEpisode
+import ru.kadr.tv.data.matches
 import ru.kadr.tv.data.searchableQuery
+import ru.kadr.tv.data.asMediaCard
 
 enum class Screen {
     SETUP,
     CATALOG,
     SEARCH,
+    LIBRARY,
     DETAILS,
     EPISODES,
     SOURCES,
@@ -51,6 +57,9 @@ data class UiState(
     val searchMovies: List<MediaCard> = emptyList(),
     val searchSeries: List<MediaCard> = emptyList(),
     val searchLoading: Boolean = false,
+    val libraryItems: List<SavedLibraryItem> = emptyList(),
+    val favoriteItems: List<MediaCard> = emptyList(),
+    val historyItems: List<HistoryItem> = emptyList(),
     val selected: MediaDetails? = null,
     val detailsOrigin: Screen = Screen.CATALOG,
     val selectedSeasonNumber: Int? = null,
@@ -62,6 +71,9 @@ data class UiState(
     val episodeMatchTaskId: String? = null,
     val playerUrl: String? = null,
     val resumePositionMs: Long = 0,
+    val playerMedia: MediaCard? = null,
+    val playerEpisode: EpisodeSummary? = null,
+    val playerReturnScreen: Screen = Screen.DETAILS,
     val loading: Boolean = false,
     val message: String? = null,
 )
@@ -71,6 +83,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var api: KadrApi? = null
     private var playbackJob: Job? = null
     private var searchJob: Job? = null
+    private var historyJob: Job? = null
+    private var libraryJob: Job? = null
     private val mutableState = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = mutableState.asStateFlow()
 
@@ -136,7 +150,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openMedia(media: MediaCard) {
         val currentApi = api ?: return
-        val origin = if (mutableState.value.screen == Screen.SEARCH) Screen.SEARCH else Screen.CATALOG
+        val origin = when (mutableState.value.screen) {
+            Screen.SEARCH -> Screen.SEARCH
+            Screen.LIBRARY -> Screen.LIBRARY
+            else -> Screen.CATALOG
+        }
         mutableState.value = mutableState.value.copy(loading = true, message = null)
         viewModelScope.launch {
             runCatching { currentApi.details(media.kind, media.id) }
@@ -166,6 +184,122 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSearch() {
         mutableState.value = mutableState.value.copy(screen = Screen.SEARCH, message = null)
+    }
+
+    fun openLibrary() {
+        val currentApi = api ?: return
+        libraryJob?.cancel()
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.LIBRARY,
+            loading = true,
+            message = null,
+        )
+        libraryJob = viewModelScope.launch {
+            try {
+                val (libraryAndFavorites, history) = coroutineScope {
+                    val saved = async { currentApi.library() }
+                    val favorites = async { currentApi.favorites() }
+                    val watched = async { currentApi.history() }
+                    (saved.await() to favorites.await()) to watched.await()
+                }
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.LIBRARY,
+                    libraryItems = libraryAndFavorites.first,
+                    favoriteItems = libraryAndFavorites.second,
+                    historyItems = history.filter { !it.completed && it.positionSeconds > 0 },
+                    loading = false,
+                    message = null,
+                )
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.LIBRARY,
+                    loading = false,
+                    message = reason.message ?: "Не удалось загрузить библиотеку",
+                )
+            }
+        }
+    }
+
+    fun retryLibrary() = openLibrary()
+
+    fun openLibraryItem(item: SavedLibraryItem) {
+        val history = mutableState.value.historyItems.firstOrNull { it.matches(item) }
+        val episode = item.episodeNumber?.let { number ->
+            EpisodeSummary(
+                id = item.catalogEpisodeId ?: 0,
+                seasonNumber = item.seasonNumber ?: 0,
+                number = number,
+                name = "Серия $number",
+                overview = "",
+                runtimeMinutes = null,
+                rating = 0.0,
+                stillUrl = null,
+            )
+        }
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.PLAYER,
+            playerUrl = item.streamUrl,
+            resumePositionMs = (history?.positionSeconds ?: 0) * 1_000,
+            playerMedia = item.asMediaCard(),
+            playerEpisode = episode,
+            playerReturnScreen = Screen.LIBRARY,
+            message = null,
+        )
+    }
+
+    fun openHistoryItem(item: HistoryItem) {
+        val currentApi = api ?: return
+        libraryJob?.cancel()
+        mutableState.value = mutableState.value.copy(loading = true, message = null)
+        libraryJob = viewModelScope.launch {
+            try {
+                val details = currentApi.details(item.mediaKind, item.mediaId)
+                if (item.mediaKind == MediaKind.MOVIE) {
+                    mutableState.value = mutableState.value.copy(
+                        screen = Screen.DETAILS,
+                        selected = details,
+                        detailsOrigin = Screen.LIBRARY,
+                        selectedSeasonNumber = null,
+                        seasonDetails = null,
+                        selectedEpisode = null,
+                        loading = false,
+                    )
+                    playSelected()
+                    return@launch
+                }
+                val seasonNumber = requireNotNull(item.seasonNumber) {
+                    "В истории не указан сезон"
+                }
+                val episodeNumber = requireNotNull(item.episodeNumber) {
+                    "В истории не указана серия"
+                }
+                val season = currentApi.season(item.mediaId, seasonNumber)
+                val episode = season.episodes.firstOrNull { candidate ->
+                    candidate.number == episodeNumber ||
+                        item.catalogEpisodeId != null && candidate.id == item.catalogEpisodeId
+                } ?: error("Серия из истории больше не найдена в каталоге")
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.EPISODES,
+                    selected = details,
+                    detailsOrigin = Screen.LIBRARY,
+                    selectedSeasonNumber = seasonNumber,
+                    seasonDetails = season,
+                    selectedEpisode = episode,
+                    loading = false,
+                )
+                playEpisode(episode)
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.LIBRARY,
+                    loading = false,
+                    message = reason.message ?: "Не удалось продолжить просмотр",
+                )
+            }
+        }
     }
 
     fun updateSearchQuery(query: String) {
@@ -381,9 +515,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(message = null)
     }
 
+    fun reportPlaybackProgress(positionMs: Long, durationMs: Long, completed: Boolean, final: Boolean) {
+        val currentApi = api ?: return
+        val media = mutableState.value.playerMedia ?: return
+        val episode = mutableState.value.playerEpisode
+        val previousUpdate = historyJob
+        if (!final && previousUpdate?.isActive == true) return
+        historyJob = viewModelScope.launch {
+            if (final) previousUpdate?.join()
+            try {
+                currentApi.updateHistory(
+                    media = media,
+                    episode = episode,
+                    positionSeconds = if (completed) 0 else positionMs.coerceAtLeast(0) / 1_000,
+                    durationSeconds = durationMs.coerceAtLeast(0) / 1_000,
+                    completed = completed,
+                )
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                Log.w(LOG_TAG, "watch_history_update_failed", reason)
+            }
+        }
+    }
+
     fun changeServer() {
         playbackJob?.cancel()
         searchJob?.cancel()
+        historyJob?.cancel()
+        libraryJob?.cancel()
         serverStore.clear()
         api = null
         mutableState.value = UiState(screen = Screen.SETUP)
@@ -391,8 +551,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateBack(): Boolean = when (mutableState.value.screen) {
         Screen.PLAYER -> {
-            val destination = if (mutableState.value.selectedEpisode != null) Screen.EPISODES else Screen.DETAILS
-            mutableState.value = mutableState.value.copy(screen = destination, playerUrl = null)
+            mutableState.value = mutableState.value.copy(
+                screen = mutableState.value.playerReturnScreen,
+                playerUrl = null,
+            )
             true
         }
         Screen.EPISODES -> {
@@ -450,6 +612,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 searchLoading = false,
                 message = null,
             )
+            true
+        }
+        Screen.LIBRARY -> {
+            libraryJob?.cancel()
+            mutableState.value = mutableState.value.copy(screen = Screen.CATALOG, message = null)
             true
         }
         Screen.SETUP, Screen.CATALOG -> false
@@ -614,6 +781,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 screen = Screen.PLAYER,
                 playerUrl = url,
                 resumePositionMs = playback.resumePositionSeconds * 1_000,
+                playerMedia = mutableState.value.selected?.card,
+                playerEpisode = mutableState.value.selectedEpisode,
+                playerReturnScreen = if (mutableState.value.selectedEpisode != null) {
+                    Screen.EPISODES
+                } else {
+                    Screen.DETAILS
+                },
                 loading = false,
                 message = null,
             )
@@ -668,6 +842,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
+        const val LOG_TAG = "KadrTv"
         const val METADATA_ATTEMPTS = 12
         const val METADATA_GRACE_ATTEMPTS = 6
         const val BUFFER_ATTEMPTS = 120

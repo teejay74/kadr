@@ -10,10 +10,11 @@ navigation. TV styling is opt-in through the root `data-tv` attribute, so the
 desktop and mobile layouts keep their existing behavior. The HTML video element
 owns remote seek, volume, and play/pause keys while focused.
 
-This increment does not claim a native Android TV application or measured codec
-compatibility. A future Media3 client must reuse the existing server-owned
-playback resolution and streaming API instead of duplicating torrent or storage
-logic.
+The browser TV mode remains available, and a separate native Media3 client now
+lives under `android-tv/`. It reuses the existing server-owned playback,
+streaming, saved-library, favorites, and profile-scoped history APIs rather than
+duplicating torrent or storage logic. The native client does not yet claim a
+measured codec matrix or native audio/subtitle selection.
 
 ## Stage 6 foundations
 

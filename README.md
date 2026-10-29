@@ -76,9 +76,11 @@ searches and selects film sources through the server, waits for startup
 buffering, and opens the stream fullscreen in Media3 ExoPlayer. Native series
 playback includes season/episode selection and server-owned episode matching.
 Native catalogue search covers films and series with TV-keyboard input. It is
-paired with cached posters, detail backdrops, and episode stills. It is an
-incremental client foundation; native library and track workflows are listed
-explicitly as pending rather than represented by mocks.
+paired with cached posters, detail backdrops, and episode stills. The native
+library now reads saved files, favorites, and shared `default`-profile history;
+the player keeps the display awake, uses 10-second seeking, and writes resume
+progress back to the server. Native track workflows remain explicitly pending
+rather than represented by mocks.
 
 ## Quick start
 
