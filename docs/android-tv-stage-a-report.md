@@ -2,6 +2,23 @@
 
 Date: 2026-10-28
 
+## Native audio and subtitle selection stage — 2026-10-30
+
+- Added a D-pad side panel with separate audio and subtitle tabs over the
+  custom TV player.
+- Enumerated the current Media3 track groups after stream preparation and
+  exposed only tracks supported by the target device.
+- Added exact Media3 selection overrides for audio and embedded text tracks,
+  plus an explicit subtitles-off option.
+- Added Russian language labels together with track title, channel count, and
+  codec so similarly named tracks remain distinguishable on TV.
+- Persisted a semantic local preference (language/title/codec/channels) and
+  safely restored it only after non-empty Media3 tracks become available.
+- Added D-pad navigation, selected-state highlighting, auto-scrolling, and
+  Back behavior for the track panel.
+- Added unit coverage for localized labels and stable semantic preference keys.
+- Increased the APK to version `0.6.0` (`versionCode 10`).
+
 ## Native TV player controls stage — 2026-10-30
 
 - Replaced Media3's generic `PlayerView` controller with a Compose TV overlay
@@ -135,7 +152,7 @@ Date: 2026-10-28
 
 ## Verification
 
-- `testDebugUnitTest`: passed (14 tests).
+- `testDebugUnitTest`: passed (16 tests).
 - `assembleDebug`: passed with Android SDK 36 and JDK 17.
 - `lintDebug`: passed without errors. Remaining warnings report the deliberately
   pinned SDK/Compose toolchain and available future dependency updates.
@@ -153,8 +170,8 @@ Date: 2026-10-28
   by the native client (2 saved items, 4 favorites, and 12 history entries at
   verification time).
 - Debug APK produced at
-  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,963,742 bytes,
-  SHA-256 `62ad946d60961c6f8d0531a256f056ccf8210387022530eec4835c22abddeca0`).
+  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,996,510 bytes,
+  SHA-256 `34d4d58db781bbe0f1e7384f9b399a2a223bad14598d75b155f6d194a515eb2d`).
 - Physical Android TV installation and remote/device codec acceptance remain
   pending.
 
@@ -165,13 +182,14 @@ Date: 2026-10-28
 - Combined files containing multiple episodes can be associated with the
   selected episode, but native chapter/time-boundary navigation is not yet
   available.
-- Native audio/subtitle selection, next episode, downloads, and explicit
-  compatibility preparation remain future increments.
+- Only device-supported Media3 tracks appear in the native panel. Server-profile
+  synchronization, external subtitle preparation, incompatible audio fallback,
+  next episode, and downloads remain future increments.
 - This debug APK is development-signed and is not a Play Store release bundle.
 
 ## Next actions
 
 1. Install the debug APK on the target television and record LAN/Tailscale,
    D-pad, Back, fullscreen, Range-seek, and codec results.
-2. Add audio/subtitle selection, next episode, and a measured compatibility
-   fallback flow. FFmpeg must remain explicit and opt-in.
+2. Add server-profile track synchronization, next episode, and a measured
+   compatibility fallback flow. FFmpeg must remain explicit and opt-in.

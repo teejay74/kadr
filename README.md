@@ -81,8 +81,11 @@ library now reads saved files, favorites, and shared `default`-profile history;
 the player keeps the display awake, uses 10-second seeking, and writes resume
 progress back to the server. Version 0.5.0 replaces the generic Media3 controls
 with a D-pad-first TV overlay showing title, episode, played/buffered timeline,
-time labels, pause, and buffering state. Native track workflows remain
-explicitly pending rather than represented by mocks.
+time labels, pause, and buffering state. Version 0.6.0 adds a native audio and
+subtitle panel for device-supported Media3 tracks and persists semantic track
+choices locally on the television. Server-synchronized preferences and
+compatibility preparation remain explicitly pending rather than represented by
+mocks.
 
 ## Quick start
 

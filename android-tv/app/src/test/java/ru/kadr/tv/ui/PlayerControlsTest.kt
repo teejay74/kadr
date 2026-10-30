@@ -24,4 +24,24 @@ class PlayerControlsTest {
         assertEquals("2:05", formatPlayerTime(125_000))
         assertEquals("1:02:03", formatPlayerTime(3_723_000))
     }
+
+    @Test
+    fun trackLabelContainsLocalizedLanguageAndTechnicalDetails() {
+        val track = TrackDescriptor(
+            language = "rus",
+            title = "Дубляж",
+            codec = "ac3",
+            channels = 6,
+        )
+
+        assertEquals("Русский · Дубляж · 6 кан. · AC3", trackDescriptorLabel(track))
+    }
+
+    @Test
+    fun trackPreferenceKeyIsStableAcrossLetterCase() {
+        val upper = TrackDescriptor("EN", "Original", "AAC", 2)
+        val lower = TrackDescriptor("en", "original", "aac", 2)
+
+        assertEquals(trackPreferenceKey(upper), trackPreferenceKey(lower))
+    }
 }
