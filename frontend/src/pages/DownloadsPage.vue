@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import StatePanel from '../components/StatePanel.vue'
 import {
+  deleteTorrent,
   deleteTorrentFile,
   friendlyApiError,
   getTorrentFiles,
@@ -19,6 +20,7 @@ const error = ref('')
 const busyTaskId = ref<string | null>(null)
 const fileLoadingTaskId = ref<string | null>(null)
 const deleteCandidate = ref<{ taskId: string, fileId: number } | null>(null)
+const taskDeleteCandidateId = ref<string | null>(null)
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
 const activeCount = computed(() => tasks.value.filter((task) => task.can_stop && task.progress < 1).length)
@@ -107,6 +109,29 @@ async function removeFile(taskId: string, file: TorrentFile): Promise<void> {
   }
 }
 
+async function removeTask(task: TorrentStatus): Promise<void> {
+  if (taskDeleteCandidateId.value !== task.id) {
+    taskDeleteCandidateId.value = task.id
+    deleteCandidate.value = null
+    return
+  }
+  busyTaskId.value = task.id
+  error.value = ''
+  try {
+    await deleteTorrent(task.id)
+    tasks.value = tasks.value.filter((item) => item.id !== task.id)
+    const nextFiles = { ...files.value }
+    delete nextFiles[task.id]
+    files.value = nextFiles
+  } catch (caught) {
+    error.value = friendlyApiError(caught)
+  } finally {
+    taskDeleteCandidateId.value = null
+    busyTaskId.value = null
+    scheduleRefresh()
+  }
+}
+
 onMounted(() => void load())
 onBeforeUnmount(() => {
   if (refreshTimer) clearTimeout(refreshTimer)
@@ -175,7 +200,21 @@ onBeforeUnmount(() => {
           >
             {{ files[task.id] ? 'Файлы загружены' : 'Показать файлы' }}
           </button>
+          <button
+            class="button danger focus-ring"
+            type="button"
+            :disabled="busyTaskId === task.id"
+            @click="removeTask(task)"
+          >
+            {{ taskDeleteCandidateId === task.id
+              ? `Подтвердить удаление (${formatBytes(task.downloaded_bytes)})`
+              : 'Удалить загрузку' }}
+          </button>
         </div>
+        <p v-if="taskDeleteCandidateId === task.id" class="delete-warning" role="alert">
+          Торрент-задача и все её загруженные файлы будут удалены без возможности восстановления.
+          Сохранённые в библиотеке и воспроизводимые материалы защищены от удаления.
+        </p>
         <ul v-if="files[task.id]" class="download-file-list">
           <li v-for="file in files[task.id]" :key="file.id">
             <div>

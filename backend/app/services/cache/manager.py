@@ -9,6 +9,7 @@ from app.repositories.torrent_tasks import TorrentTaskRepository
 from app.schemas.library import (
     CacheCleanupResponse,
     CacheFileDeletionResponse,
+    CacheTaskDeletionResponse,
     StorageResponse,
 )
 from app.services.cache.exceptions import (
@@ -104,6 +105,32 @@ class CacheManager:
             selected_file_cleared=selected_cleared,
         )
 
+    async def delete_task(self, task_id: str) -> CacheTaskDeletionResponse:
+        task = await self._tasks.get(task_id)
+        if task is None:
+            raise CacheFileNotFoundError("Torrent task not found")
+        if await self._registry.is_active(task.id):
+            raise CacheDeletionConflictError("Close the player before deleting this download")
+        if self._compatibility.is_task_preparing(task.id):
+            raise CacheDeletionConflictError(
+                "Wait for compatible video preparation to finish before deleting"
+            )
+        if await self._library.has_library_for_task(task.id):
+            raise CacheDeletionConflictError(
+                "This download belongs to a saved library item and is protected"
+            )
+        self._validate_task_storage(task.storage_path)
+
+        torrents = await self._client.list(torrent_hash=task.torrent_hash)
+        reclaimed = max(int(torrents[0].get("downloaded") or 0), 0) if torrents else 0
+        try:
+            await self._compatibility.discard_task(task.id)
+        except OSError as exc:
+            raise CacheStorageError("The playback cache could not be deleted") from exc
+        await self._client.delete(task.torrent_hash, delete_files=True)
+        await self._tasks.delete(task)
+        return CacheTaskDeletionResponse(task_id=task.id, reclaimed_bytes=reclaimed)
+
     async def cleanup(self) -> CacheCleanupResponse:
         cutoff = datetime.now(UTC) - timedelta(hours=self._settings.cache_ttl_hours)
         removed = 0
@@ -156,6 +183,15 @@ class CacheManager:
         if not storage.is_relative_to(root) or not path.is_relative_to(storage):
             raise CacheStorageError("The downloaded video is outside KADR cache")
         return storage, path
+
+    def _validate_task_storage(self, storage_path: str) -> None:
+        try:
+            root = Path(self._settings.torrent_storage_root).resolve(strict=True)
+            storage = Path(storage_path).resolve(strict=False)
+        except OSError as exc:
+            raise CacheStorageError("KADR download storage is unavailable") from exc
+        if not storage.is_relative_to(root):
+            raise CacheStorageError("The download is outside KADR cache")
 
     def _remove_empty_cache_parents(self, directory: Path, storage: Path) -> None:
         root = Path(self._settings.torrent_storage_root).resolve(strict=True)

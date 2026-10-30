@@ -36,7 +36,8 @@ confirmed next file from the same release; completion opens a configurable
 next-episode overlay. Combined files are never presented as having an exact
 episode seek point unless future stored time boundaries make that possible.
 The final D2 UI increment moves torrent progress, pause/resume controls, file
-inspection, and completed-cache deletion to a dedicated **Downloads** page.
+inspection, completed-file deletion, and confirmed whole-download removal to a
+dedicated **Downloads** page.
 Film and series pages retain only playback, source choice, and a link to that
 technical workspace. The legacy `SourcesPanel` source remains in the tree for
 live-playback rollback until Debian acceptance is complete.
@@ -139,7 +140,10 @@ After a selected video reaches 100%, use «Сохранить в библиот�
 «Библиотека» page reports saved size, plays the independent copy, and requires
 confirmation before deletion. Temporary stopped downloads older than the
 configured TTL are eligible for cache cleanup; saved and active media are
-protected.
+protected. The **Downloads** page can also remove a complete torrent task and
+its qBittorrent data after a second explicit confirmation. Active playback,
+compatible-version preparation, saved library items, and paths outside the
+configured KADR download root remain protected.
 
 Stop KADR without deleting its database:
 

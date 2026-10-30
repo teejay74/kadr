@@ -16,6 +16,7 @@ import {
   addTorrent,
   addFavorite,
   analyzeEpisodeMatches,
+  configureTorrentPrefetch,
   confirmEpisodeMatches,
   deleteFavorite,
   friendlyApiError,
@@ -27,6 +28,7 @@ import {
   prefetchNextEpisode,
   resolvePlayback,
   resolveNextEpisode,
+  selectTorrentFile,
 } from '../services/api'
 import type {
   EpisodeMatchReport,
@@ -57,6 +59,7 @@ const playback = ref<PlaybackResolution | null>(null)
 const playbackLoading = ref(false)
 const playbackMessage = ref('')
 const sourceSelectorOpen = ref(false)
+const sourceIntent = ref<'playback' | 'season'>('playback')
 const sourceSelectorLoading = ref(false)
 const sourceSelectorError = ref('')
 const sourceItems = ref<SourceRelease[]>([])
@@ -64,6 +67,7 @@ const sourceBusyId = ref<string | null>(null)
 const sourceTaskId = ref<string | null>(null)
 const sourceMatchReport = ref<EpisodeMatchReport | null>(null)
 const sourceMatchOpen = ref(false)
+const seasonDownloadMessage = ref('')
 const nextEpisodeResult = ref<NextEpisodeResolution | null>(null)
 const nextEpisodeLoading = ref(false)
 const nextEpisodeOpen = ref(false)
@@ -168,7 +172,7 @@ async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<
       return
     }
     playbackMessage.value = result.message ?? 'Выберите источник для начала просмотра.'
-    await openSourceSelector()
+    await openSourceSelector('playback')
   } catch (caught) {
     playbackMessage.value = friendlyApiError(caught)
   } finally {
@@ -255,14 +259,30 @@ async function chooseNextEpisodeSource(): Promise<void> {
     rememberSeason(episode.season_number)
     await loadSeason(false)
   }
-  await openSourceSelector()
+  await openSourceSelector('playback')
 }
 
-async function openSourceSelector(): Promise<void> {
+async function openSourceSelector(intent: 'playback' | 'season' = 'playback'): Promise<void> {
   if (!media.value) return
+  sourceIntent.value = intent
   sourceSelectorOpen.value = true
   sourceSelectorError.value = ''
   await loadSourceOptions()
+}
+
+async function startSeasonDownload(): Promise<void> {
+  if (!media.value || media.value.kind !== 'series' || sourceSelectorLoading.value) return
+  seasonDownloadMessage.value = ''
+  sourceTaskId.value = null
+  sourceMatchReport.value = null
+  sourceMatchOpen.value = false
+  await openSourceSelector('season')
+}
+
+function closeSourceSelector(): void {
+  sourceSelectorOpen.value = false
+  sourceMatchOpen.value = false
+  sourceIntent.value = 'playback'
 }
 
 async function loadSourceOptions(): Promise<void> {
@@ -271,7 +291,9 @@ async function loadSourceOptions(): Promise<void> {
   sourceSelectorError.value = ''
   try {
     const seasonNumber = media.value.kind === 'series'
-      ? selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
+      ? sourceIntent.value === 'season'
+        ? selectedSeasonNumber.value
+        : selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
       : null
     const result = await getSources(
       media.value.id,
@@ -295,6 +317,52 @@ function targetIsConfirmed(report: EpisodeMatchReport): boolean {
     episode.season_number === selectedEpisode.value?.season_number
     && episode.episode_number === selectedEpisode.value?.number
   )))
+}
+
+function reportContainsSeason(
+  report: EpisodeMatchReport,
+  confirmed: boolean,
+): boolean {
+  const seasonNumber = selectedSeasonNumber.value
+  return report.files.some((file) => (
+    !file.unsafe
+    && file.confirmed === confirmed
+    && [...file.episodes, ...file.alternatives].some(
+      (episode) => episode.season_number === seasonNumber,
+    )
+  ))
+}
+
+async function finishSeasonDownload(report: EpisodeMatchReport): Promise<void> {
+  if (!sourceTaskId.value) return
+  const seasonNumber = selectedSeasonNumber.value
+  const candidates = report.files
+    .filter((file) => (
+      file.confirmed
+      && !file.unsafe
+      && file.episodes.some((episode) => episode.season_number === seasonNumber)
+    ))
+    .sort((left, right) => {
+      const leftEpisode = Math.min(...left.episodes
+        .filter((episode) => episode.season_number === seasonNumber)
+        .map((episode) => episode.episode_number))
+      const rightEpisode = Math.min(...right.episodes
+        .filter((episode) => episode.season_number === seasonNumber)
+        .map((episode) => episode.episode_number))
+      return leftEpisode - rightEpisode || left.file_id - right.file_id
+    })
+  if (!candidates.length) {
+    sourceSelectorError.value = `В выбранном источнике не удалось распознать серии сезона ${seasonNumber}.`
+    return
+  }
+  const fileIds = [...new Set(candidates.map((file) => file.file_id))]
+  await selectTorrentFile(sourceTaskId.value, fileIds[0])
+  await configureTorrentPrefetch(sourceTaskId.value, fileIds)
+  const episodes = new Set(candidates.flatMap((file) => file.episodes
+    .filter((episode) => episode.season_number === seasonNumber)
+    .map((episode) => episode.episode_number)))
+  seasonDownloadMessage.value = `Сезон ${seasonNumber} добавлен в загрузку. Эпизодов: ${episodes.size}.`
+  closeSourceSelector()
 }
 
 async function waitForTorrentMetadata(taskId: string): Promise<boolean> {
@@ -331,7 +399,9 @@ async function selectSource(source: SourceRelease): Promise<void> {
   sourceSelectorError.value = ''
   try {
     const seasonNumber = media.value.kind === 'series'
-      ? selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
+      ? sourceIntent.value === 'season'
+        ? selectedSeasonNumber.value
+        : selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
       : null
     const task = await addTorrent(
       media.value.id,
@@ -346,6 +416,14 @@ async function selectSource(source: SourceRelease): Promise<void> {
     }
     if (media.value.kind === 'series') {
       sourceMatchReport.value = await analyzeEpisodeMatches(task.id)
+      if (sourceIntent.value === 'season') {
+        if (reportContainsSeason(sourceMatchReport.value, false)) {
+          sourceMatchOpen.value = true
+          return
+        }
+        await finishSeasonDownload(sourceMatchReport.value)
+        return
+      }
       if (selectedEpisode.value && !targetIsConfirmed(sourceMatchReport.value)) {
         sourceMatchOpen.value = true
         return
@@ -373,6 +451,14 @@ async function saveSourceMatches(mappings: EpisodeMatchSelection[]): Promise<voi
   sourceSelectorError.value = ''
   try {
     sourceMatchReport.value = await confirmEpisodeMatches(sourceTaskId.value, mappings)
+    if (sourceIntent.value === 'season') {
+      if (reportContainsSeason(sourceMatchReport.value, false)) {
+        sourceMatchOpen.value = true
+        return
+      }
+      await finishSeasonDownload(sourceMatchReport.value)
+      return
+    }
     if (selectedEpisode.value && targetIsConfirmed(sourceMatchReport.value)) {
       await finishSourcePlayback()
       return
@@ -414,12 +500,14 @@ async function loadDetails(): Promise<void> {
   playback.value = null
   playbackMessage.value = ''
   sourceSelectorOpen.value = false
+  sourceIntent.value = 'playback'
   sourceSelectorError.value = ''
   sourceItems.value = []
   sourceBusyId.value = null
   sourceTaskId.value = null
   sourceMatchReport.value = null
   sourceMatchOpen.value = false
+  seasonDownloadMessage.value = ''
   try {
     media.value = await getMediaDetails(kind.value, id)
     const favorites = await getFavorites()
@@ -493,13 +581,26 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
     >
       <div class="episodes-heading">
         <h2 id="episodes-title">Эпизоды</h2>
-        <SeasonSelector
-          :model-value="selectedSeasonNumber"
-          :seasons="availableSeasons"
-          :disabled="seasonLoading"
-          @update:model-value="selectSeason"
-        />
+        <div class="season-actions">
+          <SeasonSelector
+            :model-value="selectedSeasonNumber"
+            :seasons="availableSeasons"
+            :disabled="seasonLoading"
+            @update:model-value="selectSeason"
+          />
+          <button
+            class="button secondary focus-ring"
+            type="button"
+            :disabled="seasonLoading || sourceBusyId !== null"
+            @click="startSeasonDownload"
+          >
+            Скачать сезон
+          </button>
+        </div>
       </div>
+      <p v-if="seasonDownloadMessage" class="legacy-playback-notice" role="status">
+        {{ seasonDownloadMessage }} <RouterLink class="text-link" to="/downloads">Открыть загрузки</RouterLink>
+      </p>
       <p v-if="seasonDetails?.overview" class="season-overview">{{ seasonDetails.overview }}</p>
       <p v-if="playbackMessage && selectedEpisode" class="legacy-playback-notice" role="status">
         {{ playbackMessage }} Окно выбора источника открыто.
@@ -565,12 +666,19 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
 
     <SourceSelector
       v-if="sourceSelectorOpen"
-      :title="selectedEpisode ? `${media.title} · S${selectedEpisode.season_number}E${selectedEpisode.number}` : media.title"
+      :title="sourceIntent === 'season'
+        ? `${media.title} · Сезон ${selectedSeasonNumber}`
+        : selectedEpisode
+          ? `${media.title} · S${selectedEpisode.season_number}E${selectedEpisode.number}`
+          : media.title"
       :items="sourceItems"
       :loading="sourceSelectorLoading"
       :busy-source-id="sourceBusyId"
       :error="sourceSelectorError"
-      @close="sourceSelectorOpen = false"
+      :eyebrow="sourceIntent === 'season' ? 'Загрузка сезона' : 'Источник просмотра'"
+      :heading="sourceIntent === 'season' ? `Скачать сезон ${selectedSeasonNumber}` : 'Выберите источник'"
+      :action-label="sourceIntent === 'season' ? 'Скачать сезон' : 'Выбрать'"
+      @close="closeSourceSelector"
       @retry="loadSourceOptions"
       @select="selectSource"
     />

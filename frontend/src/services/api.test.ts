@@ -8,6 +8,7 @@ import {
   configureTorrentPrefetch,
   confirmEpisodeMatches,
   deleteTorrentFile,
+  deleteTorrent,
   getMediaPage,
   getHistoryItem,
   getPlaybackTracks,
@@ -349,6 +350,20 @@ test('deletes one downloaded torrent file without deleting the release', async (
 
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/torrents/task/files/3')
+  expect(init.method).toBe('DELETE')
+})
+
+test('deletes a whole torrent task and its downloaded data', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ task_id: 'task/id', reclaimed_bytes: 400 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await deleteTorrent('task/id')
+
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(path).toBe('/api/v1/torrents/task%2Fid')
   expect(init.method).toBe('DELETE')
 })
 

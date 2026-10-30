@@ -107,7 +107,12 @@ only while an incomplete task is active, at a ten-second interval. Torrent
 Manager joins recent KADR database tasks to one qBittorrent list response;
 missing external tasks are represented as unavailable rather than triggering
 one request per card. File lists remain on-demand. Pause/resume and protected
-completed-file deletion use the existing endpoints and safety checks. Media
+completed-file deletion use the existing endpoints and safety checks. A
+separately confirmed whole-task action protects active streams, preparation
+jobs, library-backed tasks, and the configured storage boundary before it asks
+qBittorrent to remove data and discards task-scoped playback artifacts; the
+database task is removed only after those operations succeed, with cascading
+episode/file bindings. Media
 details no longer mount technical torrent controls; the legacy
 `SourcesPanel.vue` file remains available for rollback until real Debian
 playback acceptance is complete.
@@ -230,7 +235,9 @@ lists, and ranges such as `S01-05`; duplicate packs returned by several searches
 are collapsed into one result. A direct whole-season action lets the viewer
 choose a season from a multi-season pack, validates it against torrent file
 names, selects the first episode, and queues the remaining video files after
-metadata arrives. Generic fallback
+metadata arrives. The current media page exposes this action beside the season
+selector and reuses the normalized source selector plus Episode Matcher before
+changing file priorities. Generic fallback
 searches still group normalized results by release-title season markers and
 keep ambiguous results visible. Prowlarr persists its own configuration in `data/prowlarr`
 and exposes its administrative UI only on host loopback. It is not a dependency of API health:

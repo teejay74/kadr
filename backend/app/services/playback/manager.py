@@ -278,6 +278,32 @@ class CompatibilityManager:
             for key, job in self._jobs.items()
         )
 
+    def is_task_preparing(self, task_id: str) -> bool:
+        prefix = f"{task_id}:"
+        return any(
+            key.startswith(prefix)
+            and (
+                job.state == "queued"
+                or (job.task is not None and not job.task.done())
+            )
+            for key, job in self._jobs.items()
+        )
+
+    async def discard_task(self, task_id: str) -> None:
+        if self.is_task_preparing(task_id):
+            raise PlaybackPreparationError(
+                "Stop compatible playback preparation before deleting this download"
+            )
+        prefix = f"{task_id}:"
+        for key in [key for key in self._jobs if key.startswith(prefix)]:
+            self._jobs.pop(key, None)
+        root = Path(self._settings.playback_cache_root).resolve(strict=False)
+        directory = (root / task_id).resolve(strict=False)
+        if not directory.is_relative_to(root):
+            raise PlaybackPreparationError("The playback cache path is unsafe")
+        if await asyncio.to_thread(directory.is_dir):
+            await asyncio.to_thread(shutil.rmtree, directory)
+
     async def discard(self, task_id: str, selected_file_id: int) -> None:
         if self.is_preparing(task_id, selected_file_id):
             raise PlaybackPreparationError(

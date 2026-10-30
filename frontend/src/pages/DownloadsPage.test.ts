@@ -6,6 +6,7 @@ import DownloadsPage from './DownloadsPage.vue'
 
 vi.mock('../services/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/api')>()),
+  deleteTorrent: vi.fn(),
   deleteTorrentFile: vi.fn(),
   getTorrentFiles: vi.fn(),
   getTorrents: vi.fn(),
@@ -56,6 +57,10 @@ beforeEach(() => {
     reclaimed_bytes: 1000,
     selected_file_cleared: true,
   })
+  vi.mocked(api.deleteTorrent).mockResolvedValue({
+    task_id: task.id,
+    reclaimed_bytes: 400,
+  })
 })
 
 afterEach(() => {
@@ -89,4 +94,18 @@ test('loads files on demand and requires a second click before deletion', async 
   expect(api.deleteTorrentFile).not.toHaveBeenCalled()
   await fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }))
   await waitFor(() => expect(api.deleteTorrentFile).toHaveBeenCalledWith('task-id', 1))
+})
+
+test('requires explicit confirmation before deleting a whole download', async () => {
+  render(DownloadsPage, {
+    global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Удалить загрузку' }))
+
+  expect(api.deleteTorrent).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert').textContent).toMatch(/все её загруженные файлы будут удалены/)
+  await fireEvent.click(screen.getByRole('button', { name: /Подтвердить удаление/ }))
+  await waitFor(() => expect(api.deleteTorrent).toHaveBeenCalledWith('task-id'))
+  expect(screen.queryByText('Series S01 1080p')).toBeNull()
 })

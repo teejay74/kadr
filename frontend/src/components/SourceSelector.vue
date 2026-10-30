@@ -9,10 +9,16 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   busySourceId?: string | null
   error?: string
+  eyebrow?: string
+  heading?: string
+  actionLabel?: string
 }>(), {
   loading: false,
   busySourceId: null,
   error: '',
+  eyebrow: 'Источник просмотра',
+  heading: 'Выберите источник',
+  actionLabel: 'Выбрать',
 })
 
 const emit = defineEmits<{
@@ -54,8 +60,8 @@ function releaseLabel(source: SourceRelease): string {
     >
       <header>
         <div>
-          <p class="eyebrow">Источник просмотра</p>
-          <h2 id="source-selector-title">Выберите источник</h2>
+          <p class="eyebrow">{{ eyebrow }}</p>
+          <h2 id="source-selector-title">{{ heading }}</h2>
           <p>{{ title }}</p>
         </div>
         <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busySourceId !== null" @click="emit('close')">
@@ -100,7 +106,7 @@ function releaseLabel(source: SourceRelease): string {
             :disabled="busySourceId !== null"
             @click="emit('select', source)"
           >
-            {{ busySourceId === source.id ? 'Подготавливаем…' : 'Выбрать' }}
+            {{ busySourceId === source.id ? 'Подготавливаем…' : actionLabel }}
           </button>
         </article>
         <p class="source-recommendation-note">

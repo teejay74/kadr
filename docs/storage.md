@@ -38,7 +38,7 @@ mechanism or a coordinated checkpoint/copy, not an arbitrary live-file copy.
 
 qBittorrent owns normal download writes under `./data/downloads`, mounted as
 `/downloads`. The API receives only this KADR-specific download mount with
-write access so it can perform an explicitly requested single-file deletion;
+write access so it can perform explicitly requested file or whole-task deletion;
 it has no access to Photodom or unrelated host paths. Its configuration is
 stored separately at `./data/qbittorrent`. `KADR_TORRENT_SAVE_PATH`,
 `KADR_TORRENT_STORAGE_ROOT`, and `KADR_MIN_FREE_SPACE_GB` are configurable.
@@ -69,6 +69,14 @@ the library, then removes only that file. The torrent remains registered;
 qBittorrent receives priority zero for the removed file and performs a recheck,
 so the same episode can be downloaded again later. Empty child directories may
 be removed, but KADR never removes the configured download root.
+
+Whole-task deletion uses qBittorrent's delete-with-files operation only after
+the task's stored directory is canonicalized beneath
+`KADR_TORRENT_STORAGE_ROOT`. KADR refuses the request for active streams,
+running/queued compatibility preparation, or any task referenced by a library
+item. Task-scoped playback artifacts are removed beneath the configured
+playback root, then the database task and its cascading episode/file bindings
+are deleted. The Downloads UI requires a separate confirmation click.
 
 KADR also persists Prowlarr configuration and its private database under
 `./data/prowlarr`. This directory may contain API keys, cookies, and tracker

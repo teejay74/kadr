@@ -1,6 +1,7 @@
 import type {
   CatalogQuery,
   CacheFileDeletion,
+  CacheTaskDeletion,
   EpisodeFileBinding,
   EpisodeMatchReport,
   EpisodeMatchSelection,
@@ -279,6 +280,13 @@ export function confirmEpisodeMatches(
 export function deleteTorrentFile(taskId: string, fileId: number): Promise<CacheFileDeletion> {
   return request<CacheFileDeletion>(
     `/api/v1/torrents/${encodeURIComponent(taskId)}/files/${fileId}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function deleteTorrent(taskId: string): Promise<CacheTaskDeletion> {
+  return request<CacheTaskDeletion>(
+    `/api/v1/torrents/${encodeURIComponent(taskId)}`,
     { method: 'DELETE' },
   )
 }

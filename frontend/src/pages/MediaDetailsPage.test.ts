@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -10,12 +10,14 @@ vi.mock('../services/api', async (importOriginal) => ({
   addTorrent: vi.fn(),
   analyzeEpisodeMatches: vi.fn(),
   confirmEpisodeMatches: vi.fn(),
+  configureTorrentPrefetch: vi.fn(),
   getFavorites: vi.fn(),
   getMediaDetails: vi.fn(),
   getSources: vi.fn(),
   prefetchNextEpisode: vi.fn(),
   resolvePlayback: vi.fn(),
   resolveNextEpisode: vi.fn(),
+  selectTorrentFile: vi.fn(),
   getSeriesSeason: vi.fn(),
   getTorrentFiles: vi.fn(),
 }))
@@ -84,6 +86,8 @@ beforeEach(() => {
     total: 0,
   })
   vi.mocked(api.getTorrentFiles).mockResolvedValue([])
+  vi.mocked(api.selectTorrentFile).mockResolvedValue({} as never)
+  vi.mocked(api.configureTorrentPrefetch).mockResolvedValue({} as never)
   vi.mocked(api.prefetchNextEpisode).mockResolvedValue({
     status: 'source_required',
     episode: null,
@@ -420,6 +424,103 @@ test('opens episode confirmation when the selected series source is ambiguous', 
 
   expect(await screen.findByRole('dialog', { name: 'Проверьте соответствия серий' })).toBeTruthy()
   expect(api.analyzeEpisodeMatches).toHaveBeenCalledWith('series-task')
+})
+
+test('downloads all confirmed video files for the selected season', async () => {
+  const source = {
+    id: 'c'.repeat(24),
+    title: 'Test.Series.S01.1080p.WEB-DL',
+    indexer: 'Indexer',
+    size_bytes: 8_000_000_000,
+    seeders: 12,
+    peers: 1,
+    published_at: null,
+    season_number: 1,
+    season_numbers: [1],
+    protocol: 'torrent' as const,
+    resolution: '1080p',
+    source: 'WEB-DL',
+    codec: 'H264',
+    hdr: false,
+    hdr_format: null,
+    audio: null,
+    language: 'RU',
+    release_type: 'web',
+  }
+  vi.mocked(api.getSources).mockResolvedValueOnce({
+    media_id: 42,
+    media_kind: 'series',
+    query: 'Test Series S01',
+    total: 1,
+    items: [source],
+  })
+  vi.mocked(api.addTorrent).mockResolvedValue({
+    id: 'season-task',
+    media_id: 42,
+    media_kind: 'series',
+    name: source.title,
+    state: 'stoppedDL',
+    progress: 0,
+    downloaded_bytes: 0,
+    total_size_bytes: source.size_bytes,
+    download_speed_bytes: 0,
+    upload_speed_bytes: 0,
+    peers: 0,
+    seeds: 1,
+    eta_seconds: null,
+    selected_file_id: null,
+    selected_file_path: null,
+    can_start: false,
+    can_stop: false,
+  })
+  vi.mocked(api.getTorrentFiles).mockResolvedValueOnce([{
+    id: 3,
+    name: 'S01E01.mkv',
+    size_bytes: 100,
+    progress: 0,
+    priority: 0,
+    is_video: true,
+    duration_seconds: null,
+  }])
+  vi.mocked(api.analyzeEpisodeMatches).mockResolvedValueOnce({
+    task_id: 'season-task',
+    metadata_available: true,
+    requires_confirmation: false,
+    files: [1, 2].map((episode, index) => ({
+      file_id: index + 3,
+      file_path: `S01E0${episode}.mkv`,
+      confidence: 'exact' as const,
+      episodes: [{
+        season_number: 1,
+        episode_number: episode,
+        catalog_episode_id: 600 + episode,
+        name: `Episode ${episode}`,
+        runtime_minutes: 50,
+      }],
+      alternatives: [],
+      reasons: [],
+      confirmed: true,
+      confirmation: 'automatic' as const,
+      unsafe: false,
+      duration_seconds: null,
+    })),
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
+  })
+  await router.push('/series/42')
+  await router.isReady()
+
+  render(MediaDetailsPage, { global: { plugins: [router] } })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Скачать сезон' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Скачать сезон 1' })
+  await fireEvent.click(within(dialog).getByRole('button', { name: 'Скачать сезон' }))
+
+  await waitFor(() => expect(api.selectTorrentFile).toHaveBeenCalledWith('season-task', 3))
+  expect(api.configureTorrentPrefetch).toHaveBeenCalledWith('season-task', [3, 4])
+  expect(await screen.findByText(/Сезон 1 добавлен в загрузку. Эпизодов: 2/)).toBeTruthy()
 })
 
 test('restores the last season and reloads episodes after season selection', async () => {

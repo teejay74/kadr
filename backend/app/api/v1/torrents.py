@@ -14,7 +14,7 @@ from app.schemas.episode_matcher import (
     EpisodeMatchConfirmationRequest,
     EpisodeMatchReport,
 )
-from app.schemas.library import CacheFileDeletionResponse
+from app.schemas.library import CacheFileDeletionResponse, CacheTaskDeletionResponse
 from app.schemas.media import MediaKind
 from app.schemas.playback import (
     PlaybackSubtitlePreparation,
@@ -166,6 +166,17 @@ async def delete_torrent_file(
     file_id: Annotated[int, Path(ge=0)],
 ) -> CacheFileDeletionResponse:
     return await manager.delete_file(task_id, file_id)
+
+
+@router.delete(
+    "/torrents/{task_id}",
+    response_model=CacheTaskDeletionResponse,
+)
+async def delete_torrent_task(
+    manager: CacheManagerDependency,
+    task_id: str,
+) -> CacheTaskDeletionResponse:
+    return await manager.delete_task(task_id)
 
 
 @router.put("/torrents/{task_id}/selection", response_model=TorrentStatus)

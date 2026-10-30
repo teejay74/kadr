@@ -268,6 +268,7 @@ does not expose torrent hashes, source URIs, credentials, or filesystem paths.
 | `POST /torrents/{task_id}/episode-matches/analyze` | Analyze and safely persist unique exact episode matches |
 | `PUT /torrents/{task_id}/episode-matches` | Confirm one or more episode mappings per file |
 | `DELETE /torrents/{task_id}/files/{file_id}` | Delete one completed cached video |
+| `DELETE /torrents/{task_id}` | Delete one KADR torrent task and all of its qBittorrent data |
 | `PUT /torrents/{task_id}/selection` | Prioritize one supported video and optionally bind an episode |
 | `PUT /torrents/{task_id}/prefetch` | Replace the background episode prefetch queue |
 | `POST /torrents/{task_id}/start` | Start after selection and safety checks |
@@ -334,9 +335,16 @@ allowed only for a completed supported video inside KADR's configured download
 root. KADR refuses deletion while the task is streaming, while FFmpeg is
 preparing that file, or while the task backs a saved library item. A successful
 response reports the reclaimed bytes and whether the current player selection
-was cleared. Errors use `cache_file_not_found` (404),
-`cache_delete_conflict` (409), or `cache_storage_error` (500). There is no
-arbitrary whole-torrent delete endpoint.
+was cleared.
+
+Whole-task deletion requires a separate explicit request. KADR validates the
+stored download path against the configured KADR storage root, refuses removal
+during active streaming or compatible-version preparation, and protects every
+task referenced by a saved library item. On success it removes both the torrent
+data and task-scoped playback artifacts, cascades episode/file bindings, and
+returns `task_id` plus the best available
+`reclaimed_bytes` estimate. Errors use `cache_file_not_found` (404),
+`cache_delete_conflict` (409), or `cache_storage_error` (500).
 
 ## Streaming endpoint
 

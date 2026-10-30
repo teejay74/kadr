@@ -212,6 +212,26 @@ are disabled for that row. Check qBittorrent availability and its data volume;
 do not edit SQLite or expose the qBittorrent Web UI to the network. A normal
 source selection can create or reuse an available task.
 
+## “Скачать сезон” cannot queue the selected release
+
+The current media page searches the chosen season, waits for torrent metadata,
+and queues only safe video files that Episode Matcher confirmed for that
+season. If the confirmation dialog appears, review every ambiguous mapping and
+confirm the actual episodes. If KADR reports that it could not recognize the
+season, choose another release rather than enabling every torrent file: samples,
+bonuses, and unrelated seasons must remain excluded.
+
+## A whole download cannot be deleted
+
+The Downloads page requires two clicks: «Удалить загрузку», then the explicit
+confirmation that includes the currently downloaded byte count. A 409 response
+means the task is protected by active playback, compatible-version preparation,
+or a saved library item. Close the player or wait for preparation; delete the
+saved library item separately only when that is the intended action. A storage
+error means the stored task path did not validate beneath
+`KADR_TORRENT_STORAGE_ROOT`; do not bypass that boundary or delete Docker
+volumes manually.
+
 ## Player reports that the video stream cannot be opened
 
 Inspect the readiness and stream requests plus API logs. A 409

@@ -206,6 +206,11 @@ export interface CacheFileDeletion {
   selected_file_cleared: boolean
 }
 
+export interface CacheTaskDeletion {
+  task_id: string
+  reclaimed_bytes: number
+}
+
 export interface StreamReadiness {
   ready: boolean
   buffer_progress: number
