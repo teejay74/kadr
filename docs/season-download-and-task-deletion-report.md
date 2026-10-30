@@ -39,6 +39,24 @@ Date: 2026-10-30
   changing service state. No local KADR services were running, so runtime health
   could not be asserted in this workspace.
 
+## Deployment
+
+- Feature commit `52a94a5e3870267cb07ea79e8c9472c731ed2735` was pushed to
+  `origin/main` and deployed to the Debian host on 2026-10-30.
+- The pre-deployment audit confirmed separate KADR and Photodom Compose
+  projects, networks, storage paths, databases, and published ports.
+- A database backup was created at
+  `/srv/kadr/backups/kadr-pre-52a94a5-20261030-113715.db`; SQLite integrity
+  validation returned `ok`.
+- The exact server checkout passed 143 backend tests, 82 frontend tests, Ruff,
+  strict TypeScript, and the production frontend build.
+- Only the KADR `api` and `web` services were rebuilt and recreated. Both were
+  healthy after deployment; the API health endpoint reported an `ok` database,
+  the web entry point returned HTTP 200, and Alembic reported
+  `0007_playback_track_preferences (head)`.
+- qBittorrent, Prowlarr, FlareSolverr, and Photodom were not restarted or
+  modified. Their existing containers remained healthy.
+
 ## Known issues
 
 - Season download depends on filenames/metadata that Episode Matcher can
@@ -46,9 +64,9 @@ Date: 2026-10-30
   are not force-enabled.
 - `reclaimed_bytes` is qBittorrent's best available downloaded-byte estimate,
   not a post-deletion filesystem measurement.
-- Deployment to the Debian host is not part of this local implementation.
 
 ## Next actions
 
-- Perform one authorized end-to-end season queue and one disposable whole-task
-  deletion on the Debian host before calling the deployment accepted.
+- Perform one user-authorized end-to-end season queue and one disposable
+  whole-task deletion as a destructive production smoke test when suitable test
+  media is available.
