@@ -2,6 +2,21 @@
 
 Date: 2026-10-28
 
+## Native TV player controls stage — 2026-10-30
+
+- Replaced Media3's generic `PlayerView` controller with a Compose TV overlay
+  while retaining ExoPlayer as the playback engine.
+- Added a large title/episode header, played and buffered timeline, elapsed and
+  total time, buffering state, and persistent paused controls.
+- Added root-level remote handling for D-pad, OK, Play, Pause, and Play/Pause.
+- Repeated Left/Right presses accumulate a 10-second seek target and commit one
+  seek after 450 ms of inactivity, avoiding a decoder seek for every remote-key
+  repeat.
+- Back first dismisses the controls and a second Back exits the player through
+  the existing position-persistence path.
+- Added unit coverage for seek bounds, progress fractions, and TV time labels.
+- Increased the APK to version `0.5.0` (`versionCode 9`).
+
 ## Native playback continuity and library stage — 2026-10-29
 
 - Kept the display awake only while the fullscreen Media3 player is active,
@@ -120,7 +135,7 @@ Date: 2026-10-28
 
 ## Verification
 
-- `testDebugUnitTest`: passed (11 tests).
+- `testDebugUnitTest`: passed (14 tests).
 - `assembleDebug`: passed with Android SDK 36 and JDK 17.
 - `lintDebug`: passed without errors. Remaining warnings report the deliberately
   pinned SDK/Compose toolchain and available future dependency updates.
@@ -138,13 +153,15 @@ Date: 2026-10-28
   by the native client (2 saved items, 4 favorites, and 12 history entries at
   verification time).
 - Debug APK produced at
-  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,947,358 bytes,
-  SHA-256 `73709e94efd662198113750ced856cccb50a66981d8128d31ad4930504876c5a`).
+  `android-tv/app/build/outputs/apk/debug/app-debug.apk` (15,963,742 bytes,
+  SHA-256 `62ad946d60961c6f8d0531a256f056ccf8210387022530eec4835c22abddeca0`).
 - Physical Android TV installation and remote/device codec acceptance remain
   pending.
 
 ## Known limitations
 
+- The TV seek overlay shows the target timestamp but not thumbnail previews;
+  generating preview sprites remains a separate server/media-processing stage.
 - Combined files containing multiple episodes can be associated with the
   selected episode, but native chapter/time-boundary navigation is not yet
   available.

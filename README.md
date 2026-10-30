@@ -79,8 +79,10 @@ Native catalogue search covers films and series with TV-keyboard input. It is
 paired with cached posters, detail backdrops, and episode stills. The native
 library now reads saved files, favorites, and shared `default`-profile history;
 the player keeps the display awake, uses 10-second seeking, and writes resume
-progress back to the server. Native track workflows remain explicitly pending
-rather than represented by mocks.
+progress back to the server. Version 0.5.0 replaces the generic Media3 controls
+with a D-pad-first TV overlay showing title, episode, played/buffered timeline,
+time labels, pause, and buffering state. Native track workflows remain
+explicitly pending rather than represented by mocks.
 
 ## Quick start
 

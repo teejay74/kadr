@@ -134,7 +134,15 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 Screen.MATCH_FILES -> MatchFilesScreen(state, viewModel::selectEpisodeFile)
                 Screen.PREPARING -> PreparingScreen(state)
                 Screen.PLAYER -> state.playerUrl?.let { url ->
-                    PlayerScreen(url, state.resumePositionMs, viewModel::reportPlaybackProgress)
+                    PlayerScreen(
+                        streamUrl = url,
+                        resumePositionMs = state.resumePositionMs,
+                        title = state.playerMedia?.title.orEmpty(),
+                        episodeLabel = state.playerEpisode?.let { episode ->
+                            "Сезон ${episode.seasonNumber} · Серия ${episode.number} · ${episode.name}"
+                        },
+                        onProgress = viewModel::reportPlaybackProgress,
+                    )
                 }
             }
             if (state.loading) LoadingOverlay()
