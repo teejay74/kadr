@@ -95,9 +95,10 @@ The catalogue also has dedicated **Новинки** and **Мультфильмы
 Movie новинки require a regional digital release rather than a theatrical-only
 premiere.
 Cartoons can be filtered by the Russian 0+/6+/12+/16+/18+ certification where
-TMDB supplies it. An optional server-side Kinopoisk Unofficial key improves
-Russian-title search by resolving Russian and original aliases back to
-canonical TMDB entries; KADR continues to use TMDB IDs everywhere else.
+TMDB supplies it. With an optional server-side Kinopoisk Unofficial key, exact
+Russian-title matches that are absent from TMDB are returned as normalized KADR
+cards with details, posters, seasons, and episodes. Provider IDs are namespaced
+internally so they cannot collide with TMDB IDs.
 
 ## Quick start
 

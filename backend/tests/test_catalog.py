@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +14,8 @@ from app.main import app
 from app.models.metadata_cache import MetadataCache
 from app.repositories.metadata_cache import MetadataCacheRepository
 from app.services.metadata.catalog import CatalogService
-from app.services.metadata.exceptions import MetadataUnavailableError
-from app.services.metadata.kinopoisk import KinopoiskAliasClient, SearchAlias
+from app.services.metadata.exceptions import MetadataNotConfiguredError, MetadataUnavailableError
+from app.services.metadata.kinopoisk import KinopoiskClient
 from app.services.metadata.tmdb import TMDBClient
 
 
@@ -31,11 +32,14 @@ class FakeTMDBClient:
         return self.payload
 
 
-class FakeAliasProvider:
-    async def aliases(self, query: str, kind: str) -> list[SearchAlias]:
-        assert query == "Брат"
-        assert kind == "movie"
-        return [SearchAlias(("Brother",), 1997)]
+class FakeKinopoiskClient:
+    def __init__(self, payloads: dict[str, dict[str, Any]]) -> None:
+        self.payloads = payloads
+        self.calls: list[tuple[str, dict[str, str | int | bool]]] = []
+
+    async def get(self, path: str, params: dict[str, str | int | bool]) -> dict[str, Any]:
+        self.calls.append((path, params))
+        return self.payloads[path]
 
 
 def movie_page_payload() -> dict[str, Any]:
@@ -158,21 +162,47 @@ async def test_search_uses_kinopoisk_alias_but_keeps_tmdb_identity(
 ) -> None:
     empty_payload = {"page": 1, "total_pages": 0, "total_results": 0, "results": []}
     fake_client = FakeTMDBClient(empty_payload)
+    fake_kinopoisk = FakeKinopoiskClient(
+        {
+            "/api/v2.1/films/search-by-keyword": {
+                "films": [
+                    {
+                        "filmId": 1,
+                        "nameRu": "Брат",
+                        "nameEn": "Brother",
+                        "year": "1997",
+                        "type": "FILM",
+                    }
+                ]
+            }
+        }
+    )
     service = CatalogService(
         fake_client,
         MetadataCacheRepository(session),
         Settings(),
-        FakeAliasProvider(),  # type: ignore[arg-type]
+        fake_kinopoisk,
     )
-    fake_client.payload = movie_page_payload()
-    # Prime only the aliased response; the direct query uses a distinct cache key.
-    fake_client.payload = empty_payload
 
     original_get = fake_client.get
 
     async def get(path: str, params: dict[str, str | int | bool]) -> dict[str, Any]:
         payload = await original_get(path, params)
-        return movie_page_payload() if params.get("query") == "Brother" else payload
+        if params.get("query") != "Brother":
+            return payload
+        return {
+            "page": 1,
+            "total_pages": 1,
+            "total_results": 1,
+            "results": [
+                {
+                    "id": 11,
+                    "title": "Брат",
+                    "original_title": "Brother",
+                    "release_date": "1997-12-12",
+                }
+            ],
+        }
 
     fake_client.get = get  # type: ignore[method-assign]
     result = await service.search("movie", "Брат", page=1, year=None)
@@ -182,7 +212,7 @@ async def test_search_uses_kinopoisk_alias_but_keeps_tmdb_identity(
     assert fake_client.calls[1][1]["year"] == 1997
 
 
-async def test_kinopoisk_alias_client_is_optional_and_normalizes_titles() -> None:
+async def test_kinopoisk_client_requires_key_and_authenticates() -> None:
     calls = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -206,13 +236,125 @@ async def test_kinopoisk_alias_client_is_optional_and_normalizes_titles() -> Non
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="https://kp.example") as http_client:
-        disabled = KinopoiskAliasClient(http_client, Settings())
-        assert await disabled.aliases("Брат", "movie") == []
-        enabled = KinopoiskAliasClient(http_client, Settings(kinopoisk_api_key="kp-secret"))
-        aliases = await enabled.aliases("Брат", "movie")
+        disabled = KinopoiskClient(http_client, Settings())
+        with pytest.raises(MetadataNotConfiguredError):
+            await disabled.get("/api/v2.1/films/search-by-keyword", {"keyword": "Брат"})
+        enabled = KinopoiskClient(http_client, Settings(kinopoisk_api_key="kp-secret"))
+        payload = await enabled.get(
+            "/api/v2.1/films/search-by-keyword",
+            {"keyword": "Брат"},
+        )
 
     assert calls == 1
-    assert aliases == [SearchAlias(("Брат", "Brother"), 1997)]
+    assert payload["films"][0]["nameEn"] == "Brother"
+
+
+async def test_search_returns_exact_kinopoisk_fallback_and_rejects_fuzzy_results(
+    session: AsyncSession,
+) -> None:
+    empty_payload = {"page": 1, "total_pages": 0, "total_results": 0, "results": []}
+    fake_kinopoisk = FakeKinopoiskClient(
+        {
+            "/api/v2.1/films/search-by-keyword": {
+                "films": [
+                    {
+                        "filmId": 1_115_558,
+                        "nameRu": "Котёнок Котэ",
+                        "nameEn": "Kote TV",
+                        "year": "2015",
+                        "type": "TV_SERIES",
+                        "description": "Музыкальные видео для малышей.",
+                        "posterUrlPreview": "https://kp.example/kote-small.jpg",
+                        "rating": "8.0",
+                        "genres": [{"genre": "мультфильм"}],
+                    },
+                    {
+                        "filmId": 2,
+                        "nameRu": "Разрешите обратиться",
+                        "year": "2023",
+                        "type": "TV_SERIES",
+                    },
+                ]
+            }
+        }
+    )
+    service = CatalogService(
+        FakeTMDBClient(empty_payload),
+        MetadataCacheRepository(session),
+        Settings(),
+        fake_kinopoisk,
+    )
+
+    result = await service.search("series", "Котенок Котэ", page=1, year=None)
+
+    assert [(item.id, item.title, item.year) for item in result.items] == [
+        (1_501_115_558, "Котёнок Котэ", 2015)
+    ]
+    assert result.items[0].poster_url == "https://kp.example/kote-small.jpg"
+
+
+async def test_kinopoisk_fallback_provides_details_and_season_metadata(
+    session: AsyncSession,
+) -> None:
+    kinopoisk_id = 1_115_558
+    public_id = 1_501_115_558
+    fake_kinopoisk = FakeKinopoiskClient(
+        {
+            f"/api/v2.2/films/{kinopoisk_id}": {
+                "kinopoiskId": kinopoisk_id,
+                "nameRu": "Котёнок Котэ",
+                "nameOriginal": "Kote TV",
+                "year": 2015,
+                "type": "TV_SERIES",
+                "description": "Музыкальный проект и канал.",
+                "posterUrl": "https://kp.example/kote.jpg",
+                "coverUrl": "https://kp.example/kote-cover.jpg",
+                "ratingKinopoisk": 8.0,
+                "ratingKinopoiskVoteCount": 1_200,
+                "genres": [{"genre": "мультфильм"}, {"genre": "детский"}],
+                "countries": [{"country": "Россия"}],
+                "completed": True,
+            },
+            f"/api/v2.2/films/{kinopoisk_id}/seasons": {
+                "total": 1,
+                "items": [
+                    {
+                        "number": 1,
+                        "episodes": [
+                            {
+                                "seasonNumber": 1,
+                                "episodeNumber": 1,
+                                "nameRu": "Светофор",
+                                "synopsis": "Зачем нужен светофор?",
+                                "releaseDate": "2015-01-01",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    )
+    service = CatalogService(
+        FakeTMDBClient({}),
+        MetadataCacheRepository(session),
+        Settings(),
+        fake_kinopoisk,
+    )
+
+    details = await service.details("series", public_id)
+    season = await service.season(public_id, 1)
+
+    assert details.title == "Котёнок Котэ"
+    assert details.original_title == "Kote TV"
+    assert details.season_count == 1
+    assert details.episode_count == 1
+    assert details.status == "Завершён"
+    assert [genre.name for genre in details.genres] == ["мультфильм", "детский"]
+    assert season.series_id == public_id
+    assert [(item.number, item.name) for item in season.episodes] == [(1, "Светофор")]
+    assert [call[0] for call in fake_kinopoisk.calls].count(
+        f"/api/v2.2/films/{kinopoisk_id}/seasons"
+    ) == 1
 
 
 async def test_series_season_endpoint_normalizes_and_caches_episodes(

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
+import zlib
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
 
@@ -19,12 +21,18 @@ from app.schemas.media import (
     SeasonDetails,
     SeasonSummary,
 )
-from app.services.metadata.exceptions import MetadataUnavailableError
-from app.services.metadata.kinopoisk import SearchAlias
+from app.services.metadata.exceptions import (
+    MetadataError,
+    MetadataNotConfiguredError,
+    MetadataNotFoundError,
+    MetadataUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 SortMode = Literal["popular", "rating", "newest"]
 AgeRating = Literal["0+", "6+", "12+", "16+", "18+"]
+KINOPOISK_ID_OFFSET = 1_500_000_000
+MAX_PUBLIC_MEDIA_ID = 2_147_483_647
 
 
 class MetadataProvider(Protocol):
@@ -35,22 +43,18 @@ class MetadataProvider(Protocol):
     ) -> dict[str, Any]: ...
 
 
-class SearchAliasProvider(Protocol):
-    async def aliases(self, query: str, kind: MediaKind) -> list[SearchAlias]: ...
-
-
 class CatalogService:
     def __init__(
         self,
         client: MetadataProvider,
         cache: MetadataCacheRepository,
         settings: Settings,
-        alias_provider: SearchAliasProvider | None = None,
+        kinopoisk_client: MetadataProvider | None = None,
     ) -> None:
         self._client = client
         self._cache = cache
         self._settings = settings
-        self._alias_provider = alias_provider
+        self._kinopoisk_client = kinopoisk_client
 
     async def list_media(
         self,
@@ -116,7 +120,7 @@ class CatalogService:
         tmdb_kind = "movie" if kind == "movie" else "tv"
         payload = await self._request(f"/search/{tmdb_kind}", params)
         page_result = self._page(payload, kind)
-        if page != 1 or self._alias_provider is None or len(page_result.items) >= 20:
+        if page != 1 or self._kinopoisk_client is None:
             return page_result
         return await self._enrich_search(page_result, kind, query, year, tmdb_kind)
 
@@ -128,17 +132,40 @@ class CatalogService:
         year: int | None,
         tmdb_kind: str,
     ) -> MediaPage:
-        aliases = await self._alias_provider.aliases(query, kind)
+        try:
+            payload = await self._kinopoisk_request(
+                "/api/v2.1/films/search-by-keyword",
+                {"keyword": query, "page": 1},
+            )
+        except MetadataNotConfiguredError:
+            return primary
+        except MetadataError:
+            logger.warning("Kinopoisk search fallback failed", exc_info=True)
+            return primary
+
+        raw_films = payload.get("films")
+        if not isinstance(raw_films, list):
+            return primary
+
         items = list(primary.items)
         known_ids = {item.id for item in items}
         searched = {query.casefold()}
         alias_searches = 0
-        for alias in aliases:
-            for title in alias.titles:
+        candidates = [
+            item
+            for item in raw_films
+            if isinstance(item, dict)
+            and self._kinopoisk_matches_kind(item, kind)
+            and self._kinopoisk_matches_query(item, query)
+        ][: self._settings.kinopoisk_search_alias_limit]
+        for candidate in candidates:
+            titles = self._kinopoisk_titles(candidate)
+            candidate_year = year or self._int_year(candidate.get("year"))
+            matched_tmdb = False
+            for title in titles:
                 normalized = title.casefold()
                 if (
                     normalized in searched
-                    or len(items) >= 20
                     or alias_searches >= self._settings.kinopoisk_search_alias_limit
                 ):
                     continue
@@ -150,16 +177,22 @@ class CatalogService:
                     "include_adult": False,
                     "region": self._settings.tmdb_region,
                 }
-                candidate_year = year or alias.year
                 if candidate_year is not None:
                     params["year" if kind == "movie" else "first_air_date_year"] = candidate_year
                 extra = self._page(await self._request(f"/search/{tmdb_kind}", params), kind)
                 for item in extra.items:
-                    if item.id not in known_ids:
+                    if self._media_matches_title(item, title) and item.id not in known_ids:
                         known_ids.add(item.id)
                         items.append(item)
-                        if len(items) >= 20:
-                            break
+                        matched_tmdb = True
+            if not matched_tmdb:
+                fallback = self._kinopoisk_card(candidate, kind)
+                if fallback is not None and fallback.id not in known_ids:
+                    duplicate = any(self._same_catalogue_title(item, fallback) for item in items)
+                    if not duplicate:
+                        known_ids.add(fallback.id)
+                        items.insert(0, fallback)
+        items = items[:20]
         return MediaPage(
             items=items,
             page=primary.page,
@@ -168,6 +201,8 @@ class CatalogService:
         )
 
     async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+        if self._is_kinopoisk_id(media_id):
+            return await self._kinopoisk_details(kind, media_id)
         tmdb_kind = "movie" if kind == "movie" else "tv"
         payload = await self._request(
             f"/{tmdb_kind}/{media_id}",
@@ -176,6 +211,8 @@ class CatalogService:
         return self._details(payload, kind)
 
     async def season(self, media_id: int, season_number: int) -> SeasonDetails:
+        if self._is_kinopoisk_id(media_id):
+            return await self._kinopoisk_season(media_id, season_number)
         payload = await self._request(f"/tv/{media_id}/season/{season_number}", {})
         return self._season(payload, media_id, season_number)
 
@@ -190,8 +227,33 @@ class CatalogService:
         path: str,
         params: dict[str, str | int | bool],
     ) -> dict[str, Any]:
+        return await self._cached_request(
+            "tmdb",
+            self._client,
+            path,
+            params,
+            self._settings.tmdb_language,
+        )
+
+    async def _kinopoisk_request(
+        self,
+        path: str,
+        params: dict[str, str | int | bool],
+    ) -> dict[str, Any]:
+        if self._kinopoisk_client is None:
+            raise MetadataNotFoundError("Kinopoisk metadata provider is unavailable")
+        return await self._cached_request("kinopoisk", self._kinopoisk_client, path, params, None)
+
+    async def _cached_request(
+        self,
+        provider_name: str,
+        provider: MetadataProvider,
+        path: str,
+        params: dict[str, str | int | bool],
+        language: str | None,
+    ) -> dict[str, Any]:
         cache_material = json.dumps(
-            [path, self._settings.tmdb_language, params],
+            [provider_name, path, language, params],
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -200,11 +262,11 @@ class CatalogService:
         if cached is not None:
             return cached
         try:
-            payload = await self._client.get(path, params)
+            payload = await provider.get(path, params)
         except MetadataUnavailableError:
             stale = await self._cache.get(key, allow_expired=True)
             if stale is not None:
-                logger.warning("Serving stale TMDB cache for %s", path)
+                logger.warning("Serving stale %s cache for %s", provider_name, path)
                 return stale
             raise
         await self._cache.set(key, payload, self._settings.metadata_cache_ttl_seconds)
@@ -329,6 +391,287 @@ class CatalogService:
             poster_url=self._image(payload.get("poster_path"), "w342"),
             episodes=episodes,
         )
+
+    async def _kinopoisk_details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+        kinopoisk_id = media_id - KINOPOISK_ID_OFFSET
+        payload = await self._kinopoisk_request(f"/api/v2.2/films/{kinopoisk_id}", {})
+        if not self._kinopoisk_matches_kind(payload, kind):
+            raise MetadataNotFoundError("Media kind does not match Kinopoisk metadata")
+        card = self._kinopoisk_card(payload, kind)
+        if card is None:
+            raise MetadataNotFoundError("Kinopoisk media ID is outside the supported range")
+
+        season_items: list[dict[str, Any]] = []
+        if kind == "series":
+            season_payload = await self._kinopoisk_request(
+                f"/api/v2.2/films/{kinopoisk_id}/seasons",
+                {},
+            )
+            raw_seasons = season_payload.get("items")
+            if isinstance(raw_seasons, list):
+                season_items = [item for item in raw_seasons if isinstance(item, dict)]
+
+        seasons = [self._kinopoisk_season_summary(media_id, item) for item in season_items]
+        genres = [
+            Genre(id=self._kinopoisk_genre_id(name), name=name)
+            for name in self._kinopoisk_genre_names(payload)
+        ]
+        runtime = self._int_value(payload.get("filmLength"))
+        completed = payload.get("completed") is True
+        status = self._optional_text(payload.get("productionStatus"))
+        if status is None and completed:
+            status = "Завершён"
+        elif status is None and kind == "series":
+            status = "Продолжается"
+        return MediaDetails(
+            **card.model_dump(),
+            genres=genres,
+            runtime_minutes=runtime,
+            status=status,
+            tagline=self._optional_text(payload.get("slogan")),
+            cast=[],
+            trailer_url=None,
+            seasons=seasons,
+            season_count=len(seasons) if kind == "series" else None,
+            episode_count=(
+                sum(len(item.get("episodes") or []) for item in season_items)
+                if kind == "series"
+                else None
+            ),
+        )
+
+    async def _kinopoisk_season(
+        self,
+        media_id: int,
+        season_number: int,
+    ) -> SeasonDetails:
+        kinopoisk_id = media_id - KINOPOISK_ID_OFFSET
+        payload = await self._kinopoisk_request(
+            f"/api/v2.2/films/{kinopoisk_id}/seasons",
+            {},
+        )
+        raw_seasons = payload.get("items")
+        seasons = raw_seasons if isinstance(raw_seasons, list) else []
+        season = next(
+            (
+                item
+                for item in seasons
+                if isinstance(item, dict) and self._int_value(item.get("number")) == season_number
+            ),
+            None,
+        )
+        if season is None:
+            raise MetadataNotFoundError("Season was not found")
+        raw_episodes = season.get("episodes")
+        episode_items = raw_episodes if isinstance(raw_episodes, list) else []
+        episodes = [
+            EpisodeSummary(
+                id=self._stable_id(
+                    f"kinopoisk:{kinopoisk_id}:{season_number}:{episode_number}"
+                ),
+                season_number=season_number,
+                number=episode_number,
+                name=str(
+                    item.get("nameRu")
+                    or item.get("nameEn")
+                    or f"Серия {episode_number}"
+                ),
+                overview=str(item.get("synopsis") or ""),
+                air_date=self._optional_text(item.get("releaseDate")),
+                runtime_minutes=None,
+                still_url=None,
+                rating=0,
+            )
+            for item in episode_items
+            if isinstance(item, dict)
+            and (episode_number := self._int_value(item.get("episodeNumber"))) is not None
+        ]
+        air_dates = [item.air_date for item in episodes if item.air_date]
+        return SeasonDetails(
+            id=self._stable_id(f"kinopoisk:{kinopoisk_id}:{season_number}"),
+            series_id=media_id,
+            number=season_number,
+            name=f"Сезон {season_number}",
+            overview="",
+            air_date=min(air_dates) if air_dates else None,
+            poster_url=None,
+            episodes=episodes,
+        )
+
+    def _kinopoisk_card(
+        self,
+        payload: dict[str, Any],
+        kind: MediaKind,
+    ) -> MediaCard | None:
+        raw_id = payload.get("kinopoiskId", payload.get("filmId"))
+        kinopoisk_id = self._int_value(raw_id)
+        if kinopoisk_id is None:
+            return None
+        public_id = self._encode_kinopoisk_id(kinopoisk_id)
+        if public_id is None:
+            return None
+        titles = self._kinopoisk_titles(payload)
+        title = self._optional_text(payload.get("nameRu")) or (
+            titles[0] if titles else "Без названия"
+        )
+        original_title = (
+            self._optional_text(payload.get("nameOriginal"))
+            or self._optional_text(payload.get("nameEn"))
+            or title
+        )
+        year = self._int_year(payload.get("year")) or self._int_year(payload.get("startYear"))
+        genre_names = self._kinopoisk_genre_names(payload)
+        return MediaCard(
+            id=public_id,
+            kind=kind,
+            title=title,
+            original_title=original_title,
+            overview=str(payload.get("description") or payload.get("shortDescription") or ""),
+            release_date=None,
+            year=year,
+            poster_url=(
+                self._optional_text(payload.get("posterUrlPreview"))
+                or self._optional_text(payload.get("posterUrl"))
+            ),
+            backdrop_url=self._optional_text(payload.get("coverUrl")),
+            rating=self._float_value(
+                payload.get("ratingKinopoisk", payload.get("rating"))
+            ),
+            popularity=self._float_value(
+                payload.get("ratingKinopoiskVoteCount", payload.get("ratingVoteCount"))
+            ),
+            genre_ids=[self._kinopoisk_genre_id(name) for name in genre_names],
+        )
+
+    def _kinopoisk_season_summary(
+        self,
+        media_id: int,
+        payload: dict[str, Any],
+    ) -> SeasonSummary:
+        number = self._int_value(payload.get("number")) or 0
+        raw_episodes = payload.get("episodes")
+        episodes = raw_episodes if isinstance(raw_episodes, list) else []
+        air_dates = [
+            date
+            for item in episodes
+            if isinstance(item, dict)
+            and (date := self._optional_text(item.get("releaseDate"))) is not None
+        ]
+        return SeasonSummary(
+            id=self._stable_id(f"kinopoisk:{media_id}:{number}"),
+            number=number,
+            name=f"Сезон {number}",
+            episode_count=len(episodes),
+            air_date=min(air_dates) if air_dates else None,
+            poster_url=None,
+        )
+
+    @classmethod
+    def _kinopoisk_matches_query(cls, payload: dict[str, Any], query: str) -> bool:
+        normalized_query = cls._normalize_title(query)
+        if not normalized_query:
+            return False
+        return any(
+            normalized_query == normalized_title
+            or (
+                len(normalized_query) >= 4
+                and (
+                    normalized_query in normalized_title
+                    or normalized_title in normalized_query
+                )
+            )
+            for title in cls._kinopoisk_titles(payload)
+            if (normalized_title := cls._normalize_title(title))
+        )
+
+    @staticmethod
+    def _kinopoisk_matches_kind(payload: dict[str, Any], kind: MediaKind) -> bool:
+        media_type = str(payload.get("type") or "").upper()
+        series_types = {"TV_SERIES", "MINI_SERIES", "TV_SHOW"}
+        return (media_type in series_types) == (kind == "series")
+
+    @staticmethod
+    def _kinopoisk_titles(payload: dict[str, Any]) -> tuple[str, ...]:
+        result: list[str] = []
+        for field in ("nameRu", "nameEn", "nameOriginal"):
+            value = payload.get(field)
+            if isinstance(value, str) and value.strip() and value.strip() not in result:
+                result.append(value.strip())
+        return tuple(result)
+
+    @staticmethod
+    def _kinopoisk_genre_names(payload: dict[str, Any]) -> list[str]:
+        raw_genres = payload.get("genres")
+        if not isinstance(raw_genres, list):
+            return []
+        return [
+            name
+            for item in raw_genres
+            if isinstance(item, dict)
+            and (name := item.get("genre"))
+            and isinstance(name, str)
+        ]
+
+    @classmethod
+    def _media_matches_title(cls, media: MediaCard, title: str) -> bool:
+        expected = cls._normalize_title(title)
+        return expected in {
+            cls._normalize_title(media.title),
+            cls._normalize_title(media.original_title),
+        }
+
+    @classmethod
+    def _same_catalogue_title(cls, first: MediaCard, second: MediaCard) -> bool:
+        first_titles = {
+            cls._normalize_title(first.title),
+            cls._normalize_title(first.original_title),
+        }
+        second_titles = {
+            cls._normalize_title(second.title),
+            cls._normalize_title(second.original_title),
+        }
+        same_year = first.year is None or second.year is None or first.year == second.year
+        return same_year and bool((first_titles - {""}) & (second_titles - {""}))
+
+    @staticmethod
+    def _normalize_title(value: str) -> str:
+        return re.sub(r"[^0-9a-zа-я]+", " ", value.casefold().replace("ё", "е")).strip()
+
+    @staticmethod
+    def _encode_kinopoisk_id(kinopoisk_id: int) -> int | None:
+        public_id = KINOPOISK_ID_OFFSET + kinopoisk_id
+        return public_id if 0 < kinopoisk_id and public_id <= MAX_PUBLIC_MEDIA_ID else None
+
+    @staticmethod
+    def _is_kinopoisk_id(media_id: int) -> bool:
+        return KINOPOISK_ID_OFFSET < media_id <= MAX_PUBLIC_MEDIA_ID
+
+    @staticmethod
+    def _kinopoisk_genre_id(name: str) -> int:
+        return -(zlib.crc32(name.casefold().encode()) & 0x7FFFFFFF or 1)
+
+    @staticmethod
+    def _stable_id(material: str) -> int:
+        return zlib.crc32(material.encode()) & 0x7FFFFFFF or 1
+
+    @staticmethod
+    def _int_year(value: object) -> int | None:
+        text = str(value or "")[:4]
+        return int(text) if text.isdigit() else None
+
+    @staticmethod
+    def _int_value(value: object) -> int | None:
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _float_value(value: object) -> float:
+        try:
+            return float(value) if value is not None else 0
+        except (TypeError, ValueError):
+            return 0
 
     def _image(self, path: object, size: str) -> str | None:
         if not isinstance(path, str):

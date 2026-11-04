@@ -37,11 +37,19 @@ outbound DNS/HTTPS, the token, and TMDB availability. KADR serves a previously
 cached response during a temporary provider outage when one exists; otherwise
 it returns a controlled `502`. Do not increase polling frequency as a remedy.
 
+For a Russian title missing from TMDB, verify that
+`KADR_KINOPOISK_API_KEY` is present without printing its value, recreate only
+the API container, and repeat the search. KADR accepts only title-compatible
+Kinopoisk results; unrelated fuzzy matches are intentionally discarded. A
+Kinopoisk-backed result uses a namespaced KADR catalogue ID and must be opened
+through the ID returned by search rather than a raw Kinopoisk ID.
+
 ## A series season has no episode list
 
 Retry the season from the series page, then inspect the request to
 `GET /api/v1/series/{id}/seasons/{season_number}` and the API logs. A controlled
-metadata error means TMDB is unavailable and no cached season response exists.
+metadata error means the owning metadata provider is unavailable and no cached
+season response exists.
 An empty episode list is preserved as an honest provider result; KADR does not
 generate placeholder episodes. Episode metadata is independent of torrent file
 discovery, so Prowlarr and qBittorrent settings do not repair this error.

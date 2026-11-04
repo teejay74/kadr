@@ -37,15 +37,19 @@ bridge network. SQLite lives in `data/database/kadr.db`, a bind mount outside
 the container. Alembic upgrades the schema before Uvicorn starts.
 
 The backend is split into API, schema, service, repository, model, and core
-layers. Thin catalogue controllers call `CatalogService`; it depends on a TMDB
-adapter and a metadata-cache repository. Requests have a strict timeout, use a
-short-lived persistent cache, and may serve expired cached metadata only while
-TMDB is unavailable. The token never reaches the browser.
-An optional `KinopoiskAliasClient` is a bounded search-enrichment adapter: one
-keyword lookup yields at most three alias searches, then results are resolved
-and deduplicated by canonical TMDB ID. Its key remains server-side and failure
-is non-fatal. New-release and animation/age filters stay in `CatalogService`,
-so controllers remain thin and the frontend does not know provider syntax.
+layers. Thin catalogue controllers call `CatalogService`; it depends on TMDB
+and optional Kinopoisk Unofficial transport adapters plus a metadata-cache
+repository. Requests have strict timeouts, use a short-lived persistent cache,
+and may serve expired cached metadata during a temporary provider outage.
+Credentials never reach the browser.
+Kinopoisk fallback is bounded to type-compatible, normalized title matches and
+rejects unrelated fuzzy results. A matching TMDB identity remains preferred;
+otherwise the service normalizes the Kinopoisk card, details, seasons, and
+episodes. Provider IDs are mapped into a reserved positive KADR ID range so
+existing detail, source-search, library, web, and Android TV flows cannot
+confuse them with TMDB IDs. New-release and animation/age filters stay in
+`CatalogService`, so controllers remain thin and clients do not know provider
+syntax.
 
 The responsive frontend uses Vue Router, Composition API, strict TypeScript,
 reusable media components, and a dedicated API client. It provides home rails,

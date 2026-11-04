@@ -23,7 +23,7 @@ FastAPI provides an OpenAPI schema at `/openapi.json` and interactive docs at
 
 ## Catalogue endpoints
 
-All catalogue responses are normalized by KADR; TMDB credentials and raw
+All catalogue responses are normalized by KADR; provider credentials and raw
 provider errors are never returned to the browser.
 
 | Method and path | Purpose | Parameters |
@@ -34,9 +34,9 @@ provider errors are never returned to the browser.
 | `GET /series/search` | Search series | `q`, `page`, optional `year` |
 | `GET /movies/genres` | Film genres | none |
 | `GET /series/genres` | Series genres | none |
-| `GET /movies/{id}` | Film details, cast, trailer | positive TMDB ID |
-| `GET /series/{id}` | Series details, cast, trailer, seasons | positive TMDB ID |
-| `GET /series/{id}/seasons/{season_number}` | Normalized season and episode metadata | positive TMDB ID; season `0`-`100` |
+| `GET /movies/{id}` | Film details, cast, trailer | positive KADR catalogue ID |
+| `GET /series/{id}` | Series details, cast, trailer, seasons | positive KADR catalogue ID |
+| `GET /series/{id}/seasons/{season_number}` | Normalized season and episode metadata | positive KADR catalogue ID; season `0`-`100` |
 
 `sort` accepts `popular`, `rating`, or `newest`. Pages are limited to TMDB's
 first 500 result pages. Invalid query values use FastAPI's validation response.
@@ -48,11 +48,15 @@ theatrical premieres; for series it uses first-air dates. The web client's
 genre `16` and applies the age filter to films. TV discovery does not expose a
 compatible Russian certification filter, so series are not falsely age-rated.
 
-When `KADR_KINOPOISK_API_KEY` is configured, first-page text search may use up
-to three Russian/original title aliases from Kinopoisk Unofficial to perform
-additional TMDB searches. Results are deduplicated and remain canonical TMDB
-objects. Missing credentials or a secondary-provider failure does not disable
-ordinary TMDB search.
+When `KADR_KINOPOISK_API_KEY` is configured, first-page text search checks up
+to three type-compatible Kinopoisk Unofficial matches. Only normalized exact or
+contained title matches are accepted; unrelated fuzzy provider results are
+discarded. KADR prefers a matching TMDB object, but creates a normalized
+Kinopoisk-backed card when TMDB has no corresponding title. These cards support
+details, posters, series seasons, episodes, and source search. KADR uses a
+reserved positive internal ID range to prevent provider-ID collisions. Missing
+credentials or a secondary-provider failure does not disable ordinary TMDB
+search. Both providers use the persistent metadata cache.
 
 Season details contain the series and season identity plus normalized episodes:
 
