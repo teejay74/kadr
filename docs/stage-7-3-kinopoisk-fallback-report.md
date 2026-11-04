@@ -53,6 +53,23 @@ Date: 2026-11-04
 - Post-deployment checks passed: every KADR service and the separate Photodom
   container remained healthy; the production checkout was clean at commit
   `9919d5796ee843bb42e8b88e722cc7e8ad766022`.
+- Follow-up Episode Matcher deployment completed at commit
+  `3e5623d51f00804340a51109a894e9eef65d0fbd`. Before the update the affected
+  live «Котёнок Котэ» task returned 270 files with
+  `metadata_available=false` and zero episode options. After the update it
+  returns `metadata_available=true` and options for all 270 files: 188
+  probable matches and 82 ambiguous matches requiring explicit confirmation.
+  The live examples resolve `Плохие птицы` to season 5 episode 1 and offer
+  catalogue candidates for the ambiguous `Трактор` filename. Analysis
+  completed in 5.026 seconds.
+- The follow-up deployment rebuilt only the KADR API and web containers. Both
+  are healthy, Alembic remains at `0007_playback_track_preferences (head)`,
+  all supporting KADR services remain healthy, and Photodom remains healthy
+  and untouched.
+- The follow-up pre-deployment backup is
+  `/srv/kadr/backups/kadr-pre-episode-matcher-20261104-212518.db`; integrity
+  check returned `ok`, SHA-256:
+  `76ab8691739983ea0b644c340e0615ea69fe1c8f3823402d29a50fc30b80f108`.
 - A repeat server-side Pytest image build was cancelled after the production
   dependency layer completed because the external PyPI transfer stalled while
   downloading the dev-only Ruff wheel. This did not affect the runtime build;
