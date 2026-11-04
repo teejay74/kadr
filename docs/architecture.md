@@ -41,11 +41,17 @@ layers. Thin catalogue controllers call `CatalogService`; it depends on a TMDB
 adapter and a metadata-cache repository. Requests have a strict timeout, use a
 short-lived persistent cache, and may serve expired cached metadata only while
 TMDB is unavailable. The token never reaches the browser.
+An optional `KinopoiskAliasClient` is a bounded search-enrichment adapter: one
+keyword lookup yields at most three alias searches, then results are resolved
+and deduplicated by canonical TMDB ID. Its key remains server-side and failure
+is non-fatal. New-release and animation/age filters stay in `CatalogService`,
+so controllers remain thin and the frontend does not know provider syntax.
 
 The responsive frontend uses Vue Router, Composition API, strict TypeScript,
 reusable media components, and a dedicated API client. It provides home rails,
 film and series catalogues, filters, pagination, search, detail pages, cast and
-season summaries. UI redesign substage B1 separates the shared hero, actions,
+season summaries, plus dedicated new-release and cartoon views. UI redesign
+substage B1 separates the shared hero, actions,
 play button, cast carousel, season selector, episode list/cards, playback
 progress, and media status into focused components. A series season is loaded
 on demand from the metadata service and the last selected season is remembered

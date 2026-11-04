@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     tmdb_language: str = "ru-RU"
     tmdb_region: str = "RU"
     tmdb_timeout_seconds: float = Field(default=8, gt=0, le=30)
+    kinopoisk_api_key: SecretStr | None = None
+    kinopoisk_base_url: str = "https://kinopoiskapiunofficial.tech"
+    kinopoisk_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    kinopoisk_search_alias_limit: int = Field(default=3, ge=1, le=5)
     metadata_cache_ttl_seconds: int = Field(default=21_600, ge=300, le=15_552_000)
     prowlarr_base_url: str = "http://prowlarr:9696"
     prowlarr_api_key: SecretStr | None = None

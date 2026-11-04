@@ -19,7 +19,7 @@ async function loadHome(): Promise<void> {
   try {
     const [movies, newest, series] = await Promise.all([
       getMediaPage('movie', { sort: 'popular' }),
-      getMediaPage('movie', { sort: 'newest' }),
+      getMediaPage('movie', { sort: 'newest', releasedWithinDays: 365 }),
       getMediaPage('series', { sort: 'popular' }),
     ])
     popularMovies.value = movies.items
@@ -62,7 +62,7 @@ onMounted(loadHome)
 
     <div class="content-stack">
       <MediaRail title="Популярные фильмы" :items="popularMovies" more-to="/movies" />
-      <MediaRail title="Новинки" :items="newMovies" more-to="/movies?sort=newest" />
+      <MediaRail title="Новинки" :items="newMovies" more-to="/new" />
       <MediaRail title="Сериалы" :items="popularSeries" more-to="/series" />
     </div>
   </div>

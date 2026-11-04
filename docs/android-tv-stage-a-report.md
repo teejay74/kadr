@@ -2,6 +2,20 @@
 
 Date: 2026-10-28
 
+## Catalogue discovery follow-up — 2026-11-04
+
+- Added native Новинки and Мультфильмы entry points to the TV catalogue.
+- New films use the backend's RU digital-release window rather than theatrical
+  premieres; new series use their first-air date.
+- Added D-pad age filters 0+/6+/12+/16+/18+ for animated films. Animated TV
+  series remain visible but are not given an unsupported invented age rating.
+- Reused the existing details, playback, source, and Back flows for collection
+  cards and added focused API query tests.
+- Increased the APK to version `0.7.0` (`versionCode 11`).
+- `testDebugUnitTest`: 19 passed; `assembleDebug` and `lintDebug`: passed.
+- Debug APK: 16,012,894 bytes, SHA-256
+  `71b1a424a186427adf3952dbc5856e9c5a7ac043224f53f026c5c176523921ff`.
+
 ## Native audio and subtitle selection stage — 2026-10-30
 
 - Added a D-pad side panel with separate audio and subtitle tabs over the

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
 
 from app.core.config import Settings
@@ -19,9 +20,11 @@ from app.schemas.media import (
     SeasonSummary,
 )
 from app.services.metadata.exceptions import MetadataUnavailableError
+from app.services.metadata.kinopoisk import SearchAlias
 
 logger = logging.getLogger(__name__)
 SortMode = Literal["popular", "rating", "newest"]
+AgeRating = Literal["0+", "6+", "12+", "16+", "18+"]
 
 
 class MetadataProvider(Protocol):
@@ -32,16 +35,22 @@ class MetadataProvider(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class SearchAliasProvider(Protocol):
+    async def aliases(self, query: str, kind: MediaKind) -> list[SearchAlias]: ...
+
+
 class CatalogService:
     def __init__(
         self,
         client: MetadataProvider,
         cache: MetadataCacheRepository,
         settings: Settings,
+        alias_provider: SearchAliasProvider | None = None,
     ) -> None:
         self._client = client
         self._cache = cache
         self._settings = settings
+        self._alias_provider = alias_provider
 
     async def list_media(
         self,
@@ -51,6 +60,8 @@ class CatalogService:
         sort: SortMode,
         genre: int | None,
         year: int | None,
+        age_rating: AgeRating | None = None,
+        released_within_days: int | None = None,
     ) -> MediaPage:
         date_field = "primary_release_date" if kind == "movie" else "first_air_date"
         sort_by = {
@@ -70,6 +81,18 @@ class CatalogService:
             params["with_genres"] = genre
         if year is not None:
             params["primary_release_year" if kind == "movie" else "first_air_date_year"] = year
+        if age_rating is not None and kind == "movie":
+            params["certification_country"] = "RU"
+            params["certification"] = age_rating
+        if released_within_days is not None:
+            today = datetime.now(UTC).date()
+            date_prefix = "release_date" if kind == "movie" else "first_air_date"
+            params[f"{date_prefix}.gte"] = str(today - timedelta(days=released_within_days))
+            params[f"{date_prefix}.lte"] = str(today)
+            if kind == "movie":
+                # TMDB release type 4 is digital. Combined with RU region this
+                # excludes theatrical-only premieres from the new-release rail.
+                params["with_release_type"] = 4
         tmdb_kind = "movie" if kind == "movie" else "tv"
         payload = await self._request(f"/discover/{tmdb_kind}", params)
         return self._page(payload, kind)
@@ -92,7 +115,57 @@ class CatalogService:
             params["year" if kind == "movie" else "first_air_date_year"] = year
         tmdb_kind = "movie" if kind == "movie" else "tv"
         payload = await self._request(f"/search/{tmdb_kind}", params)
-        return self._page(payload, kind)
+        page_result = self._page(payload, kind)
+        if page != 1 or self._alias_provider is None or len(page_result.items) >= 20:
+            return page_result
+        return await self._enrich_search(page_result, kind, query, year, tmdb_kind)
+
+    async def _enrich_search(
+        self,
+        primary: MediaPage,
+        kind: MediaKind,
+        query: str,
+        year: int | None,
+        tmdb_kind: str,
+    ) -> MediaPage:
+        aliases = await self._alias_provider.aliases(query, kind)
+        items = list(primary.items)
+        known_ids = {item.id for item in items}
+        searched = {query.casefold()}
+        alias_searches = 0
+        for alias in aliases:
+            for title in alias.titles:
+                normalized = title.casefold()
+                if (
+                    normalized in searched
+                    or len(items) >= 20
+                    or alias_searches >= self._settings.kinopoisk_search_alias_limit
+                ):
+                    continue
+                searched.add(normalized)
+                alias_searches += 1
+                params: dict[str, str | int | bool] = {
+                    "query": title,
+                    "page": 1,
+                    "include_adult": False,
+                    "region": self._settings.tmdb_region,
+                }
+                candidate_year = year or alias.year
+                if candidate_year is not None:
+                    params["year" if kind == "movie" else "first_air_date_year"] = candidate_year
+                extra = self._page(await self._request(f"/search/{tmdb_kind}", params), kind)
+                for item in extra.items:
+                    if item.id not in known_ids:
+                        known_ids.add(item.id)
+                        items.append(item)
+                        if len(items) >= 20:
+                            break
+        return MediaPage(
+            items=items,
+            page=primary.page,
+            total_pages=max(primary.total_pages, 1 if items else 0),
+            total_results=max(primary.total_results, len(items)),
+        )
 
     async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
         tmdb_kind = "movie" if kind == "movie" else "tv"

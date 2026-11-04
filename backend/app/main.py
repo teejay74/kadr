@@ -115,6 +115,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         headers={"Accept": "application/json"},
     ) as metadata_http_client:
         async with httpx.AsyncClient(
+            base_url=settings.kinopoisk_base_url,
+            timeout=settings.kinopoisk_timeout_seconds,
+            headers={"Accept": "application/json"},
+        ) as kinopoisk_http_client, httpx.AsyncClient(
             base_url=settings.prowlarr_base_url,
             timeout=settings.prowlarr_timeout_seconds,
             headers={"Accept": "application/json"},
@@ -125,6 +129,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 headers={"Accept": "application/json"},
             ) as torrent_http_client:
                 application.state.metadata_http_client = metadata_http_client
+                application.state.kinopoisk_http_client = kinopoisk_http_client
                 application.state.indexer_http_client = indexer_http_client
                 application.state.torrent_http_client = torrent_http_client
                 cleanup_task = asyncio.create_task(cache_cleanup_loop(application))

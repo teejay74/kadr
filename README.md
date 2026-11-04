@@ -87,6 +87,17 @@ subtitle panel for device-supported Media3 tracks and persists semantic track
 choices locally on the television. Server-synchronized preferences and
 compatibility preparation remain explicitly pending rather than represented by
 mocks.
+Version 0.7.0 adds native Новинки and Мультфильмы screens, including the
+server-owned RU digital-release window and D-pad age filters for animated
+films.
+
+The catalogue also has dedicated **Новинки** and **Мультфильмы** sections.
+Movie новинки require a regional digital release rather than a theatrical-only
+premiere.
+Cartoons can be filtered by the Russian 0+/6+/12+/16+/18+ certification where
+TMDB supplies it. An optional server-side Kinopoisk Unofficial key improves
+Russian-title search by resolving Russian and original aliases back to
+canonical TMDB entries; KADR continues to use TMDB IDs everywhere else.
 
 ## Quick start
 
@@ -95,6 +106,7 @@ Requirements: Docker Engine with Docker Compose v2.
 ```bash
 cp .env.example .env
 # Add a TMDB API Read Access Token to KADR_TMDB_ACCESS_TOKEN in .env.
+# Optionally add KADR_KINOPOISK_API_KEY to improve Russian-title search.
 docker compose up -d prowlarr
 # Configure an authorized torrent indexer at http://127.0.0.1:9696,
 # then copy Prowlarr's API key into KADR_PROWLARR_API_KEY in .env.
@@ -186,6 +198,7 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Stage 5 compatibility report](docs/stage-5-compatibility-report.md)
 - [Stage 6 report](docs/stage-6-report.md)
 - [Stage 7 TV report](docs/stage-7-tv-report.md)
+- [Stage 7.2 catalogue discovery report](docs/stage-7-2-catalog-discovery-report.md)
 - [Native Android TV guide](docs/android-tv.md)
 - [Native Android TV stage A report](docs/android-tv-stage-a-report.md)
 - [UI redesign B1 report](docs/ui-redesign-b1-report.md)

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Path, Query
 
 from app.api.dependencies import CatalogServiceDependency
 from app.schemas.media import Genre, MediaDetails, MediaPage, SeasonDetails
+from app.services.metadata.catalog import AgeRating
 
 router = APIRouter()
 Page = Annotated[int, Query(ge=1, le=500)]
@@ -18,8 +19,18 @@ async def movies(
     sort: Sort = "popular",
     genre: Annotated[int | None, Query(gt=0)] = None,
     year: Year = None,
+    age_rating: AgeRating | None = None,
+    released_within_days: Annotated[int | None, Query(ge=1, le=730)] = None,
 ) -> MediaPage:
-    return await service.list_media("movie", page=page, sort=sort, genre=genre, year=year)
+    return await service.list_media(
+        "movie",
+        page=page,
+        sort=sort,
+        genre=genre,
+        year=year,
+        age_rating=age_rating,
+        released_within_days=released_within_days,
+    )
 
 
 @router.get("/movies/search", response_model=MediaPage)
@@ -52,8 +63,16 @@ async def series(
     sort: Sort = "popular",
     genre: Annotated[int | None, Query(gt=0)] = None,
     year: Year = None,
+    released_within_days: Annotated[int | None, Query(ge=1, le=730)] = None,
 ) -> MediaPage:
-    return await service.list_media("series", page=page, sort=sort, genre=genre, year=year)
+    return await service.list_media(
+        "series",
+        page=page,
+        sort=sort,
+        genre=genre,
+        year=year,
+        released_within_days=released_within_days,
+    )
 
 
 @router.get("/series/search", response_model=MediaPage)

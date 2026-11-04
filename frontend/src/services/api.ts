@@ -427,6 +427,8 @@ export function getMediaPage(kind: MediaKind, query: CatalogQuery = {}): Promise
   if (query.sort) params.set('sort', query.sort)
   if (query.genre) params.set('genre', String(query.genre))
   if (query.year) params.set('year', String(query.year))
+  if (query.ageRating) params.set('age_rating', query.ageRating)
+  if (query.releasedWithinDays) params.set('released_within_days', String(query.releasedWithinDays))
   return request<MediaPage>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}?${params}`)
 }
 

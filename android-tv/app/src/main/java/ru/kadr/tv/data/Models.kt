@@ -12,6 +12,19 @@ enum class MediaKind(val apiValue: String) {
     SERIES("series"),
 }
 
+enum class CatalogCollection {
+    NEW_RELEASES,
+    CARTOONS,
+}
+
+enum class AgeRating(val apiValue: String) {
+    ZERO("0+"),
+    SIX("6+"),
+    TWELVE("12+"),
+    SIXTEEN("16+"),
+    EIGHTEEN("18+"),
+}
+
 const val MAX_SEARCH_QUERY_LENGTH = 120
 
 fun normalizeSearchInput(input: String): String = input.take(MAX_SEARCH_QUERY_LENGTH)

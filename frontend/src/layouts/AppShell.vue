@@ -25,6 +25,8 @@ function submitSearch(): void {
         <RouterLink class="nav-link focus-ring" to="/">Главная</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/movies">Фильмы</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/series">Сериалы</RouterLink>
+        <RouterLink class="nav-link focus-ring" to="/new">Новинки</RouterLink>
+        <RouterLink class="nav-link focus-ring" to="/cartoons">Мультфильмы</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/library">Библиотека</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/downloads">Загрузки</RouterLink>
       </nav>

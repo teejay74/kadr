@@ -64,6 +64,8 @@ import ru.kadr.tv.MainViewModel
 import ru.kadr.tv.Screen
 import ru.kadr.tv.UiState
 import ru.kadr.tv.data.MediaCard
+import ru.kadr.tv.data.AgeRating
+import ru.kadr.tv.data.CatalogCollection
 import ru.kadr.tv.data.MediaDetails
 import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
@@ -82,6 +84,7 @@ fun KadrTvApp(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(
         enabled = state.screen == Screen.SEARCH ||
+            state.screen == Screen.DISCOVERY ||
             state.screen == Screen.LIBRARY ||
             state.screen == Screen.DETAILS ||
             state.screen == Screen.EPISODES ||
@@ -106,7 +109,15 @@ fun KadrTvApp(viewModel: MainViewModel) {
                     onRetry = viewModel::retryCatalog,
                     onSearch = viewModel::openSearch,
                     onLibrary = viewModel::openLibrary,
+                    onNewReleases = viewModel::openNewReleases,
+                    onCartoons = viewModel::openCartoons,
                     onChangeServer = viewModel::changeServer,
+                )
+                Screen.DISCOVERY -> DiscoveryScreen(
+                    state = state,
+                    onOpen = viewModel::openMedia,
+                    onAge = viewModel::selectCartoonAge,
+                    onRetry = viewModel::retryDiscovery,
                 )
                 Screen.SEARCH -> SearchScreen(
                     state = state,
@@ -784,6 +795,8 @@ private fun CatalogScreen(
     onRetry: () -> Unit,
     onSearch: () -> Unit,
     onLibrary: () -> Unit,
+    onNewReleases: () -> Unit,
+    onCartoons: () -> Unit,
     onChangeServer: () -> Unit,
 ) {
     val firstMovieFocus = remember { FocusRequester() }
@@ -800,21 +813,26 @@ private fun CatalogScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 36.dp),
     ) {
         item(key = "header") {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("KADR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.weight(1f))
-                Text(state.serverUrl.orEmpty(), color = SecondaryText, fontSize = 14.sp)
-                Button(onClick = onSearch, modifier = Modifier.padding(start = 20.dp)) {
-                    Text("Поиск")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("KADR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.weight(1f))
+                    Text(state.serverUrl.orEmpty(), color = SecondaryText, fontSize = 14.sp)
                 }
-                Button(onClick = onLibrary, modifier = Modifier.padding(start = 14.dp)) {
-                    Text("Моя библиотека")
-                }
-                Button(onClick = onChangeServer, modifier = Modifier.padding(start = 20.dp)) {
-                    Text("Сменить сервер")
+                Row(
+                    modifier = Modifier.padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Button(onClick = onSearch) { Text("Поиск") }
+                    Button(onClick = onNewReleases) { Text("Новинки") }
+                    Button(onClick = onCartoons) { Text("Мультфильмы") }
+                    Button(onClick = onLibrary) { Text("Моя библиотека") }
+                    Button(onClick = onChangeServer) { Text("Сменить сервер") }
                 }
             }
         }
@@ -844,6 +862,121 @@ private fun CatalogScreen(
             item(key = "error") {
                 Row(modifier = Modifier.padding(horizontal = 56.dp, vertical = 20.dp)) {
                     Text(state.message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
+                    Button(onClick = onRetry, modifier = Modifier.padding(start = 24.dp)) {
+                        Text("Повторить")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoveryScreen(
+    state: UiState,
+    onOpen: (MediaCard) -> Unit,
+    onAge: (AgeRating?) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val firstFilterFocus = remember { FocusRequester() }
+    val firstMovieFocus = remember { FocusRequester() }
+    val firstSeriesFocus = remember { FocusRequester() }
+    val cartoons = state.discoveryCollection == CatalogCollection.CARTOONS
+    val title = if (cartoons) "Мультфильмы" else "Новинки"
+    val subtitle = if (cartoons) {
+        "Анимационные фильмы и сериалы"
+    } else {
+        "Цифровые релизы фильмов и новые сериалы за 12 месяцев"
+    }
+    LaunchedEffect(
+        state.discoveryCollection,
+        state.discoveryAgeRating,
+        state.discoveryMovies,
+        state.discoverySeries,
+    ) {
+        delay(250)
+        runCatching {
+            when {
+                cartoons -> firstFilterFocus.requestFocus()
+                state.discoveryMovies.isNotEmpty() -> firstMovieFocus.requestFocus()
+                state.discoverySeries.isNotEmpty() -> firstSeriesFocus.requestFocus()
+            }
+        }
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 36.dp),
+    ) {
+        item(key = "discovery-header") {
+            Column(modifier = Modifier.padding(horizontal = 56.dp)) {
+                Text(title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
+                Text(subtitle, color = SecondaryText, fontSize = 17.sp)
+            }
+        }
+        if (cartoons) {
+            item(key = "age-filters") {
+                val filters: List<Pair<AgeRating?, String>> = listOf(
+                    null to "Любой возраст",
+                    AgeRating.ZERO to "0+",
+                    AgeRating.SIX to "6+",
+                    AgeRating.TWELVE to "12+",
+                    AgeRating.SIXTEEN to "16+",
+                    AgeRating.EIGHTEEN to "18+",
+                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 56.dp, vertical = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    filters.forEachIndexed { index, (age, label) ->
+                        Button(
+                            onClick = { onAge(age) },
+                            modifier = Modifier
+                                .then(if (index == 0) Modifier.focusRequester(firstFilterFocus) else Modifier)
+                                .focusProperties {
+                                    down = when {
+                                        state.discoveryMovies.isNotEmpty() -> firstMovieFocus
+                                        state.discoverySeries.isNotEmpty() -> firstSeriesFocus
+                                        else -> FocusRequester.Default
+                                    }
+                                },
+                        ) {
+                            Text(if (state.discoveryAgeRating == age) "✓ $label" else label)
+                        }
+                    }
+                }
+            }
+        }
+        if (state.discoveryMovies.isNotEmpty()) {
+            item(key = "discovery-movies") {
+                MediaRail(
+                    title = "Фильмы",
+                    items = state.discoveryMovies,
+                    onOpen = onOpen,
+                    firstItemFocus = firstMovieFocus,
+                    upFocus = firstFilterFocus.takeIf { cartoons },
+                    downFocus = firstSeriesFocus.takeIf { state.discoverySeries.isNotEmpty() },
+                )
+            }
+        }
+        if (state.discoverySeries.isNotEmpty()) {
+            item(key = "discovery-series") {
+                MediaRail(
+                    title = "Сериалы",
+                    items = state.discoverySeries,
+                    onOpen = onOpen,
+                    firstItemFocus = firstSeriesFocus,
+                    upFocus = when {
+                        state.discoveryMovies.isNotEmpty() -> firstMovieFocus
+                        cartoons -> firstFilterFocus
+                        else -> null
+                    },
+                )
+            }
+        }
+        state.message?.let { message ->
+            item(key = "discovery-message") {
+                Row(modifier = Modifier.padding(horizontal = 56.dp, vertical = 20.dp)) {
+                    Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
                     Button(onClick = onRetry, modifier = Modifier.padding(start = 24.dp)) {
                         Text("Повторить")
                     }

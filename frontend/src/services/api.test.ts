@@ -43,6 +43,24 @@ test('builds filtered movie catalogue query', async () => {
   expect(new Headers(init.headers).get('Accept')).toBe('application/json')
 })
 
+test('builds curated cartoon and new-release filters', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ items: [], page: 1, total_pages: 0, total_results: 0 }),
+  })))
+
+  await getMediaPage('movie', {
+    sort: 'newest',
+    genre: 16,
+    ageRating: '6+',
+    releasedWithinDays: 365,
+  })
+
+  const [path] = vi.mocked(fetch).mock.calls[0]
+  expect(path).toBe('/api/v1/movies?sort=newest&genre=16&age_rating=6%2B&released_within_days=365')
+})
+
 test('preserves structured API errors', async () => {
   vi.stubGlobal(
     'fetch',

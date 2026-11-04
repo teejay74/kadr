@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ru.kadr.tv.data.KadrApi
+import ru.kadr.tv.data.AgeRating
+import ru.kadr.tv.data.CatalogCollection
 import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
 import ru.kadr.tv.data.HistoryItem
@@ -38,6 +40,7 @@ import ru.kadr.tv.data.asMediaCard
 enum class Screen {
     SETUP,
     CATALOG,
+    DISCOVERY,
     SEARCH,
     LIBRARY,
     DETAILS,
@@ -53,6 +56,10 @@ data class UiState(
     val serverUrl: String? = null,
     val movies: List<MediaCard> = emptyList(),
     val series: List<MediaCard> = emptyList(),
+    val discoveryCollection: CatalogCollection? = null,
+    val discoveryMovies: List<MediaCard> = emptyList(),
+    val discoverySeries: List<MediaCard> = emptyList(),
+    val discoveryAgeRating: AgeRating? = null,
     val searchQuery: String = "",
     val searchMovies: List<MediaCard> = emptyList(),
     val searchSeries: List<MediaCard> = emptyList(),
@@ -85,6 +92,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var searchJob: Job? = null
     private var historyJob: Job? = null
     private var libraryJob: Job? = null
+    private var discoveryJob: Job? = null
     private val mutableState = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = mutableState.asStateFlow()
 
@@ -153,6 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val origin = when (mutableState.value.screen) {
             Screen.SEARCH -> Screen.SEARCH
             Screen.LIBRARY -> Screen.LIBRARY
+            Screen.DISCOVERY -> Screen.DISCOVERY
             else -> Screen.CATALOG
         }
         mutableState.value = mutableState.value.copy(loading = true, message = null)
@@ -186,9 +195,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(screen = Screen.SEARCH, message = null)
     }
 
+    fun openNewReleases() = openDiscovery(CatalogCollection.NEW_RELEASES)
+
+    fun openCartoons() = openDiscovery(CatalogCollection.CARTOONS)
+
+    fun selectCartoonAge(ageRating: AgeRating?) {
+        if (mutableState.value.discoveryCollection != CatalogCollection.CARTOONS ||
+            mutableState.value.discoveryAgeRating == ageRating
+        ) {
+            return
+        }
+        mutableState.value = mutableState.value.copy(discoveryAgeRating = ageRating)
+        loadDiscovery()
+    }
+
+    fun retryDiscovery() = loadDiscovery()
+
     fun openLibrary() {
         val currentApi = api ?: return
         libraryJob?.cancel()
+        discoveryJob?.cancel()
         mutableState.value = mutableState.value.copy(
             screen = Screen.LIBRARY,
             loading = true,
@@ -544,6 +570,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         searchJob?.cancel()
         historyJob?.cancel()
         libraryJob?.cancel()
+        discoveryJob?.cancel()
         serverStore.clear()
         api = null
         mutableState.value = UiState(screen = Screen.SETUP)
@@ -617,6 +644,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         Screen.LIBRARY -> {
             libraryJob?.cancel()
             mutableState.value = mutableState.value.copy(screen = Screen.CATALOG, message = null)
+            true
+        }
+        Screen.DISCOVERY -> {
+            discoveryJob?.cancel()
+            mutableState.value = mutableState.value.copy(
+                screen = Screen.CATALOG,
+                message = null,
+            )
             true
         }
         Screen.SETUP, Screen.CATALOG -> false
@@ -810,6 +845,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val movies = async { client.popular(MediaKind.MOVIE) }
         val series = async { client.popular(MediaKind.SERIES) }
         movies.await() to series.await()
+    }
+
+    private fun openDiscovery(collection: CatalogCollection) {
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.DISCOVERY,
+            discoveryCollection = collection,
+            discoveryMovies = emptyList(),
+            discoverySeries = emptyList(),
+            discoveryAgeRating = null,
+            message = null,
+        )
+        loadDiscovery()
+    }
+
+    private fun loadDiscovery() {
+        val currentApi = api ?: return
+        val collection = mutableState.value.discoveryCollection ?: return
+        discoveryJob?.cancel()
+        mutableState.value = mutableState.value.copy(loading = true, message = null)
+        discoveryJob = viewModelScope.launch {
+            try {
+                val ageRating = mutableState.value.discoveryAgeRating
+                val (movies, series) = coroutineScope {
+                    val movieRequest = async {
+                        currentApi.catalog(
+                            kind = MediaKind.MOVIE,
+                            sort = if (collection == CatalogCollection.NEW_RELEASES) "newest" else "popular",
+                            genre = 16.takeIf { collection == CatalogCollection.CARTOONS },
+                            ageRating = ageRating.takeIf { collection == CatalogCollection.CARTOONS },
+                            releasedWithinDays = 365.takeIf {
+                                collection == CatalogCollection.NEW_RELEASES
+                            },
+                        )
+                    }
+                    val seriesRequest = async {
+                        currentApi.catalog(
+                            kind = MediaKind.SERIES,
+                            sort = if (collection == CatalogCollection.NEW_RELEASES) "newest" else "popular",
+                            genre = 16.takeIf { collection == CatalogCollection.CARTOONS },
+                            releasedWithinDays = 365.takeIf {
+                                collection == CatalogCollection.NEW_RELEASES
+                            },
+                        )
+                    }
+                    movieRequest.await() to seriesRequest.await()
+                }
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.DISCOVERY,
+                    discoveryMovies = movies,
+                    discoverySeries = series,
+                    loading = false,
+                    message = if (movies.isEmpty() && series.isEmpty()) {
+                        "В подборке пока ничего нет"
+                    } else {
+                        null
+                    },
+                )
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.DISCOVERY,
+                    loading = false,
+                    message = reason.message ?: "Не удалось загрузить подборку",
+                )
+            }
+        }
     }
 
     private suspend fun performSearch(query: String) {

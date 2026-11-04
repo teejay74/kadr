@@ -5,6 +5,10 @@
 1. Copy `.env.example` to `.env` and select an unused `KADR_HTTP_PORT`.
 2. Create a TMDB API Read Access Token and set `KADR_TMDB_ACCESS_TOKEN` in
    `.env`. Do not commit or paste the token into frontend configuration.
+   Optionally register with Kinopoisk API Unofficial and set its server-only
+   key in `KADR_KINOPOISK_API_KEY` to improve Russian-title search. The daily
+   provider quota is external to KADR; the integration performs one lookup per
+   first-page search and remains optional.
 3. Start Prowlarr with `docker compose up -d prowlarr`, open
    `http://127.0.0.1:9696`, complete its authentication setup, and add an
    indexer you are authorized to use.

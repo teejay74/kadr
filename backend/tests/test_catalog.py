@@ -14,6 +14,7 @@ from app.models.metadata_cache import MetadataCache
 from app.repositories.metadata_cache import MetadataCacheRepository
 from app.services.metadata.catalog import CatalogService
 from app.services.metadata.exceptions import MetadataUnavailableError
+from app.services.metadata.kinopoisk import KinopoiskAliasClient, SearchAlias
 from app.services.metadata.tmdb import TMDBClient
 
 
@@ -28,6 +29,13 @@ class FakeTMDBClient:
         if self.unavailable:
             raise MetadataUnavailableError("provider unavailable")
         return self.payload
+
+
+class FakeAliasProvider:
+    async def aliases(self, query: str, kind: str) -> list[SearchAlias]:
+        assert query == "Брат"
+        assert kind == "movie"
+        return [SearchAlias(("Brother",), 1997)]
 
 
 def movie_page_payload() -> dict[str, Any]:
@@ -122,6 +130,89 @@ async def test_catalog_reuses_sqlite_cache(session: AsyncSession) -> None:
 
     assert first == second
     assert len(fake_client.calls) == 1
+
+
+async def test_discovery_applies_new_release_and_russian_age_filters(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    fake_client = FakeTMDBClient(movie_page_payload())
+    service = CatalogService(fake_client, MetadataCacheRepository(session), Settings())
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    response = await client.get(
+        "/api/v1/movies?sort=newest&genre=16&age_rating=6%2B&released_within_days=365"
+    )
+
+    assert response.status_code == 200
+    params = fake_client.calls[0][1]
+    assert params["with_genres"] == 16
+    assert params["certification_country"] == "RU"
+    assert params["certification"] == "6+"
+    assert params["release_date.gte"] < params["release_date.lte"]
+    assert params["with_release_type"] == 4
+
+
+async def test_search_uses_kinopoisk_alias_but_keeps_tmdb_identity(
+    session: AsyncSession,
+) -> None:
+    empty_payload = {"page": 1, "total_pages": 0, "total_results": 0, "results": []}
+    fake_client = FakeTMDBClient(empty_payload)
+    service = CatalogService(
+        fake_client,
+        MetadataCacheRepository(session),
+        Settings(),
+        FakeAliasProvider(),  # type: ignore[arg-type]
+    )
+    fake_client.payload = movie_page_payload()
+    # Prime only the aliased response; the direct query uses a distinct cache key.
+    fake_client.payload = empty_payload
+
+    original_get = fake_client.get
+
+    async def get(path: str, params: dict[str, str | int | bool]) -> dict[str, Any]:
+        payload = await original_get(path, params)
+        return movie_page_payload() if params.get("query") == "Brother" else payload
+
+    fake_client.get = get  # type: ignore[method-assign]
+    result = await service.search("movie", "Брат", page=1, year=None)
+
+    assert [item.id for item in result.items] == [11]
+    assert fake_client.calls[1][1]["query"] == "Brother"
+    assert fake_client.calls[1][1]["year"] == 1997
+
+
+async def test_kinopoisk_alias_client_is_optional_and_normalizes_titles() -> None:
+    calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert request.headers["X-API-KEY"] == "kp-secret"
+        return httpx.Response(
+            200,
+            json={
+                "films": [
+                    {
+                        "filmId": 1,
+                        "nameRu": "Брат",
+                        "nameEn": "Brother",
+                        "year": "1997",
+                        "type": "FILM",
+                    }
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://kp.example") as http_client:
+        disabled = KinopoiskAliasClient(http_client, Settings())
+        assert await disabled.aliases("Брат", "movie") == []
+        enabled = KinopoiskAliasClient(http_client, Settings(kinopoisk_api_key="kp-secret"))
+        aliases = await enabled.aliases("Брат", "movie")
+
+    assert calls == 1
+    assert aliases == [SearchAlias(("Брат", "Brother"), 1997)]
 
 
 async def test_series_season_endpoint_normalizes_and_caches_episodes(

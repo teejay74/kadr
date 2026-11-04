@@ -26,7 +26,16 @@ class KadrApi(private val serverUrl: String) {
     }
 
     suspend fun popular(kind: MediaKind): List<MediaCard> =
-        request("/api/v1/${kindPath(kind)}?page=1&sort=popular") { body ->
+        catalog(kind = kind)
+
+    suspend fun catalog(
+        kind: MediaKind,
+        sort: String = "popular",
+        genre: Int? = null,
+        ageRating: AgeRating? = null,
+        releasedWithinDays: Int? = null,
+    ): List<MediaCard> =
+        request(catalogPath(kind, sort, genre, ageRating, releasedWithinDays)) { body ->
             body.getJSONArray("items").mapObjects { parseCard(it) }
         }
 
@@ -386,3 +395,20 @@ class KadrApi(private val serverUrl: String) {
         const val READ_TIMEOUT_MS = 15_000
     }
 }
+
+internal fun catalogPath(
+    kind: MediaKind,
+    sort: String,
+    genre: Int?,
+    ageRating: AgeRating?,
+    releasedWithinDays: Int?,
+): String {
+    val parameters = mutableListOf("page=1", "sort=${encodeQuery(sort)}")
+    genre?.let { parameters += "genre=$it" }
+    ageRating?.let { parameters += "age_rating=${encodeQuery(it.apiValue)}" }
+    releasedWithinDays?.let { parameters += "released_within_days=$it" }
+    val path = if (kind == MediaKind.MOVIE) "movies" else "series"
+    return "/api/v1/$path?${parameters.joinToString("&")}"
+}
+
+private fun encodeQuery(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

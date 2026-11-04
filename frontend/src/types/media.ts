@@ -1,5 +1,6 @@
 export type MediaKind = 'movie' | 'series'
 export type SortMode = 'popular' | 'rating' | 'newest'
+export type AgeRating = '0+' | '6+' | '12+' | '16+' | '18+'
 
 export interface Genre {
   id: number
@@ -84,6 +85,8 @@ export interface CatalogQuery {
   sort?: SortMode
   genre?: number | null
   year?: number | null
+  ageRating?: AgeRating | null
+  releasedWithinDays?: number | null
 }
 
 export type SourceSort = 'seeders' | 'size' | 'resolution' | 'source' | 'title'

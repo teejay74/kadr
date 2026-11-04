@@ -28,8 +28,8 @@ provider errors are never returned to the browser.
 
 | Method and path | Purpose | Parameters |
 | --- | --- | --- |
-| `GET /movies` | Discover films | `page`, `sort`, `genre`, `year` |
-| `GET /series` | Discover series | `page`, `sort`, `genre`, `year` |
+| `GET /movies` | Discover films | `page`, `sort`, `genre`, `year`, `age_rating`, `released_within_days` |
+| `GET /series` | Discover series | `page`, `sort`, `genre`, `year`, `released_within_days` |
 | `GET /movies/search` | Search films | `q`, `page`, optional `year` |
 | `GET /series/search` | Search series | `q`, `page`, optional `year` |
 | `GET /movies/genres` | Film genres | none |
@@ -40,6 +40,19 @@ provider errors are never returned to the browser.
 
 `sort` accepts `popular`, `rating`, or `newest`. Pages are limited to TMDB's
 first 500 result pages. Invalid query values use FastAPI's validation response.
+`age_rating` accepts the Russian film certifications `0+`, `6+`, `12+`, `16+`,
+or `18+`. `released_within_days` accepts `1`-`730` and excludes future dates.
+For films it selects TMDB release type `4` (digital) in region RU rather than
+theatrical premieres; for series it uses first-air dates. The web client's
+Новинки view uses 365 days; Мультфильмы uses TMDB animation
+genre `16` and applies the age filter to films. TV discovery does not expose a
+compatible Russian certification filter, so series are not falsely age-rated.
+
+When `KADR_KINOPOISK_API_KEY` is configured, first-page text search may use up
+to three Russian/original title aliases from Kinopoisk Unofficial to perform
+additional TMDB searches. Results are deduplicated and remain canonical TMDB
+objects. Missing credentials or a secondary-provider failure does not disable
+ordinary TMDB search.
 
 Season details contain the series and season identity plus normalized episodes:
 

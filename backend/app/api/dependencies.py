@@ -14,6 +14,7 @@ from app.services.cache.manager import CacheManager
 from app.services.episodes.matcher import EpisodeMatcher
 from app.services.library.manager import LibraryManager
 from app.services.metadata.catalog import CatalogService
+from app.services.metadata.kinopoisk import KinopoiskAliasClient
 from app.services.metadata.tmdb import TMDBClient
 from app.services.playback.manager import CompatibilityManager
 from app.services.playback.navigation import EpisodeNavigationService
@@ -37,6 +38,7 @@ def get_catalog_service(
         TMDBClient(request.app.state.metadata_http_client, settings),
         MetadataCacheRepository(session),
         settings,
+        KinopoiskAliasClient(request.app.state.kinopoisk_http_client, settings),
     )
 
 
