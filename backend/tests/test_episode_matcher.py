@@ -4,6 +4,7 @@ import os
 import sqlite3
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
@@ -26,7 +27,8 @@ from app.services.torrents.exceptions import TorrentFileError
 
 
 class FakeCatalog:
-    def __init__(self) -> None:
+    def __init__(self, media_id: int = 42) -> None:
+        self.media_id = media_id
         self.episodes = {
             1: [
                 EpisodeSummary(
@@ -57,7 +59,7 @@ class FakeCatalog:
         }
 
     async def season(self, media_id: int, season_number: int) -> SeasonDetails:
-        assert media_id == 42
+        assert media_id == self.media_id
         return SeasonDetails(
             id=season_number,
             series_id=media_id,
@@ -71,6 +73,19 @@ class FakeCatalog:
         raise AssertionError("details are unnecessary when paths contain a season")
 
 
+class FakeCatalogWithSeasons(FakeCatalog):
+    def __init__(self, media_id: int = 42) -> None:
+        super().__init__(media_id)
+        self.episodes[1][1] = self.episodes[1][1].model_copy(
+            update={"name": "Трактор"}
+        )
+
+    async def details(self, kind: str, media_id: int) -> object:
+        assert kind == "series"
+        assert media_id == self.media_id
+        return SimpleNamespace(seasons=[SimpleNamespace(number=1)])
+
+
 class FakeTorrents:
     def __init__(self, files: list[TorrentFile]) -> None:
         self._files = files
@@ -82,10 +97,13 @@ class FakeTorrents:
 async def make_matcher(
     session: AsyncSession,
     files: list[TorrentFile],
+    *,
+    catalog: FakeCatalog | None = None,
+    media_id: int = 42,
 ) -> tuple[EpisodeMatcher, TorrentTask]:
     task = TorrentTask(
         id="00000000-0000-0000-0000-000000000301",
-        media_id=42,
+        media_id=media_id,
         media_kind="series",
         torrent_hash="matcher-hash",
         source_id="a" * 24,
@@ -96,12 +114,41 @@ async def make_matcher(
     tasks = TorrentTaskRepository(session)
     await tasks.create(task)
     matcher = EpisodeMatcher(
-        FakeCatalog(),  # type: ignore[arg-type]
+        catalog or FakeCatalog(media_id),  # type: ignore[arg-type]
         FakeTorrents(files),  # type: ignore[arg-type]
         tasks,
         EpisodeRepository(session),
     )
     return matcher, task
+
+
+@pytest.mark.asyncio
+async def test_kinopoisk_series_without_explicit_season_uses_catalogue_seasons(
+    session: AsyncSession,
+) -> None:
+    kinopoisk_media_id = 1_501_115_558
+    matcher, task = await make_matcher(
+        session,
+        [
+            TorrentFile(
+                id=2,
+                name="Котёнок Котэ/01. Котёнок Котэ/002. Трактор.mp4",
+                size_bytes=100,
+                progress=0,
+                priority=0,
+                is_video=True,
+            )
+        ],
+        catalog=FakeCatalogWithSeasons(kinopoisk_media_id),
+        media_id=kinopoisk_media_id,
+    )
+
+    report = await matcher.analyze(task.id)
+
+    assert report.metadata_available is True
+    assert report.files[0].confidence == "probable"
+    assert report.files[0].episodes[0].episode_number == 2
+    assert report.files[0].episodes[0].name == "Трактор"
 
 
 @pytest.mark.parametrize(

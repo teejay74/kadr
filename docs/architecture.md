@@ -74,7 +74,7 @@ quality variants. The legacy `torrent_tasks.selected_file_id` and selected path
 remain the active playback selection for backward compatibility; they are not
 the episode identity.
 
-`EpisodeMatcher` sits between torrent-file discovery, TMDB metadata, and the
+`EpisodeMatcher` sits between torrent-file discovery, catalogue metadata, and the
 episode repository. It parses the complete relative path (including season
 folders), validates explicit identities against provider metadata, and uses
 title similarity plus already available duration only as secondary evidence.
@@ -283,7 +283,7 @@ browser profiles. A hard Cloudflare IP block can still reject the request.
 | A stream fails after response headers are sent | Browser sees a network/media error rather than a JSON body | Validate the initial buffer before returning headers; surface later starvation as a player error and keep timeout bounded. |
 | Process restart loses active-stream counters | Temporary concurrency accounting reset | Registry is deliberately process-local for the single-worker MVP; use shared coordination before adding API replicas. |
 | Malicious torrent paths or unsafe cache deletion | Filesystem escape or data loss | Canonical paths must stay beneath KADR roots; active and saved tasks are protected; qBittorrent deletes only known expired tasks. |
-| Ambiguous or misleading episode filenames | Wrong episode history or playback binding | Full-path parsing, TMDB existence checks, conflict detection, exact-only automatic persistence, and explicit confirmation for probable/ambiguous candidates. |
+| Ambiguous or misleading episode filenames | Wrong episode history or playback binding | Full-path parsing, catalogue-provider existence checks, conflict detection, exact-only automatic persistence, and explicit confirmation for probable/ambiguous candidates. |
 | Public exposure of internal services/secrets | Account or host compromise | Only web entry point published; secrets server-side; auth and rate limiting are required before remote exposure. |
 
 ## Stage dependencies

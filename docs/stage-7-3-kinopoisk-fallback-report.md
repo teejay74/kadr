@@ -14,19 +14,26 @@ Date: 2026-11-04
   existing web, Android TV, source-search, library, and episode flows without
   colliding with TMDB IDs.
 - Added persistent caching and stale-on-outage behavior for Kinopoisk payloads.
+- Fixed the Episode Matcher follow-up found during live use: paths without an
+  explicit `S01E02` or `Сезон` marker now load the regular seasons from the
+  catalogue item and match against Kinopoisk episode titles. Provider-specific
+  TMDB warnings were replaced with accurate catalogue-metadata wording.
 
 ## Changed files
 
 - Backend Kinopoisk transport, catalogue orchestration, dependency wiring, and
-  catalogue tests.
+  catalogue and Episode Matcher tests.
+- Episode Matcher service and provider-neutral web confirmation dialog.
 - README, API, architecture, deployment, and troubleshooting documentation.
 
 ## Checks and test results
 
 - Targeted catalogue tests: 10 passed.
-- Full backend Pytest: 148 passed.
+- Episode Matcher regression suite: 21 passed, including a Kinopoisk-backed
+  `Котёнок Котэ/01.../002. Трактор.mp4` case.
+- Full backend Pytest: 149 passed.
 - Backend Ruff: passed.
-- Frontend Vitest: 82 passed across 14 files.
+- Frontend Vitest: 84 passed across 14 files.
 - Frontend production build (`vue-tsc -b` and Vite): passed.
 - Docker Compose configuration and `git diff --check`: passed.
 - Production deployment preflight passed: the KADR checkout was clean, all

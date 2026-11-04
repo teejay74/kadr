@@ -78,3 +78,14 @@ test('does not offer confirmation for an unsafe path', () => {
     name: 'Сохранить соответствия',
   }) as HTMLButtonElement).disabled).toBe(true)
 })
+
+test('describes a provider-neutral metadata outage', () => {
+  render(EpisodeMatchDialog, {
+    props: {
+      report: { ...report, metadata_available: false },
+    },
+  })
+
+  expect(screen.getByText(/метаданные эпизодов временно недоступны/i)).toBeTruthy()
+  expect(screen.queryByText(/TMDB временно недоступен/i)).toBeNull()
+})

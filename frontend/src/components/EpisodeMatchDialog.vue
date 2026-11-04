@@ -93,7 +93,7 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
         Если один файл содержит две серии, KADR сохранит обе связи, но не сможет перейти к началу второй без временных границ.
       </p>
       <p v-if="!report.metadata_available" class="episode-match-warning">
-        TMDB временно недоступен: автоматические привязки отключены.
+        Метаданные эпизодов временно недоступны: автоматические привязки отключены.
       </p>
       <div class="episode-match-list">
         <article v-for="file in report.files" :key="file.file_id" class="episode-match-file">

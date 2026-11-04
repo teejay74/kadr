@@ -309,7 +309,8 @@ future segment index, but never returns a server filesystem path.
 
 Episode analysis reads the full relative torrent path and recognizes `S01E02`,
 `1x02`, `Season 1 Episode 2`, `Сезон 1 Серия 2`, combined markers, and bounded
-ranges. It validates episode identities against TMDB and may use a duration
+ranges. It validates episode identities against the metadata provider backing
+the catalogue item (TMDB or Kinopoisk) and may use a duration
 already supplied by the torrent adapter as supporting evidence; it never
 downloads or probes a file just to match it. The response classifies each video
 as `exact`, `probable`, or `ambiguous`. Only an exact, unique, conflict-free

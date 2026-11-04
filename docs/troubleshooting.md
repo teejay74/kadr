@@ -170,7 +170,8 @@ remains available as a manual fallback during C2 acceptance. For a series,
 confirm the selected file was bound to the exact episode with
 `GET /api/v1/torrents/{task_id}/episode-files`. The resolver itself never
 guesses an episode: the separate Episode Matcher first validates filenames
-against TMDB and persists only unique exact matches.
+against the catalogue item's metadata provider and persists only unique exact
+matches.
 
 `unavailable` means a saved or bound source exists but its file, torrent task,
 storage, or qBittorrent state cannot currently be used. Check
@@ -189,13 +190,14 @@ playback.
 
 `probable` means the path or duration is useful but not strong enough for safe
 automatic binding. `ambiguous` means several candidates, a conflict, missing
-TMDB evidence, or an unsafe path. Select every episode actually contained in
+catalogue metadata, or an unsafe path. Select every episode actually contained in
 the file and save once; KADR reuses that torrent/file mapping after restart.
 Combined files can map to several episodes, but without stored time boundaries
-KADR cannot jump precisely to the second episode. If TMDB is unavailable,
-retry after metadata access is restored; do not bypass validation by editing
-SQLite. Absolute paths, `..`, control characters, and Windows drive paths are
-rejected rather than offered for confirmation.
+KADR cannot jump precisely to the second episode. If episode metadata is
+unavailable, inspect the API logs for the provider used by that catalogue item
+and retry after access is restored; do not bypass validation by editing SQLite.
+Absolute paths, `..`, control characters, and Windows drive paths are rejected
+rather than offered for confirmation.
 
 ## The next-episode overlay is missing or cannot continue
 

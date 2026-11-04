@@ -102,9 +102,9 @@ class EpisodeMatcher:
             seasons.add(release_season)
 
         metadata, metadata_available = await self._metadata(task, seasons)
-        if not seasons and metadata_available:
+        if not seasons:
             regular_seasons = await self._regular_seasons(task)
-            if len(regular_seasons) == 1:
+            if regular_seasons:
                 metadata, metadata_available = await self._metadata(task, regular_seasons)
 
         proposed = {
@@ -199,7 +199,9 @@ class EpisodeMatcher:
                 for episode in mapping.episodes
             ]
             if any(key not in metadata for key in keys):
-                raise TorrentFileError("A confirmed episode does not exist in TMDB metadata")
+                raise TorrentFileError(
+                    "A confirmed episode does not exist in catalogue metadata"
+                )
             parsed = self.parse_path(item.name)
             confidence = "exact" if set(keys) == set(parsed.episodes) else "ambiguous"
             await self._episodes.replace_file_bindings(
@@ -299,9 +301,9 @@ class EpisodeMatcher:
                     for key in parsed.episodes
                 ],
                 reasons=[
-                    "Не все номера существуют в метаданных TMDB."
+                    "Не все номера существуют в метаданных каталога."
                     if missing and metadata_available
-                    else "Номера распознаны, но TMDB сейчас недоступен для проверки."
+                    else "Номера распознаны, но метаданные сейчас недоступны для проверки."
                 ],
                 duration_seconds=item.duration_seconds,
             )
@@ -331,7 +333,7 @@ class EpisodeMatcher:
                     confidence="probable",
                     episodes=[self._identity(top)],
                     alternatives=[self._identity(pair[1]) for pair in viable[1:4]],
-                    reasons=["Название файла похоже на название эпизода TMDB."],
+                    reasons=["Название файла похоже на название эпизода в каталоге."],
                     duration_seconds=item.duration_seconds,
                 )
             return EpisodeMatchFile(
