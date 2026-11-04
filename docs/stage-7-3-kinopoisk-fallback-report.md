@@ -29,6 +29,28 @@ Date: 2026-11-04
 - Frontend Vitest: 82 passed across 14 files.
 - Frontend production build (`vue-tsc -b` and Vite): passed.
 - Docker Compose configuration and `git diff --check`: passed.
+- Production deployment preflight passed: the KADR checkout was clean, all
+  KADR services were healthy, storage had sufficient free space, and Photodom
+  was healthy before any mutation.
+- A pre-deployment SQLite backup was created at
+  `/srv/kadr/backups/kadr-pre-kinopoisk-fallback-20261104-210006.db`; SQLite
+  integrity check returned `ok`, SHA-256:
+  `86654054a2bfa7175e0339f1c115430526bff7b5b0a6b3d30b1a55b89203dba7`.
+- The production runtime image built successfully and only the KADR API
+  container was recreated. Health check returned `status=ok` and
+  `database=ok`; Alembic remained at `0007_playback_track_preferences (head)`.
+- Live search acceptance passed for both `Котёнок Котэ` and `Котенок Котэ`:
+  both resolve to KADR ID `1501115558`, title `Котёнок Котэ` (2015). Details
+  expose a poster, 5 seasons, and 279 episodes; season 1 exposes 150 episodes
+  and begins with `Светофор`. A cached search completed in 0.096 seconds.
+- Post-deployment checks passed: every KADR service and the separate Photodom
+  container remained healthy; the production checkout was clean at commit
+  `9919d5796ee843bb42e8b88e722cc7e8ad766022`.
+- A repeat server-side Pytest image build was cancelled after the production
+  dependency layer completed because the external PyPI transfer stalled while
+  downloading the dev-only Ruff wheel. This did not affect the runtime build;
+  the full local backend suite and Ruff had already passed on the deployed
+  commit.
 - Android TV source did not require a change: its existing `Int` catalogue ID
   path supports the reserved range. The previously verified client remains at
   19 passed tests with a successful debug build and lint. A repeat run on this
@@ -46,6 +68,6 @@ Date: 2026-11-04
 
 ## Next actions
 
-1. Run the complete regression suites and live acceptance for «Котёнок Котэ».
-2. Deploy only the KADR API after the exact checkout passes all available checks.
-3. Confirm Photodom remains untouched and healthy.
+1. Monitor Kinopoisk Unofficial quota and provider availability in normal use.
+2. Re-run Android TV instrumentation on a workstation with an installed Android
+   SDK when client-side code next changes.
