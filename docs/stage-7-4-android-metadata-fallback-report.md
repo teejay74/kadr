@@ -30,7 +30,28 @@ Date: 2026-11-05
 - Android TV: 20 unit tests passed; lint and debug APK build passed. APK
   SHA-256: `512294b346cf5bdb1c1338dd25d10ad0024cf1678f05abfaf67886f0b7cb7789`.
 - Docker Compose configuration and `git diff --check`: passed.
-- Production preflight, backup, deployment, and live acceptance: pending.
+- Production preflight passed: the KADR checkout was clean, all KADR services
+  and the separate Photodom container were healthy, 106 GiB of disk and
+  6.7 GiB of memory were available, and the database/network mounts remained
+  isolated.
+- Created `/srv/kadr/backups/kadr-pre-android-tmdb-fallback-20261105-114100.db`;
+  integrity check returned `ok`, SHA-256:
+  `1ab22e95c499a5283a7f03fc4e7d7f66d8b9a552e1362a76bb0af909ac3a6d36`.
+- Deployed commit `b04eedb6f0c84cbd9dab2c507bd119c7ae39373b` by rebuilding and
+  recreating only the KADR API container. It became healthy; the health endpoint
+  returned `database=ok`, and Alembic remained at
+  `0007_playback_track_preferences (head)`.
+- Live Android detail flow for TMDB series `1399` returned `Игра Престолов`
+  (2011), nine seasons, and season 1 with ten episodes beginning with
+  `Зима близко`. TMDB DNS/HTTPS had recovered by acceptance time, so the live
+  request used TMDB; the forced-outage Kinopoisk branch is covered by backend
+  tests, including rejection of a mismatched year.
+- Post-deployment checks passed: all KADR services and Photodom remained healthy
+  and the production checkout was clean.
+- Network ADB installation was not possible because the television at the last
+  observed address refused TCP port 5555. The verified APK remains ready for
+  installation after wireless debugging is enabled or by the documented USB
+  workflow.
 
 ## Known issues
 
@@ -43,8 +64,7 @@ Date: 2026-11-05
 
 ## Next actions
 
-1. Complete full automated checks and build the `0.7.1` APK.
-2. Audit and back up the production host, deploy only changed KADR services,
-   and verify the live Android detail-to-season flow.
-3. Install the APK on the television through an authorized ADB connection or
-   the documented USB workflow.
+1. Install the `0.7.1` APK on the television after enabling an authorized ADB
+   connection, or use the documented USB workflow.
+2. Monitor metadata-provider availability and confirm the fallback on the
+   physical TV if TMDB becomes unreachable again.
