@@ -34,8 +34,8 @@ provider errors are never returned to the browser.
 | `GET /series/search` | Search series | `q`, `page`, optional `year` |
 | `GET /movies/genres` | Film genres | none |
 | `GET /series/genres` | Series genres | none |
-| `GET /movies/{id}` | Film details, cast, trailer | positive KADR catalogue ID |
-| `GET /series/{id}` | Series details, cast, trailer, seasons | positive KADR catalogue ID |
+| `GET /movies/{id}` | Film details, cast, trailer | positive KADR catalogue ID; optional `fallback_title`, `fallback_year` |
+| `GET /series/{id}` | Series details, cast, trailer, seasons | positive KADR catalogue ID; optional `fallback_title`, `fallback_year` |
 | `GET /series/{id}/seasons/{season_number}` | Normalized season and episode metadata | positive KADR catalogue ID; season `0`-`100` |
 
 `sort` accepts `popular`, `rating`, or `newest`. Pages are limited to TMDB's
@@ -57,6 +57,15 @@ details, posters, series seasons, episodes, and source search. KADR uses a
 reserved positive internal ID range to prevent provider-ID collisions. Missing
 credentials or a secondary-provider failure does not disable ordinary TMDB
 search. Both providers use the persistent metadata cache.
+
+Detail clients that already hold a trusted catalogue card may pass its title
+and year as `fallback_title` and `fallback_year`. If TMDB is temporarily
+unreachable and Kinopoisk is configured, KADR accepts only an exact normalized
+title, the same media type, and (when supplied) the same year. The response then
+contains the reserved KADR ID of the Kinopoisk object; clients must use that
+returned ID for subsequent season, source-search, and playback requests. The
+fallback is not attempted for ordinary TMDB not-found responses and does not
+turn fuzzy provider results into a different title.
 
 Season details contain the series and season identity plus normalized episodes:
 

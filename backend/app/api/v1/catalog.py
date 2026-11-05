@@ -9,6 +9,7 @@ from app.services.metadata.catalog import AgeRating
 router = APIRouter()
 Page = Annotated[int, Query(ge=1, le=500)]
 Year = Annotated[int | None, Query(ge=1870, le=2100)]
+FallbackTitle = Annotated[str | None, Query(min_length=2, max_length=200)]
 Sort = Literal["popular", "rating", "newest"]
 
 
@@ -52,8 +53,15 @@ async def movie_genres(service: CatalogServiceDependency) -> list[Genre]:
 async def movie_details(
     service: CatalogServiceDependency,
     media_id: Annotated[int, Path(gt=0)],
+    fallback_title: FallbackTitle = None,
+    fallback_year: Year = None,
 ) -> MediaDetails:
-    return await service.details("movie", media_id)
+    return await service.details(
+        "movie",
+        media_id,
+        fallback_title=fallback_title.strip() if fallback_title else None,
+        fallback_year=fallback_year,
+    )
 
 
 @router.get("/series", response_model=MediaPage)
@@ -106,5 +114,12 @@ async def series_season(
 async def series_details(
     service: CatalogServiceDependency,
     media_id: Annotated[int, Path(gt=0)],
+    fallback_title: FallbackTitle = None,
+    fallback_year: Year = None,
 ) -> MediaDetails:
-    return await service.details("series", media_id)
+    return await service.details(
+        "series",
+        media_id,
+        fallback_title=fallback_title.strip() if fallback_title else None,
+        fallback_year=fallback_year,
+    )

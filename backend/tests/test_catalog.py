@@ -88,6 +88,50 @@ def season_payload() -> dict[str, Any]:
     }
 
 
+def kinopoisk_game_payloads() -> dict[str, dict[str, Any]]:
+    return {
+        "/api/v2.1/films/search-by-keyword": {
+            "films": [
+                {
+                    "filmId": 77,
+                    "nameRu": "Игра престолов",
+                    "nameEn": "Game of Thrones",
+                    "year": "2011",
+                    "type": "TV_SERIES",
+                    "posterUrlPreview": "https://kp.example/game-small.jpg",
+                    "genres": [{"genre": "фэнтези"}],
+                }
+            ]
+        },
+        "/api/v2.2/films/77": {
+            "kinopoiskId": 77,
+            "nameRu": "Игра престолов",
+            "nameOriginal": "Game of Thrones",
+            "year": 2011,
+            "type": "TV_SERIES",
+            "description": "Борьба за Железный трон.",
+            "posterUrl": "https://kp.example/game.jpg",
+            "ratingKinopoisk": 9.0,
+            "genres": [{"genre": "фэнтези"}],
+            "completed": True,
+        },
+        "/api/v2.2/films/77/seasons": {
+            "items": [
+                {
+                    "number": 1,
+                    "episodes": [
+                        {
+                            "episodeNumber": 1,
+                            "nameRu": "Зима близко",
+                            "releaseDate": "2011-04-17",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+
 async def test_movies_endpoint_uses_catalog_service_and_normalizes_tmdb(
     client: AsyncClient,
     session: AsyncSession,
@@ -355,6 +399,58 @@ async def test_kinopoisk_fallback_provides_details_and_season_metadata(
     assert [call[0] for call in fake_kinopoisk.calls].count(
         f"/api/v2.2/films/{kinopoisk_id}/seasons"
     ) == 1
+
+
+async def test_details_endpoint_uses_kinopoisk_when_tmdb_is_unavailable(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    fake_tmdb = FakeTMDBClient({})
+    fake_tmdb.unavailable = True
+    fake_kinopoisk = FakeKinopoiskClient(kinopoisk_game_payloads())
+    service = CatalogService(
+        fake_tmdb,
+        MetadataCacheRepository(session),
+        Settings(),
+        fake_kinopoisk,
+    )
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    response = await client.get(
+        "/api/v1/series/1399",
+        params={"fallback_title": "Игра престолов", "fallback_year": 2011},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == 1_500_000_077
+    assert response.json()["title"] == "Игра престолов"
+    assert response.json()["seasons"][0]["episode_count"] == 1
+
+    wrong_year = await client.get(
+        "/api/v1/series/1399",
+        params={"fallback_title": "Игра престолов", "fallback_year": 2012},
+    )
+    assert wrong_year.status_code == 502
+    assert wrong_year.json()["code"] == "metadata_unavailable"
+
+
+async def test_search_uses_kinopoisk_when_tmdb_is_unavailable(
+    session: AsyncSession,
+) -> None:
+    fake_tmdb = FakeTMDBClient({})
+    fake_tmdb.unavailable = True
+    service = CatalogService(
+        fake_tmdb,
+        MetadataCacheRepository(session),
+        Settings(),
+        FakeKinopoiskClient(kinopoisk_game_payloads()),
+    )
+
+    result = await service.search("series", "Игра престолов", page=1, year=2011)
+
+    assert [(item.id, item.title) for item in result.items] == [
+        (1_500_000_077, "Игра престолов")
+    ]
 
 
 async def test_series_season_endpoint_normalizes_and_caches_episodes(

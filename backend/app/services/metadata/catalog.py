@@ -118,8 +118,14 @@ class CatalogService:
         if year is not None:
             params["year" if kind == "movie" else "first_air_date_year"] = year
         tmdb_kind = "movie" if kind == "movie" else "tv"
-        payload = await self._request(f"/search/{tmdb_kind}", params)
-        page_result = self._page(payload, kind)
+        try:
+            payload = await self._request(f"/search/{tmdb_kind}", params)
+            page_result = self._page(payload, kind)
+        except MetadataUnavailableError:
+            if page != 1 or self._kinopoisk_client is None:
+                raise
+            logger.warning("TMDB search unavailable; using Kinopoisk fallback")
+            page_result = MediaPage(items=[], page=1, total_pages=0, total_results=0)
         if page != 1 or self._kinopoisk_client is None:
             return page_result
         return await self._enrich_search(page_result, kind, query, year, tmdb_kind)
@@ -179,7 +185,13 @@ class CatalogService:
                 }
                 if candidate_year is not None:
                     params["year" if kind == "movie" else "first_air_date_year"] = candidate_year
-                extra = self._page(await self._request(f"/search/{tmdb_kind}", params), kind)
+                try:
+                    extra = self._page(
+                        await self._request(f"/search/{tmdb_kind}", params),
+                        kind,
+                    )
+                except MetadataError:
+                    extra = MediaPage(items=[], page=1, total_pages=0, total_results=0)
                 for item in extra.items:
                     if self._media_matches_title(item, title) and item.id not in known_ids:
                         known_ids.add(item.id)
@@ -200,15 +212,79 @@ class CatalogService:
             total_results=max(primary.total_results, len(items)),
         )
 
-    async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+    async def details(
+        self,
+        kind: MediaKind,
+        media_id: int,
+        *,
+        fallback_title: str | None = None,
+        fallback_year: int | None = None,
+    ) -> MediaDetails:
         if self._is_kinopoisk_id(media_id):
             return await self._kinopoisk_details(kind, media_id)
         tmdb_kind = "movie" if kind == "movie" else "tv"
-        payload = await self._request(
-            f"/{tmdb_kind}/{media_id}",
-            {"append_to_response": "credits,videos"},
-        )
+        try:
+            payload = await self._request(
+                f"/{tmdb_kind}/{media_id}",
+                {"append_to_response": "credits,videos"},
+            )
+        except MetadataUnavailableError as primary_error:
+            if fallback_title is None or self._kinopoisk_client is None:
+                raise
+            try:
+                return await self._kinopoisk_details_by_title(
+                    kind,
+                    fallback_title,
+                    fallback_year,
+                )
+            except MetadataError as fallback_error:
+                logger.warning(
+                    "Kinopoisk details fallback failed for TMDB media %s",
+                    media_id,
+                    exc_info=True,
+                )
+                raise primary_error from fallback_error
         return self._details(payload, kind)
+
+    async def _kinopoisk_details_by_title(
+        self,
+        kind: MediaKind,
+        title: str,
+        year: int | None,
+    ) -> MediaDetails:
+        payload = await self._kinopoisk_request(
+            "/api/v2.1/films/search-by-keyword",
+            {"keyword": title, "page": 1},
+        )
+        raw_films = payload.get("films")
+        films = raw_films if isinstance(raw_films, list) else []
+        normalized_title = self._normalize_title(title)
+        candidates = [
+            item
+            for item in films
+            if isinstance(item, dict)
+            and self._kinopoisk_matches_kind(item, kind)
+            and any(
+                self._normalize_title(candidate_title) == normalized_title
+                for candidate_title in self._kinopoisk_titles(item)
+            )
+        ]
+        if year is not None:
+            candidates = [
+                item
+                for item in candidates
+                if self._int_year(item.get("year")) == year
+                or self._int_year(item.get("startYear")) == year
+            ]
+        for candidate in candidates:
+            card = self._kinopoisk_card(candidate, kind)
+            if card is not None:
+                logger.warning(
+                    "Serving Kinopoisk details fallback for unavailable TMDB title %s",
+                    title,
+                )
+                return await self._kinopoisk_details(kind, card.id)
+        raise MetadataNotFoundError("Kinopoisk fallback title was not found")
 
     async def season(self, media_id: int, season_number: int) -> SeasonDetails:
         if self._is_kinopoisk_id(media_id):

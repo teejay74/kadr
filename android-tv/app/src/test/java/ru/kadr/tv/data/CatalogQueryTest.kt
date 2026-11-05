@@ -27,4 +27,13 @@ class CatalogQueryTest {
             catalogPath(MediaKind.SERIES, "popular", 16, null, null),
         )
     }
+
+    @Test
+    fun `details provide an encoded title for metadata fallback`() {
+        assertEquals(
+            "/api/v1/series/1399?fallback_title=%D0%98%D0%B3%D1%80%D0%B0+" +
+                "%D0%BF%D1%80%D0%B5%D1%81%D1%82%D0%BE%D0%BB%D0%BE%D0%B2&fallback_year=2011",
+            detailsPath(MediaKind.SERIES, 1399, "Игра престолов", 2011),
+        )
+    }
 }

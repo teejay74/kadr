@@ -87,9 +87,12 @@ subtitle panel for device-supported Media3 tracks and persists semantic track
 choices locally on the television. Server-synchronized preferences and
 compatibility preparation remain explicitly pending rather than represented by
 mocks.
-Version 0.7.0 adds native Новинки and Мультфильмы screens, including the
+Version 0.7.1 adds native Новинки and Мультфильмы screens, including the
 server-owned RU digital-release window and D-pad age filters for animated
-films.
+films. When TMDB is temporarily unavailable, a card opened from Android TV can
+be resolved through the exact title, year, and media type in the configured
+Kinopoisk fallback; provider errors are shown above the current screen instead
+of being hidden below a long catalogue row.
 
 The catalogue also has dedicated **Новинки** and **Мультфильмы** sections.
 Movie новинки require a regional digital release rather than a theatrical-only

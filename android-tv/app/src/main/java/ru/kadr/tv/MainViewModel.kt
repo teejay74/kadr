@@ -166,7 +166,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         mutableState.value = mutableState.value.copy(loading = true, message = null)
         viewModelScope.launch {
-            runCatching { currentApi.details(media.kind, media.id) }
+            runCatching {
+                currentApi.details(media.kind, media.id, media.title, media.year)
+            }
                 .onSuccess { details ->
                     mutableState.value = mutableState.value.copy(
                         screen = Screen.DETAILS,
@@ -281,7 +283,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(loading = true, message = null)
         libraryJob = viewModelScope.launch {
             try {
-                val details = currentApi.details(item.mediaKind, item.mediaId)
+                val details = currentApi.details(
+                    item.mediaKind,
+                    item.mediaId,
+                    item.title,
+                )
                 if (item.mediaKind == MediaKind.MOVIE) {
                     mutableState.value = mutableState.value.copy(
                         screen = Screen.DETAILS,
@@ -301,7 +307,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val episodeNumber = requireNotNull(item.episodeNumber) {
                     "В истории не указана серия"
                 }
-                val season = currentApi.season(item.mediaId, seasonNumber)
+                val season = currentApi.season(details.card.id, seasonNumber)
                 val episode = season.episodes.firstOrNull { candidate ->
                     candidate.number == episodeNumber ||
                         item.catalogEpisodeId != null && candidate.id == item.catalogEpisodeId

@@ -50,6 +50,12 @@ existing detail, source-search, library, web, and Android TV flows cannot
 confuse them with TMDB IDs. New-release and animation/age filters stay in
 `CatalogService`, so controllers remain thin and clients do not know provider
 syntax.
+When a client already has a normalized catalogue card but its TMDB detail call
+fails because that provider is unreachable, it may send the trusted title and
+year. `CatalogService` resolves only an exact, type-compatible, same-year
+Kinopoisk object and returns its reserved KADR identity. Android TV replaces
+the active identity with the returned one before requesting seasons or sources,
+so a provider outage cannot leave later calls tied to the unavailable TMDB ID.
 
 The responsive frontend uses Vue Router, Composition API, strict TypeScript,
 reusable media components, and a dedicated API client. It provides home rails,

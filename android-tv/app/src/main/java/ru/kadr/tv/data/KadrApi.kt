@@ -119,8 +119,13 @@ class KadrApi(private val serverUrl: String) {
         }
     }
 
-    suspend fun details(kind: MediaKind, mediaId: Int): MediaDetails =
-        request("/api/v1/${kindPath(kind)}/$mediaId") { body ->
+    suspend fun details(
+        kind: MediaKind,
+        mediaId: Int,
+        fallbackTitle: String? = null,
+        fallbackYear: Int? = null,
+    ): MediaDetails =
+        request(detailsPath(kind, mediaId, fallbackTitle, fallbackYear)) { body ->
             MediaDetails(
                 card = parseCard(body),
                 originalTitle = body.optString("original_title"),
@@ -409,6 +414,23 @@ internal fun catalogPath(
     releasedWithinDays?.let { parameters += "released_within_days=$it" }
     val path = if (kind == MediaKind.MOVIE) "movies" else "series"
     return "/api/v1/$path?${parameters.joinToString("&")}"
+}
+
+internal fun detailsPath(
+    kind: MediaKind,
+    mediaId: Int,
+    fallbackTitle: String?,
+    fallbackYear: Int?,
+): String {
+    val path = if (kind == MediaKind.MOVIE) "movies" else "series"
+    val parameters = buildList {
+        fallbackTitle?.trim()?.takeIf { it.length >= 2 }?.let {
+            add("fallback_title=${encodeQuery(it)}")
+        }
+        fallbackYear?.let { add("fallback_year=$it") }
+    }
+    return "/api/v1/$path/$mediaId" +
+        parameters.takeIf { it.isNotEmpty() }?.joinToString("&", prefix = "?").orEmpty()
 }
 
 private fun encodeQuery(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

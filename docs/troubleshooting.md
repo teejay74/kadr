@@ -54,6 +54,25 @@ An empty episode list is preserved as an honest provider result; KADR does not
 generate placeholder episodes. Episode metadata is independent of torrent file
 discovery, so Prowlarr and qBittorrent settings do not repair this error.
 
+## Android TV opens a card but nothing happens
+
+First install Android TV client `0.7.1` or newer. Older clients requested TMDB
+details only by provider ID; if TMDB DNS or HTTPS was unavailable, the request
+failed before playback resolution and the error could appear below a long
+catalogue row. The current client displays the failure at the top of the screen
+and sends the already loaded card title and year for a bounded Kinopoisk
+fallback.
+
+Inspect the API access log for the device address. If a details request returns
+`502 metadata_unavailable` and there is no following
+`POST /api/v1/playback/resolve`, verify DNS inside the API container. Resolving
+`api.themoviedb.org` to `127.0.0.1` or `::1` is invalid and causes connection
+refusal. Restore a valid upstream DNS answer; do not add provider loopback
+entries. With `KADR_KINOPOISK_API_KEY` configured, an exact title/type/year
+match remains usable while TMDB is down. The response ID may change to KADR's
+reserved Kinopoisk range, and the client must use that returned ID for seasons
+and source search.
+
 ## Prowlarr does not become healthy
 
 Run `docker compose ps prowlarr` and `docker compose logs --tail=200 prowlarr`.

@@ -157,6 +157,22 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 }
             }
             if (state.loading) LoadingOverlay()
+            if (
+                !state.loading &&
+                state.message != null &&
+                state.screen in setOf(
+                    Screen.CATALOG,
+                    Screen.DISCOVERY,
+                    Screen.SEARCH,
+                    Screen.LIBRARY,
+                )
+            ) {
+                ErrorOverlay(
+                    state.message.orEmpty(),
+                    viewModel::clearMessage,
+                    Modifier.align(Alignment.TopCenter),
+                )
+            }
         }
     }
 }
@@ -1205,6 +1221,33 @@ private fun LoadingOverlay() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(18.dp).background(Accent, RoundedCornerShape(99.dp)))
             Text("Загрузка…", color = Color.White, fontSize = 22.sp, modifier = Modifier.padding(top = 18.dp))
+        }
+    }
+}
+
+@Composable
+private fun ErrorOverlay(
+    message: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .padding(top = 42.dp)
+            .width(900.dp)
+            .background(Color(0xFF381B27), RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFF7F3348), RoundedCornerShape(12.dp))
+            .padding(horizontal = 24.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            message,
+            color = Color(0xFFFCA5A5),
+            fontSize = 18.sp,
+            modifier = Modifier.weight(1f),
+        )
+        Button(onClick = onDismiss, modifier = Modifier.padding(start = 20.dp)) {
+            Text("Закрыть")
         }
     }
 }
