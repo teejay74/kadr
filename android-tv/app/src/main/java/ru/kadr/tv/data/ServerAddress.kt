@@ -3,6 +3,8 @@ package ru.kadr.tv.data
 import java.net.URI
 
 object ServerAddress {
+    const val DEFAULT_URL = "http://192.168.1.69"
+
     fun normalize(value: String): String {
         val candidate = value.trim().trimEnd('/')
         require(candidate.isNotEmpty()) { "Введите адрес сервера" }

@@ -9,6 +9,7 @@ import {
   confirmEpisodeMatches,
   deleteTorrentFile,
   deleteTorrent,
+  getHistory,
   getMediaPage,
   getHistoryItem,
   getPlaybackTracks,
@@ -114,6 +115,17 @@ test('requests normalized episode metadata for one series season', async () => {
 
   const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/series/42/seasons/2')
+})
+
+test('requests watch history for the active profile', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getHistory()
+  await getHistory('guest')
+
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/history?profile_key=default')
+  expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/history?profile_key=guest')
 })
 
 test('adds a selected source without exposing its provider URL', async () => {

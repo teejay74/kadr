@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,6 +72,7 @@ import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
 import ru.kadr.tv.data.HistoryItem
 import ru.kadr.tv.data.SavedLibraryItem
+import ru.kadr.tv.data.ServerAddress
 import ru.kadr.tv.data.SourceRelease
 import ru.kadr.tv.data.progressPercent
 
@@ -140,20 +142,24 @@ fun KadrTvApp(viewModel: MainViewModel) {
                     state = state,
                     onSeason = viewModel::selectSeason,
                     onEpisode = viewModel::playEpisode,
+                    onToggleWatched = viewModel::toggleEpisodeWatched,
                 )
                 Screen.SOURCES -> SourceScreen(state, viewModel::selectSource)
                 Screen.MATCH_FILES -> MatchFilesScreen(state, viewModel::selectEpisodeFile)
                 Screen.PREPARING -> PreparingScreen(state)
                 Screen.PLAYER -> state.playerUrl?.let { url ->
-                    PlayerScreen(
-                        streamUrl = url,
-                        resumePositionMs = state.resumePositionMs,
-                        title = state.playerMedia?.title.orEmpty(),
-                        episodeLabel = state.playerEpisode?.let { episode ->
-                            "Сезон ${episode.seasonNumber} · Серия ${episode.number} · ${episode.name}"
-                        },
-                        onProgress = viewModel::reportPlaybackProgress,
-                    )
+                    key(state.playerSession) {
+                        PlayerScreen(
+                            streamUrl = url,
+                            resumePositionMs = state.resumePositionMs,
+                            title = state.playerMedia?.title.orEmpty(),
+                            episodeLabel = state.playerEpisode?.let { episode ->
+                                "Сезон ${episode.seasonNumber} · Серия ${episode.number} · ${episode.name}"
+                            },
+                            onProgress = viewModel::reportPlaybackProgress,
+                            onEnded = viewModel::playNextEpisode,
+                        )
+                    }
                 }
             }
             if (state.loading) LoadingOverlay()
@@ -182,6 +188,7 @@ private fun EpisodeScreen(
     state: UiState,
     onSeason: (Int) -> Unit,
     onEpisode: (EpisodeSummary) -> Unit,
+    onToggleWatched: (EpisodeSummary) -> Unit,
 ) {
     val selectedSeasonFocus = remember { FocusRequester() }
     val firstEpisodeFocus = remember { FocusRequester() }
@@ -248,9 +255,13 @@ private fun EpisodeScreen(
             itemsIndexed(season.episodes, key = { _, episode -> episode.id }) { index, episode ->
                 EpisodeTile(
                     episode = episode,
+                    history = state.episodeHistoryItems.firstOrNull {
+                        it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
+                    },
                     onEpisode = onEpisode,
+                    onToggleWatched = onToggleWatched,
                     focusRequester = firstEpisodeFocus.takeIf { index == 0 },
-                    upFocus = selectedSeasonFocus,
+                    upFocus = selectedSeasonFocus.takeIf { index == 0 },
                 )
             }
         }
@@ -270,51 +281,72 @@ private fun EpisodeScreen(
 @Composable
 private fun EpisodeTile(
     episode: EpisodeSummary,
+    history: HistoryItem?,
     onEpisode: (EpisodeSummary) -> Unit,
+    onToggleWatched: (EpisodeSummary) -> Unit,
     focusRequester: FocusRequester?,
-    upFocus: FocusRequester,
+    upFocus: FocusRequester?,
 ) {
-    Button(
-        onClick = { onEpisode(episode) },
-        modifier = Modifier
-            .padding(horizontal = 64.dp)
-            .fillMaxWidth()
-            .focusProperties { up = upFocus }
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+    Row(
+        modifier = Modifier.padding(horizontal = 64.dp).fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            Text(
-                episode.number.toString().padStart(2, '0'),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.width(54.dp),
-            )
-            Box(
-                modifier = Modifier
-                    .width(160.dp)
-                    .height(90.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF30323D)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("KADR", color = SecondaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                RemoteImage(
-                    url = episode.stillUrl,
-                    contentDescription = "Кадр серии ${episode.number}",
-                    modifier = Modifier.fillMaxSize(),
+        Button(
+            onClick = { onEpisode(episode) },
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (upFocus != null) Modifier.focusProperties { up = upFocus }
+                    else Modifier,
                 )
-            }
-            Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
-                Text(episode.name.ifBlank { "Серия ${episode.number}" }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
-                    listOfNotNull(
-                        episode.runtimeMinutes?.let { "$it мин" },
-                        "★ ${"%.1f".format(episode.rating)}".takeIf { episode.rating > 0 },
-                    ).joinToString(" · "),
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(top = 3.dp),
+                    episode.number.toString().padStart(2, '0'),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.width(54.dp),
                 )
+                Box(
+                    modifier = Modifier
+                        .width(160.dp)
+                        .height(90.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF30323D)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("KADR", color = SecondaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    RemoteImage(
+                        url = episode.stillUrl,
+                        contentDescription = "Кадр серии ${episode.number}",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
+                    Text(episode.name.ifBlank { "Серия ${episode.number}" }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        listOfNotNull(
+                            episode.runtimeMinutes?.let { "$it мин" },
+                            "★ ${"%.1f".format(episode.rating)}".takeIf { episode.rating > 0 },
+                            when {
+                                history?.completed == true -> "✓ Просмотрено"
+                                (history?.positionSeconds ?: 0) > 0 -> "Продолжить"
+                                else -> null
+                            },
+                        ).joinToString(" · "),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                }
             }
+        }
+        Button(
+            onClick = { onToggleWatched(episode) },
+            modifier = if (upFocus != null) Modifier.focusProperties { up = upFocus } else Modifier,
+        ) {
+            Text(if (history?.completed == true) "Снять ✓" else "Отметить ✓")
         }
     }
 }
@@ -484,7 +516,7 @@ private fun formatSize(bytes: Long): String {
 
 @Composable
 private fun SetupScreen(state: UiState, onConnect: (String) -> Unit) {
-    var address by remember(state.serverUrl) { mutableStateOf(state.serverUrl ?: "http://192.168.1.50:8180") }
+    var address by remember(state.serverUrl) { mutableStateOf(state.serverUrl ?: ServerAddress.DEFAULT_URL) }
     val fieldFocus = remember { FocusRequester() }
     LaunchedEffect(fieldFocus) {
         delay(250)
@@ -505,7 +537,7 @@ private fun SetupScreen(state: UiState, onConnect: (String) -> Unit) {
         )
         Text(
             "Введите адрес KADR в локальной сети или адрес Tailscale. Например: " +
-                "http://192.168.1.50:8180 или http://100.64.0.10:8180",
+                "${ServerAddress.DEFAULT_URL} или http://100.64.0.10:8180",
             color = SecondaryText,
             fontSize = 18.sp,
             modifier = Modifier.padding(top = 14.dp).width(820.dp),

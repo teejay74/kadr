@@ -6,6 +6,12 @@ import org.junit.Test
 
 class ServerAddressTest {
     @Test
+    fun usesTheConfiguredLanServerByDefault() {
+        assertEquals("http://192.168.1.69", ServerAddress.DEFAULT_URL)
+        assertEquals(ServerAddress.DEFAULT_URL, ServerAddress.normalize(ServerAddress.DEFAULT_URL))
+    }
+
+    @Test
     fun normalizesLanAndTailscaleAddresses() {
         assertEquals("http://192.168.1.50:8180", ServerAddress.normalize(" http://192.168.1.50:8180/ "))
         assertEquals("http://100.101.102.103:8180", ServerAddress.normalize("http://100.101.102.103:8180"))

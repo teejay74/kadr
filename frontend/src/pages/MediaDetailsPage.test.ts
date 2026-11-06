@@ -12,6 +12,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   confirmEpisodeMatches: vi.fn(),
   configureTorrentPrefetch: vi.fn(),
   getFavorites: vi.fn(),
+  getHistory: vi.fn(),
   getMediaDetails: vi.fn(),
   getSources: vi.fn(),
   prefetchNextEpisode: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   selectTorrentFile: vi.fn(),
   getSeriesSeason: vi.fn(),
   getTorrentFiles: vi.fn(),
+  updateHistory: vi.fn(),
 }))
 
 const details = {
@@ -77,6 +79,7 @@ beforeEach(() => {
   localStorage.clear()
   vi.mocked(api.getMediaDetails).mockResolvedValue(details)
   vi.mocked(api.getFavorites).mockResolvedValue([])
+  vi.mocked(api.getHistory).mockResolvedValue([])
   vi.mocked(api.getSeriesSeason).mockImplementation(async (_id, number) => season(number))
   vi.mocked(api.getSources).mockResolvedValue({
     media_id: 42,
@@ -548,6 +551,45 @@ test('restores the last season and reloads episodes after season selection', asy
   expect(localStorage.getItem('kadr:season:42')).toBe('1')
 })
 
+test('loads episode history and lets the viewer toggle a watched mark', async () => {
+  const watched = {
+    id: 'history-1',
+    media_id: 42,
+    media_kind: 'series' as const,
+    profile_key: 'default',
+    season_number: 1,
+    episode_number: 1,
+    catalog_episode_id: 601,
+    episode: null,
+    title: details.title,
+    poster_url: null,
+    position_seconds: 0,
+    duration_seconds: 3000,
+    completed: true,
+    updated_at: '2026-11-06T00:00:00Z',
+  }
+  vi.mocked(api.getHistory).mockResolvedValueOnce([watched])
+  vi.mocked(api.updateHistory).mockResolvedValueOnce({ ...watched, completed: false })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
+  })
+  await router.push('/series/42')
+  await router.isReady()
+
+  render(MediaDetailsPage, { global: { plugins: [router] } })
+
+  expect(await screen.findByText('Просмотрено')).toBeTruthy()
+  await fireEvent.click(screen.getByRole('button', { name: 'Отметить серию 1 непросмотренной' }))
+  await waitFor(() => expect(api.updateHistory).toHaveBeenCalledWith(42, expect.objectContaining({
+    season_number: 1,
+    episode_number: 1,
+    completed: false,
+    position_seconds: 0,
+  })))
+  expect(await screen.findByText('Смотреть')).toBeTruthy()
+})
+
 test('uses the backend next episode across seasons and opens it in the shared player', async () => {
   const currentPlayback = {
     status: 'ready' as const,
@@ -595,7 +637,8 @@ test('uses the backend next episode across seasons and opens it in the shared pl
 
   await fireEvent.click(await screen.findByRole('button', { name: /Эпизод сезона 1/ }))
   await fireEvent.click(await screen.findByRole('button', { name: 'Finish episode' }))
-  await fireEvent.click(await screen.findByRole('button', { name: '▶ Следующая серия' }))
+  expect((screen.getByRole('checkbox', { name: 'Автоматически запускать следующую серию' }) as HTMLInputElement).checked).toBe(true)
+  await fireEvent.click(await screen.findByRole('button', { name: /▶ Следующая серия/ }))
 
   expect(await screen.findByText('Сезон 2 · Серия 1')).toBeTruthy()
   expect(api.resolveNextEpisode).toHaveBeenCalledWith(42, expect.objectContaining({ number: 1 }), 'task-id', 1)

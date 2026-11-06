@@ -33,7 +33,11 @@ film release gets its preferred safe video selected by the backend.
 UI redesign D1 adds backend-owned next-episode navigation across season
 boundaries. Near the end of a torrent episode KADR may prefetch exactly one
 confirmed next file from the same release; completion opens a configurable
-next-episode overlay. Combined files are never presented as having an exact
+next-episode overlay. Automatic next-episode playback is enabled by default
+with a visible countdown and remains user-configurable. Series cards load
+episode-level watch history, show progress/completion, and let the viewer add
+or remove a watched mark. Up/down episode focus is handled explicitly for
+keyboard and TV remotes. Combined files are never presented as having an exact
 episode seek point unless future stored time boundaries make that possible.
 The final D2 UI increment moves torrent progress, pause/resume controls, file
 inspection, completed-file deletion, and confirmed whole-download removal to a
@@ -87,12 +91,21 @@ subtitle panel for device-supported Media3 tracks and persists semantic track
 choices locally on the television. Server-synchronized preferences and
 compatibility preparation remain explicitly pending rather than represented by
 mocks.
+On a fresh install the connection form starts with
+`http://192.168.1.69`; the address remains editable and is persisted after
+a successful connection. The native series screen now keeps normal upward
+focus between adjacent episodes, synchronizes watched state with the shared
+history API, and starts the next resolvable episode automatically when Media3
+reports playback completion, including the first episode of the next season.
 Version 0.7.1 adds native Новинки and Мультфильмы screens, including the
 server-owned RU digital-release window and D-pad age filters for animated
 films. When TMDB is temporarily unavailable, a card opened from Android TV can
 be resolved through the exact title, year, and media type in the configured
 Kinopoisk fallback; provider errors are shown above the current screen instead
 of being hidden below a long catalogue row.
+Version 0.7.2 fixes upward episode focus, adds watched toggles and automatic
+next-episode playback, and changes the fresh-install server default to
+`http://192.168.1.69`.
 
 The catalogue also has dedicated **Новинки** and **Мультфильмы** sections.
 Movie новинки require a regional digital release rather than a theatrical-only

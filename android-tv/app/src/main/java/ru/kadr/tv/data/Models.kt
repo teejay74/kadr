@@ -76,6 +76,12 @@ data class SeasonDetails(
     val episodes: List<EpisodeSummary>,
 )
 
+fun nextEpisodeInSeason(current: EpisodeSummary, episodes: List<EpisodeSummary>): EpisodeSummary? =
+    episodes.filter { it.number > current.number }.minByOrNull { it.number }
+
+fun nextSeasonNumber(currentSeason: Int, seasons: List<SeasonSummary>): Int? =
+    seasons.map { it.number }.filter { it > currentSeason }.minOrNull()
+
 data class SourceRelease(
     val id: String,
     val sizeBytes: Long,

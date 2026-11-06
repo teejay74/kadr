@@ -116,6 +116,11 @@ export function deleteFavorite(kind: MediaKind, mediaId: number): Promise<void> 
   return request<void>(`/api/v1/favorites/${kind}/${mediaId}`, { method: 'DELETE' })
 }
 
+export function getHistory(profileKey = 'default'): Promise<HistoryItem[]> {
+  const params = new URLSearchParams({ profile_key: profileKey })
+  return request<HistoryItem[]>(`/api/v1/history?${params}`)
+}
+
 export function getHistoryItem(
   mediaId: number,
   kind: MediaKind,

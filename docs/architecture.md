@@ -140,6 +140,15 @@ SQLite partial unique indexes distinguish title-level rows, whose episode ID is
 NULL, from episode-level rows. This avoids SQLite's nullable-unique loophole
 while preserving pre-B2 library and history records.
 
+The series details page reads the default profile history once with the rest of
+the card data and maps it to episode progress and completion states. A manual
+watched toggle uses the same history upsert as the player. Playback completion
+updates the visible state immediately while `KadrPlayer` persists completion;
+the next-episode resolver then opens the existing five-second overlay, whose
+automatic continuation defaults to enabled unless the viewer disabled it.
+Episode-list up/down keys move to the same action on the adjacent card before
+the page-wide spatial TV navigator runs.
+
 The Playback Resolver accepts title identity plus optional logical episode and
 profile identity. It reads resume history, prefers an available saved-library
 copy, then reuses persisted episode/file variants. For a film it can reuse the

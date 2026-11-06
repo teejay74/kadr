@@ -30,6 +30,8 @@ import ru.kadr.tv.data.SeasonDetails
 import ru.kadr.tv.data.SavedLibraryItem
 import ru.kadr.tv.data.SourceRelease
 import ru.kadr.tv.data.monotonicBufferProgress
+import ru.kadr.tv.data.nextEpisodeInSeason
+import ru.kadr.tv.data.nextSeasonNumber
 import ru.kadr.tv.data.normalizeSearchInput
 import ru.kadr.tv.data.recommendedSourceId
 import ru.kadr.tv.data.hasConfirmedEpisode
@@ -67,6 +69,7 @@ data class UiState(
     val libraryItems: List<SavedLibraryItem> = emptyList(),
     val favoriteItems: List<MediaCard> = emptyList(),
     val historyItems: List<HistoryItem> = emptyList(),
+    val episodeHistoryItems: List<HistoryItem> = emptyList(),
     val selected: MediaDetails? = null,
     val detailsOrigin: Screen = Screen.CATALOG,
     val selectedSeasonNumber: Int? = null,
@@ -80,6 +83,7 @@ data class UiState(
     val resumePositionMs: Long = 0,
     val playerMedia: MediaCard? = null,
     val playerEpisode: EpisodeSummary? = null,
+    val playerSession: Long = 0,
     val playerReturnScreen: Screen = Screen.DETAILS,
     val loading: Boolean = false,
     val message: String? = null,
@@ -424,10 +428,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         playbackJob = viewModelScope.launch {
             try {
-                val season = currentApi.season(selected.card.id, seasonNumber)
+                val (season, history) = coroutineScope {
+                    val seasonRequest = async { currentApi.season(selected.card.id, seasonNumber) }
+                    val historyRequest = async {
+                        runCatching { currentApi.history() }.getOrDefault(emptyList())
+                    }
+                    seasonRequest.await() to historyRequest.await()
+                }
                 mutableState.value = mutableState.value.copy(
                     screen = Screen.EPISODES,
                     seasonDetails = season,
+                    episodeHistoryItems = history.filter {
+                        it.mediaKind == MediaKind.SERIES && it.mediaId == selected.card.id
+                    },
                     loading = false,
                     message = if (season.episodes.isEmpty()) "В сезоне нет эпизодов" else null,
                 )
@@ -472,6 +485,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screen = Screen.EPISODES,
                     loading = false,
                     message = reason.message ?: "Не удалось подготовить эпизод",
+                )
+            }
+        }
+    }
+
+    fun toggleEpisodeWatched(episode: EpisodeSummary) {
+        val currentApi = api ?: return
+        val media = mutableState.value.selected?.card ?: return
+        val current = mutableState.value.episodeHistoryItems.firstOrNull {
+            it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
+        }
+        val completed = current?.completed != true
+        val replacement = HistoryItem(
+            mediaId = media.id,
+            mediaKind = MediaKind.SERIES,
+            title = media.title,
+            posterUrl = media.posterUrl,
+            seasonNumber = episode.seasonNumber,
+            episodeNumber = episode.number,
+            catalogEpisodeId = episode.id,
+            positionSeconds = 0,
+            durationSeconds = current?.durationSeconds ?: (episode.runtimeMinutes ?: 0) * 60L,
+            completed = completed,
+        )
+        mutableState.value = mutableState.value.copy(
+            episodeHistoryItems = mutableState.value.episodeHistoryItems
+                .filterNot {
+                    it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
+                } + replacement,
+            message = null,
+        )
+        viewModelScope.launch {
+            try {
+                currentApi.updateHistory(
+                    media = media,
+                    episode = episode,
+                    positionSeconds = 0,
+                    durationSeconds = replacement.durationSeconds,
+                    completed = completed,
+                )
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    episodeHistoryItems = mutableState.value.episodeHistoryItems
+                        .filterNot {
+                            it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
+                        }
+                        .let { items -> if (current == null) items else items + current },
+                    message = reason.message ?: "Не удалось изменить отметку серии",
+                )
+            }
+        }
+    }
+
+    fun playNextEpisode() {
+        val current = mutableState.value.playerEpisode ?: return
+        val selected = mutableState.value.selected ?: return
+        val currentSeason = mutableState.value.seasonDetails
+        val nextInSeason = currentSeason?.episodes?.let { nextEpisodeInSeason(current, it) }
+        if (nextInSeason != null) {
+            playEpisode(nextInSeason)
+            return
+        }
+        val followingSeasonNumber = nextSeasonNumber(current.seasonNumber, selected.seasons)
+            ?: return
+        val currentApi = api ?: return
+        viewModelScope.launch {
+            try {
+                val season = currentApi.season(selected.card.id, followingSeasonNumber)
+                val next = season.episodes.minByOrNull { it.number } ?: return@launch
+                mutableState.value = mutableState.value.copy(
+                    selectedSeasonNumber = followingSeasonNumber,
+                    seasonDetails = season,
+                    selectedEpisode = next,
+                )
+                playEpisode(next)
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    screen = Screen.EPISODES,
+                    playerUrl = null,
+                    message = reason.message ?: "Не удалось открыть следующую серию",
                 )
             }
         }
@@ -551,6 +648,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentApi = api ?: return
         val media = mutableState.value.playerMedia ?: return
         val episode = mutableState.value.playerEpisode
+        if (episode != null && final) {
+            val replacement = HistoryItem(
+                mediaId = media.id,
+                mediaKind = media.kind,
+                title = media.title,
+                posterUrl = media.posterUrl,
+                seasonNumber = episode.seasonNumber,
+                episodeNumber = episode.number,
+                catalogEpisodeId = episode.id,
+                positionSeconds = if (completed) 0 else positionMs.coerceAtLeast(0) / 1_000,
+                durationSeconds = durationMs.coerceAtLeast(0) / 1_000,
+                completed = completed,
+            )
+            mutableState.value = mutableState.value.copy(
+                episodeHistoryItems = mutableState.value.episodeHistoryItems.filterNot {
+                    it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
+                } + replacement,
+            )
+        }
         val previousUpdate = historyJob
         if (!final && previousUpdate?.isActive == true) return
         historyJob = viewModelScope.launch {
@@ -824,6 +940,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 resumePositionMs = playback.resumePositionSeconds * 1_000,
                 playerMedia = mutableState.value.selected?.card,
                 playerEpisode = mutableState.value.selectedEpisode,
+                playerSession = mutableState.value.playerSession + 1,
                 playerReturnScreen = if (mutableState.value.selectedEpisode != null) {
                     Screen.EPISODES
                 } else {

@@ -21,6 +21,7 @@ import {
   deleteFavorite,
   friendlyApiError,
   getFavorites,
+  getHistory,
   getMediaDetails,
   getSeriesSeason,
   getSources,
@@ -29,11 +30,13 @@ import {
   resolvePlayback,
   resolveNextEpisode,
   selectTorrentFile,
+  updateHistory,
 } from '../services/api'
 import type {
   EpisodeMatchReport,
   EpisodeMatchSelection,
   EpisodeSummary,
+  HistoryItem,
   MediaDetails,
   MediaKind,
   NextEpisodeResolution,
@@ -73,6 +76,10 @@ const nextEpisodeLoading = ref(false)
 const nextEpisodeOpen = ref(false)
 const nextPrefetchStarted = ref(false)
 const autoNext = ref(readAutoNext())
+const historyItems = ref<HistoryItem[]>([])
+const completedEpisodeKeys = ref<string[]>([])
+const historyBusyKey = ref('')
+const historyError = ref('')
 let seasonRequestId = 0
 
 const availableSeasons = computed<SeasonSummary[]>(() => {
@@ -109,9 +116,9 @@ function rememberSeason(number: number): void {
 
 function readAutoNext(): boolean {
   try {
-    return localStorage.getItem('kadr:auto-next') === 'true'
+    return localStorage.getItem('kadr:auto-next') !== 'false'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -223,6 +230,59 @@ async function showNextEpisode(): Promise<void> {
     }
   } finally {
     nextEpisodeLoading.value = false
+  }
+}
+
+function episodeKey(episode: EpisodeSummary): string {
+  return `${episode.season_number}:${episode.number}`
+}
+
+function markEpisodeCompletedLocally(episode: EpisodeSummary): void {
+  const key = episodeKey(episode)
+  if (!completedEpisodeKeys.value.includes(key)) {
+    completedEpisodeKeys.value = [...completedEpisodeKeys.value, key]
+  }
+}
+
+async function handleEpisodeEnded(): Promise<void> {
+  if (selectedEpisode.value) markEpisodeCompletedLocally(selectedEpisode.value)
+  await showNextEpisode()
+}
+
+async function toggleEpisodeWatched(episode: EpisodeSummary): Promise<void> {
+  if (!media.value || historyBusyKey.value) return
+  const key = episodeKey(episode)
+  const current = historyItems.value.find((item) => (
+    item.season_number === episode.season_number
+    && item.episode_number === episode.number
+  ))
+  const locallyCompleted = completedEpisodeKeys.value.includes(key)
+  const completed = !(current?.completed || locallyCompleted)
+  historyBusyKey.value = key
+  historyError.value = ''
+  try {
+    const saved = await updateHistory(media.value.id, {
+      media_kind: 'series',
+      title: media.value.title,
+      poster_url: media.value.poster_url,
+      position_seconds: 0,
+      duration_seconds: current?.duration_seconds ?? (episode.runtime_minutes ?? 0) * 60,
+      completed,
+      season_number: episode.season_number,
+      episode_number: episode.number,
+      catalog_episode_id: episode.id,
+    })
+    historyItems.value = [
+      ...historyItems.value.filter((item) => item.id !== saved.id),
+      saved,
+    ]
+    completedEpisodeKeys.value = completed
+      ? [...new Set([...completedEpisodeKeys.value, key])]
+      : completedEpisodeKeys.value.filter((item) => item !== key)
+  } catch (caught) {
+    historyError.value = friendlyApiError(caught)
+  } finally {
+    historyBusyKey.value = ''
   }
 }
 
@@ -508,9 +568,19 @@ async function loadDetails(): Promise<void> {
   sourceMatchReport.value = null
   sourceMatchOpen.value = false
   seasonDownloadMessage.value = ''
+  historyItems.value = []
+  completedEpisodeKeys.value = []
+  historyBusyKey.value = ''
+  historyError.value = ''
   try {
     media.value = await getMediaDetails(kind.value, id)
-    const favorites = await getFavorites()
+    const [favorites, history] = await Promise.all([
+      getFavorites(),
+      getHistory().catch(() => [] as HistoryItem[]),
+    ])
+    historyItems.value = history.filter((item) => (
+      item.media_id === id && item.media_kind === kind.value
+    ))
     favorite.value = favorites.some((item) => item.media_id === id && item.media_kind === kind.value)
     if (media.value.kind === 'series' && availableSeasons.value.length) {
       selectedSeasonNumber.value = initialSeason()
@@ -605,11 +675,18 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       <p v-if="playbackMessage && selectedEpisode" class="legacy-playback-notice" role="status">
         {{ playbackMessage }} Окно выбора источника открыто.
       </p>
+      <p v-if="historyError" class="legacy-playback-notice" role="alert">
+        Не удалось изменить отметку серии: {{ historyError }}
+      </p>
       <EpisodeList
         :episodes="seasonDetails?.episodes ?? []"
+        :history="historyItems"
+        :completed-episode-keys="completedEpisodeKeys"
+        :history-busy-key="historyBusyKey"
         :loading="seasonLoading"
         :error="seasonError"
         @select="openPlaybackFlow"
+        @toggle-watched="toggleEpisodeWatched"
         @retry="loadSeason"
       />
     </section>
@@ -645,7 +722,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         :initial-resume-seconds="playback.resume_position_seconds"
         auto-activate
         @near-end="prepareNextEpisode"
-        @ended="showNextEpisode"
+        @ended="handleEpisodeEnded"
       />
     </section>
 

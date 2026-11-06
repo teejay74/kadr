@@ -63,6 +63,7 @@ fun PlayerScreen(
     title: String,
     episodeLabel: String?,
     onProgress: (positionMs: Long, durationMs: Long, completed: Boolean, final: Boolean) -> Unit,
+    onEnded: () -> Unit,
 ) {
     val context = LocalContext.current
     val rootView = LocalView.current
@@ -193,6 +194,7 @@ fun PlayerScreen(
                 if (playbackState == Player.STATE_ENDED && !completed) {
                     completed = true
                     onProgress(0, player.duration, true, true)
+                    onEnded()
                 }
             }
 
