@@ -10,6 +10,7 @@ import {
   deleteTorrentFile,
   deleteTorrent,
   getHistory,
+  getIndexers,
   getMediaPage,
   getHistoryItem,
   getPlaybackTracks,
@@ -104,6 +105,29 @@ test('adds a season marker to a series source search', async () => {
   expect(path).toBe('/api/v1/media/42/sources?kind=series&sort=seeders&order=desc&season_number=2')
 })
 
+test('limits source search to one configured indexer', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ media_id: 42, media_kind: 'movie', query: 'Dune', items: [], total: 0 }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getSources(42, 'movie', 'seeders', 'desc', undefined, 7)
+
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/media/42/sources?kind=movie&sort=seeders&order=desc&indexer_id=7',
+  )
+})
+
+test('loads safe configured indexer summaries', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await getIndexers()
+
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/indexers')
+})
+
 test('requests normalized episode metadata for one series season', async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
@@ -139,6 +163,20 @@ test('adds a selected source without exposing its provider URL', async () => {
   expect(init.method).toBe('POST')
   expect(JSON.parse(String(init.body))).toEqual({ media_kind: 'movie', source_id: 'a'.repeat(24) })
   expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+})
+
+test('keeps the selected indexer when resolving a source', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'task' }) })
+  vi.stubGlobal('fetch', fetchMock)
+
+  await addTorrent(42, 'movie', 'a'.repeat(24), null, 7)
+
+  const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+  expect(JSON.parse(String(init.body))).toEqual({
+    media_kind: 'movie',
+    source_id: 'a'.repeat(24),
+    indexer_id: 7,
+  })
 })
 
 test('keeps the season number when adding a seasonal source', async () => {

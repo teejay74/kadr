@@ -13,6 +13,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   configureTorrentPrefetch: vi.fn(),
   getFavorites: vi.fn(),
   getHistory: vi.fn(),
+  getIndexers: vi.fn(),
   getMediaDetails: vi.fn(),
   getSources: vi.fn(),
   prefetchNextEpisode: vi.fn(),
@@ -80,6 +81,7 @@ beforeEach(() => {
   vi.mocked(api.getMediaDetails).mockResolvedValue(details)
   vi.mocked(api.getFavorites).mockResolvedValue([])
   vi.mocked(api.getHistory).mockResolvedValue([])
+  vi.mocked(api.getIndexers).mockResolvedValue([])
   vi.mocked(api.getSeriesSeason).mockImplementation(async (_id, number) => season(number))
   vi.mocked(api.getSources).mockResolvedValue({
     media_id: 42,

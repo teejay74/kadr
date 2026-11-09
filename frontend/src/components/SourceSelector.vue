@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { SourceRelease } from '../types/media'
+import type { IndexerSummary, SourceRelease } from '../types/media'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -12,6 +12,8 @@ const props = withDefaults(defineProps<{
   eyebrow?: string
   heading?: string
   actionLabel?: string
+  indexers?: IndexerSummary[]
+  selectedIndexerId?: number | null
 }>(), {
   loading: false,
   busySourceId: null,
@@ -19,13 +21,22 @@ const props = withDefaults(defineProps<{
   eyebrow: 'Источник просмотра',
   heading: 'Выберите источник',
   actionLabel: 'Выбрать',
+  indexers: () => [],
+  selectedIndexerId: null,
 })
 
 const emit = defineEmits<{
   close: []
   retry: []
   select: [source: SourceRelease]
+  changeIndexer: [indexerId: number | null]
 }>()
+
+function changeIndexer(event: Event): void {
+  const select = event.target
+  if (!(select instanceof HTMLSelectElement)) return
+  emit('changeIndexer', select.value ? Number(select.value) : null)
+}
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'Размер неизвестен'
@@ -63,6 +74,19 @@ function releaseLabel(source: SourceRelease): string {
           <p class="eyebrow">{{ eyebrow }}</p>
           <h2 id="source-selector-title">{{ heading }}</h2>
           <p>{{ title }}</p>
+          <label v-if="indexers.length" class="source-indexer-filter">
+            <span>Где искать</span>
+            <select
+              :value="selectedIndexerId ?? ''"
+              :disabled="busySourceId !== null || loading"
+              @change="changeIndexer"
+            >
+              <option value="">Во всех источниках</option>
+              <option v-for="indexer in indexers" :key="indexer.id" :value="indexer.id">
+                {{ indexer.name }}
+              </option>
+            </select>
+          </label>
         </div>
         <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busySourceId !== null" @click="emit('close')">
           Закрыть

@@ -227,6 +227,9 @@ Runs a user-triggered Prowlarr search. Required query parameter `kind` is
 can pass `season_number` from 1 to 100. The server adds an `S01`-style marker
 to that search and returns the same number in each normalized release so the
 source can be resolved safely later.
+Clients can pass one positive `indexer_id` returned by `GET /api/v1/indexers`.
+KADR forwards it to Prowlarr as `indexerIds`, so only that configured indexer
+is queried. Omitting it searches all enabled indexers.
 
 ```json
 {
@@ -239,6 +242,7 @@ source can be resolved safely later.
       "id": "66d83f88a6b5b3d0b9f8f101",
       "title": "Dune.Part.Two.2024.2160p.WEB-DL.HEVC.HDR10",
       "indexer": "Configured indexer",
+      "indexer_id": 7,
       "size_bytes": 10737418240,
       "seeders": 24,
       "peers": 3,
@@ -301,6 +305,9 @@ does not expose torrent hashes, source URIs, credentials, or filesystem paths.
 | `POST /torrents/{task_id}/stop` | Stop without deleting data |
 
 The add body is `{"media_kind":"movie","source_id":"<24 hex chars>"}`.
+When a source result contains `indexer_id`, clients also send that value so
+KADR resolves the opaque source through the same indexer instead of repeating
+the lookup across every configured site.
 For a release found by a season-specific search it also includes
 `"season_number":2`; this makes opaque source resolution repeat the same
 search.

@@ -58,12 +58,23 @@ class TorrentManager:
         media_kind: MediaKind,
         source_id: str,
         season_number: int | None = None,
+        indexer_id: int | None = None,
     ) -> TorrentStatus:
-        source = await self._sources.resolve(
-            media_id,
-            media_kind,
-            source_id,
-            season_number,
+        source = (
+            await self._sources.resolve(
+                media_id,
+                media_kind,
+                source_id,
+                season_number,
+                indexer_id,
+            )
+            if indexer_id is not None
+            else await self._sources.resolve(
+                media_id,
+                media_kind,
+                source_id,
+                season_number,
+            )
         )
         if source is None:
             raise TorrentNotFoundError("The selected source is no longer available")

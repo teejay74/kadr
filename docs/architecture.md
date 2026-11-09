@@ -267,6 +267,10 @@ searches still group normalized results by release-title season markers and
 keep ambiguous results visible. Prowlarr persists its own configuration in `data/prowlarr`
 and exposes its administrative UI only on host loopback. It is not a dependency of API health:
 catalogue browsing continues when Prowlarr or an indexer is unavailable.
+The source selector loads safe indexer summaries and can scope a user-triggered
+search to one configured torrent indexer. The selected numeric ID is forwarded
+to Prowlarr for both discovery and opaque-source resolution; credentials,
+tracker settings, and provider URLs remain server-side.
 
 FlareSolverr is an internal-only browser-challenge adapter on the KADR network.
 Prowlarr reaches it at `http://flaresolverr:8191`; no host port is published.

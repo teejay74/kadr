@@ -20,7 +20,12 @@ class MediaCatalog(Protocol):
 
 
 class IndexerProvider(Protocol):
-    async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]: ...
+    async def search(
+        self,
+        query: str,
+        media_kind: str,
+        indexer_id: int | None = None,
+    ) -> list[dict[str, Any]]: ...
 
     async def list_indexers(self) -> list[dict[str, Any]]: ...
 
@@ -48,8 +53,14 @@ class SourceSearchService:
         sort: SourceSort,
         order: SortOrder,
         season_number: int | None = None,
+        indexer_id: int | None = None,
     ) -> SourceResults:
-        query, raw_items = await self._search_raw(media_id, media_kind, season_number)
+        query, raw_items = await self._search_raw(
+            media_id,
+            media_kind,
+            season_number,
+            indexer_id,
+        )
         items = [
             release
             for payload in raw_items
@@ -70,8 +81,14 @@ class SourceSearchService:
         media_kind: MediaKind,
         source_id: str,
         season_number: int | None = None,
+        indexer_id: int | None = None,
     ) -> ResolvedSource | None:
-        _, raw_items = await self._search_raw(media_id, media_kind, season_number)
+        _, raw_items = await self._search_raw(
+            media_id,
+            media_kind,
+            season_number,
+            indexer_id,
+        )
         for payload in raw_items:
             release = self._normalize(payload, season_number)
             if release is None or release.id != source_id:
@@ -93,14 +110,15 @@ class SourceSearchService:
         media_id: int,
         media_kind: MediaKind,
         season_number: int | None = None,
+        indexer_id: int | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         media = await self._catalog.details(media_kind, media_id)
         title = media.title or media.original_title
         query = self._query(title, media.year, season_number)
-        raw_items = await self._provider.search(query, media_kind)
+        raw_items = await self._provider.search(query, media_kind, indexer_id)
         if not raw_items and media.original_title and media.original_title != title:
             query = self._query(media.original_title, media.year, season_number)
-            raw_items = await self._provider.search(query, media_kind)
+            raw_items = await self._provider.search(query, media_kind, indexer_id)
         return query, raw_items
 
     @staticmethod
@@ -146,6 +164,7 @@ class SourceSearchService:
             id=hashlib.sha256(identity.encode()).hexdigest()[:24],
             title=title,
             indexer=indexer,
+            indexer_id=self._optional_positive_integer(payload.get("indexerId")),
             size_bytes=size,
             seeders=self._optional_non_negative_integer(payload.get("seeders")),
             peers=self._optional_non_negative_integer(payload.get("leechers")),
@@ -181,6 +200,11 @@ class SourceSearchService:
         if value is None:
             return None
         return max(cls._integer(value, default=0), 0)
+
+    @classmethod
+    def _optional_positive_integer(cls, value: object) -> int | None:
+        parsed = cls._integer(value, default=0)
+        return parsed if parsed > 0 else None
 
     @staticmethod
     def _optional_text(value: object) -> str | None:

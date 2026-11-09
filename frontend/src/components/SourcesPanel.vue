@@ -9,6 +9,7 @@ import {
   deleteTorrentFile,
   friendlyApiError,
   getMediaTorrent,
+  getIndexers,
   getSources,
   getTorrent,
   getTorrentEpisodeFiles,
@@ -24,6 +25,7 @@ import type {
   EpisodeMatchSelection,
   MediaKind,
   EpisodeSummary,
+  IndexerSummary,
   SeasonSummary,
   SourceRelease,
   SourceSort,
@@ -52,6 +54,8 @@ const props = withDefaults(defineProps<{
   episode: null,
 })
 const items = ref<SourceRelease[]>([])
+const sourceIndexers = ref<IndexerSummary[]>([])
+const selectedIndexerId = ref<number | null>(null)
 const query = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -378,9 +382,20 @@ async function addSource(
   pendingSeasonDownload.value = downloadSeasonNumber
   pendingSeasonRequiresMatch.value = requireSeasonMatch
   try {
-    torrent.value = searchSeasonNumber === null
-      ? await addTorrent(props.mediaId, props.kind, sourceId)
-      : await addTorrent(props.mediaId, props.kind, sourceId, searchSeasonNumber)
+    const sourceIndexerId = items.value.find(
+      (item) => item.id === sourceId,
+    )?.indexer_id ?? selectedIndexerId.value
+    torrent.value = sourceIndexerId == null
+      ? searchSeasonNumber === null
+        ? await addTorrent(props.mediaId, props.kind, sourceId)
+        : await addTorrent(props.mediaId, props.kind, sourceId, searchSeasonNumber)
+      : await addTorrent(
+        props.mediaId,
+        props.kind,
+        sourceId,
+        searchSeasonNumber,
+        sourceIndexerId,
+      )
     rememberTask(torrent.value.id)
     await refreshFiles()
     await queuePendingSeason()
@@ -727,19 +742,33 @@ async function loadSources(): Promise<void> {
   error.value = ''
   try {
     if (props.kind !== 'series' || knownSeasonNumbers.value.length === 0) {
-      const result = await getSources(props.mediaId, props.kind, sort.value, order.value)
+      const result = selectedIndexerId.value === null
+        ? await getSources(props.mediaId, props.kind, sort.value, order.value)
+        : await getSources(
+          props.mediaId,
+          props.kind,
+          sort.value,
+          order.value,
+          undefined,
+          selectedIndexerId.value,
+        )
       items.value = result.items
       query.value = result.query
     } else {
       const results = []
       for (let index = 0; index < knownSeasonNumbers.value.length; index += 3) {
         const batch = knownSeasonNumbers.value.slice(index, index + 3)
-        results.push(...await Promise.all(batch.map((seasonNumber) => getSources(
-          props.mediaId,
-          props.kind,
-          sort.value,
-          order.value,
-          seasonNumber,
+        results.push(...await Promise.all(batch.map((seasonNumber) => (
+          selectedIndexerId.value === null
+            ? getSources(props.mediaId, props.kind, sort.value, order.value, seasonNumber)
+            : getSources(
+              props.mediaId,
+              props.kind,
+              sort.value,
+              order.value,
+              seasonNumber,
+              selectedIndexerId.value,
+            )
         ))))
       }
       items.value = deduplicateSources(
@@ -755,6 +784,23 @@ async function loadSources(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+async function loadSourceIndexers(): Promise<void> {
+  try {
+    sourceIndexers.value = (await getIndexers()).filter((indexer) => (
+      indexer.enabled && indexer.protocol?.toLowerCase() === 'torrent'
+    ))
+  } catch {
+    sourceIndexers.value = []
+  }
+}
+
+function changeSourceIndexer(event: Event): void {
+  const select = event.target
+  if (!(select instanceof HTMLSelectElement)) return
+  selectedIndexerId.value = select.value ? Number(select.value) : null
+  if (searched.value) void loadSources()
 }
 
 watch(sort, () => {
@@ -780,7 +826,10 @@ watch(taskStorageKey, () => {
   void restoreTask()
 })
 
-onMounted(() => void restoreTask())
+onMounted(() => {
+  void restoreTask()
+  void loadSourceIndexers()
+})
 onBeforeUnmount(clearTorrentTimer)
 </script>
 
@@ -791,16 +840,27 @@ onBeforeUnmount(clearTorrentTimer)
         <p class="eyebrow">Источник просмотра</p>
         <h2>Доступные источники</h2>
       </div>
-      <label v-if="searched" class="source-sort">
-        <span>Сортировка</span>
-        <select v-model="sort">
-          <option value="seeders">По сидам</option>
-          <option value="resolution">По разрешению</option>
-          <option value="source">По источнику</option>
-          <option value="size">По размеру</option>
-          <option value="title">По названию</option>
-        </select>
-      </label>
+      <div v-if="searched" class="source-toolbar">
+        <label v-if="sourceIndexers.length" class="source-sort">
+          <span>Где искать</span>
+          <select :value="selectedIndexerId ?? ''" @change="changeSourceIndexer">
+            <option value="">Во всех источниках</option>
+            <option v-for="indexer in sourceIndexers" :key="indexer.id" :value="indexer.id">
+              {{ indexer.name }}
+            </option>
+          </select>
+        </label>
+        <label class="source-sort">
+          <span>Сортировка</span>
+          <select v-model="sort">
+            <option value="seeders">По сидам</option>
+            <option value="resolution">По разрешению</option>
+            <option value="source">По источнику</option>
+            <option value="size">По размеру</option>
+            <option value="title">По названию</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <div v-if="!torrent && !searched" class="source-intro">

@@ -70,3 +70,22 @@ test('emits the selected normalized source', async () => {
 
   expect(result.emitted().select).toEqual([[sources[1]]])
 })
+
+test('offers all configured indexers and emits a search scope change', async () => {
+  const result = render(SourceSelector, {
+    props: {
+      title: 'Сериал',
+      items: sources,
+      indexers: [
+        { id: 7, name: 'RuTracker', enabled: true, protocol: 'torrent', privacy: 'private' },
+        { id: 9, name: 'RuTor', enabled: true, protocol: 'torrent', privacy: 'public' },
+      ],
+    },
+  })
+
+  const select = screen.getByRole('combobox', { name: 'Где искать' })
+  expect(screen.getByRole('option', { name: 'Во всех источниках' })).toBeTruthy()
+  await fireEvent.update(select, '7')
+
+  expect(result.emitted().changeIndexer).toEqual([[7]])
+})

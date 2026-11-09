@@ -34,14 +34,22 @@ class FakeCatalog:
 class FakeIndexerProvider:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.indexer_ids: list[int | None] = []
 
-    async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+    async def search(
+        self,
+        query: str,
+        media_kind: str,
+        indexer_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         self.calls.append((query, media_kind))
+        self.indexer_ids.append(indexer_id)
         return [
             {
                 "guid": "release-1",
                 "title": "Dune.Part.Two.2024.1080p.WEB-DL.x264.DDP5.1.RUS",
                 "indexer": "Example Torrent",
+                "indexerId": 7,
                 "size": 10_000,
                 "seeders": 20,
                 "leechers": 3,
@@ -154,6 +162,7 @@ async def test_prowlarr_client_sends_key_and_search_parameters() -> None:
         assert request.url.params["query"] == "Dune 2024"
         assert request.url.params["type"] == "movie"
         assert request.url.params.get_list("categories") == ["2000", "8000"]
+        assert request.url.params["indexerIds"] == "7"
         return httpx.Response(200, json=[])
 
     async with httpx.AsyncClient(
@@ -161,7 +170,7 @@ async def test_prowlarr_client_sends_key_and_search_parameters() -> None:
         base_url="http://prowlarr:9696",
     ) as http_client:
         client = ProwlarrClient(http_client, Settings(prowlarr_api_key="secret-key"))
-        assert await client.search("Dune 2024", "movie") == []
+        assert await client.search("Dune 2024", "movie", 7) == []
 
 
 async def test_prowlarr_client_requires_server_side_key() -> None:
@@ -172,28 +181,41 @@ async def test_prowlarr_client_requires_server_side_key() -> None:
 
 
 async def test_sources_endpoint_returns_normalized_results(client: AsyncClient) -> None:
-    service = SourceSearchService(FakeCatalog(), FakeIndexerProvider())
+    provider = FakeIndexerProvider()
+    service = SourceSearchService(FakeCatalog(), provider)
     app.dependency_overrides[get_source_search_service] = lambda: service
 
     response = await client.get(
         "/api/v1/media/42/sources",
-        params={"kind": "movie", "sort": "seeders", "order": "desc"},
+        params={
+            "kind": "movie",
+            "sort": "seeders",
+            "order": "desc",
+            "indexer_id": 7,
+        },
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["media_id"] == 42
     assert payload["items"][0]["seeders"] == 20
+    assert payload["items"][0]["indexer_id"] == 7
     assert "download_url" not in payload["items"][0]
+    assert provider.indexer_ids == [7]
 
 
 async def test_source_service_prefers_localized_title_and_falls_back() -> None:
     class EmptyThenFoundProvider(FakeIndexerProvider):
-        async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+        async def search(
+            self,
+            query: str,
+            media_kind: str,
+            indexer_id: int | None = None,
+        ) -> list[dict[str, Any]]:
             self.calls.append((query, media_kind))
             if query.startswith("Дюна"):
                 return []
-            return await super().search(query, media_kind)
+            return await super().search(query, media_kind, indexer_id)
 
     provider = EmptyThenFoundProvider()
     service = SourceSearchService(FakeCatalog(), provider)

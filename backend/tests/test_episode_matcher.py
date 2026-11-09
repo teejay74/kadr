@@ -326,6 +326,8 @@ async def test_unique_title_match_is_probable_and_never_automatic(
 async def test_file_without_episode_candidates_does_not_require_confirmation(
     session: AsyncSession,
 ) -> None:
+    catalog = FakeCatalog()
+    catalog.episodes[1] = []
     matcher, task = await make_matcher(
         session,
         [
@@ -338,6 +340,7 @@ async def test_file_without_episode_candidates_does_not_require_confirmation(
                 is_video=True,
             )
         ],
+        catalog=catalog,
     )
 
     report = await matcher.analyze(task.id)

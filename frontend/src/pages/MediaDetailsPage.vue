@@ -22,6 +22,7 @@ import {
   friendlyApiError,
   getFavorites,
   getHistory,
+  getIndexers,
   getMediaDetails,
   getSeriesSeason,
   getSources,
@@ -37,6 +38,7 @@ import type {
   EpisodeMatchSelection,
   EpisodeSummary,
   HistoryItem,
+  IndexerSummary,
   MediaDetails,
   MediaKind,
   NextEpisodeResolution,
@@ -66,6 +68,8 @@ const sourceIntent = ref<'playback' | 'season'>('playback')
 const sourceSelectorLoading = ref(false)
 const sourceSelectorError = ref('')
 const sourceItems = ref<SourceRelease[]>([])
+const sourceIndexers = ref<IndexerSummary[]>([])
+const selectedIndexerId = ref<number | null>(null)
 const sourceBusyId = ref<string | null>(null)
 const sourceTaskId = ref<string | null>(null)
 const sourceMatchReport = ref<EpisodeMatchReport | null>(null)
@@ -327,7 +331,23 @@ async function openSourceSelector(intent: 'playback' | 'season' = 'playback'): P
   sourceIntent.value = intent
   sourceSelectorOpen.value = true
   sourceSelectorError.value = ''
-  await loadSourceOptions()
+  await Promise.all([loadSourceIndexers(), loadSourceOptions()])
+}
+
+async function loadSourceIndexers(): Promise<void> {
+  if (sourceIndexers.value.length) return
+  try {
+    sourceIndexers.value = (await getIndexers()).filter((indexer) => (
+      indexer.enabled && indexer.protocol?.toLowerCase() === 'torrent'
+    ))
+  } catch {
+    sourceIndexers.value = []
+  }
+}
+
+function changeSourceIndexer(indexerId: number | null): void {
+  selectedIndexerId.value = indexerId
+  void loadSourceOptions()
 }
 
 async function startSeasonDownload(): Promise<void> {
@@ -355,13 +375,22 @@ async function loadSourceOptions(): Promise<void> {
         ? selectedSeasonNumber.value
         : selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
       : null
-    const result = await getSources(
-      media.value.id,
-      media.value.kind,
-      'seeders',
-      'desc',
-      seasonNumber || undefined,
-    )
+    const result = selectedIndexerId.value === null
+      ? await getSources(
+        media.value.id,
+        media.value.kind,
+        'seeders',
+        'desc',
+        seasonNumber || undefined,
+      )
+      : await getSources(
+        media.value.id,
+        media.value.kind,
+        'seeders',
+        'desc',
+        seasonNumber || undefined,
+        selectedIndexerId.value,
+      )
     sourceItems.value = result.items
   } catch (caught) {
     sourceItems.value = []
@@ -463,12 +492,16 @@ async function selectSource(source: SourceRelease): Promise<void> {
         ? selectedSeasonNumber.value
         : selectedEpisode.value?.season_number ?? selectedSeasonNumber.value
       : null
-    const task = await addTorrent(
-      media.value.id,
-      media.value.kind,
-      source.id,
-      seasonNumber || null,
-    )
+    const sourceIndexerId = source.indexer_id ?? selectedIndexerId.value
+    const task = sourceIndexerId == null
+      ? await addTorrent(media.value.id, media.value.kind, source.id, seasonNumber || null)
+      : await addTorrent(
+        media.value.id,
+        media.value.kind,
+        source.id,
+        seasonNumber || null,
+        sourceIndexerId,
+      )
     sourceTaskId.value = task.id
     if (!await waitForTorrentMetadata(task.id)) {
       sourceSelectorError.value = 'Метаданные раздачи ещё загружаются. Повторите выбор через несколько секунд.'
@@ -782,9 +815,12 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       :eyebrow="sourceIntent === 'season' ? 'Загрузка сезона' : 'Источник просмотра'"
       :heading="sourceIntent === 'season' ? `Скачать сезон ${selectedSeasonNumber}` : 'Выберите источник'"
       :action-label="sourceIntent === 'season' ? 'Скачать сезон' : 'Выбрать'"
+      :indexers="sourceIndexers"
+      :selected-indexer-id="selectedIndexerId"
       @close="closeSourceSelector"
       @retry="loadSourceOptions"
       @select="selectSource"
+      @change-indexer="changeSourceIndexer"
     />
     <EpisodeMatchDialog
       v-if="sourceMatchOpen && sourceMatchReport"

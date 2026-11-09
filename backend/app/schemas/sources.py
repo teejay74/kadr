@@ -21,6 +21,7 @@ class SourceRelease(ReleaseCharacteristics):
     id: str
     title: str
     indexer: str
+    indexer_id: int | None = Field(default=None, gt=0)
     size_bytes: int = Field(ge=0)
     seeders: int | None = Field(default=None, ge=0)
     peers: int | None = Field(default=None, ge=0)

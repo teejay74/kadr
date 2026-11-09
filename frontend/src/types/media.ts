@@ -96,6 +96,7 @@ export interface SourceRelease {
   id: string
   title: string
   indexer: string
+  indexer_id?: number | null
   size_bytes: number
   seeders: number | null
   peers: number | null
@@ -111,6 +112,14 @@ export interface SourceRelease {
   audio: string | null
   language: string | null
   release_type: string | null
+}
+
+export interface IndexerSummary {
+  id: number
+  name: string
+  enabled: boolean
+  protocol: string | null
+  privacy: string | null
 }
 
 export interface SourceResults {

@@ -49,6 +49,7 @@ async def add_torrent(
         body.media_kind,
         body.source_id,
         body.season_number,
+        body.indexer_id,
     )
 
 

@@ -9,6 +9,7 @@ import type {
   Genre,
   FavoriteItem,
   HistoryItem,
+  IndexerSummary,
   LibraryItem,
   MediaSnapshot,
   MediaDetails,
@@ -229,12 +230,19 @@ export function addTorrent(
   mediaKind: MediaKind,
   sourceId: string,
   seasonNumber?: number | null,
+  indexerId?: number | null,
 ): Promise<TorrentStatus> {
-  const body: { media_kind: MediaKind, source_id: string, season_number?: number } = {
+  const body: {
+    media_kind: MediaKind
+    source_id: string
+    season_number?: number
+    indexer_id?: number
+  } = {
     media_kind: mediaKind,
     source_id: sourceId,
   }
   if (seasonNumber !== null && seasonNumber !== undefined) body.season_number = seasonNumber
+  if (indexerId !== null && indexerId !== undefined) body.indexer_id = indexerId
   return request<TorrentStatus>(`/api/v1/media/${mediaId}/torrents`, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -460,10 +468,16 @@ export function getSources(
   sort: SourceSort = 'seeders',
   order: SortOrder = 'desc',
   seasonNumber?: number,
+  indexerId?: number | null,
 ): Promise<SourceResults> {
   const params = new URLSearchParams({ kind, sort, order })
   if (seasonNumber !== undefined) params.set('season_number', String(seasonNumber))
+  if (indexerId !== null && indexerId !== undefined) params.set('indexer_id', String(indexerId))
   return request<SourceResults>(`/api/v1/media/${mediaId}/sources?${params}`)
+}
+
+export function getIndexers(): Promise<IndexerSummary[]> {
+  return request<IndexerSummary[]>('/api/v1/indexers')
 }
 
 export function friendlyApiError(error: unknown): string {

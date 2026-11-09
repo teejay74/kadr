@@ -22,7 +22,12 @@ class ProwlarrClient:
             raise IndexerNotConfiguredError("Prowlarr API key is not configured")
         return {"X-Api-Key": api_key.get_secret_value()}
 
-    async def search(self, query: str, media_kind: str) -> list[dict[str, Any]]:
+    async def search(
+        self,
+        query: str,
+        media_kind: str,
+        indexer_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         media_category = 2000 if media_kind == "movie" else 5000
         params: list[tuple[str, str | int]] = [
             ("query", query),
@@ -33,6 +38,8 @@ class ProwlarrClient:
             ("limit", self._settings.prowlarr_search_limit),
             ("offset", 0),
         ]
+        if indexer_id is not None:
+            params.append(("indexerIds", indexer_id))
         payload = await self._get("/api/v1/search", params=params)
         if not isinstance(payload, list):
             raise IndexerUnavailableError("Prowlarr returned an unexpected search response")

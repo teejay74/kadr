@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   confirmEpisodeMatches: vi.fn(),
   deleteTorrentFile: vi.fn(),
   getSources: vi.fn(),
+  getIndexers: vi.fn(),
   getMediaTorrent: vi.fn(),
   getTorrent: vi.fn(),
   getTorrentEpisodeFiles: vi.fn(),
@@ -73,6 +74,7 @@ beforeEach(() => {
       },
     ],
   })
+  api.getIndexers.mockResolvedValue([])
   api.addTorrent.mockResolvedValue(stoppedTorrent)
   api.getMediaTorrent.mockRejectedValue(new Error('No current task'))
   api.getTorrentEpisodeFiles.mockResolvedValue([])
@@ -97,6 +99,26 @@ test('searches only after user action and renders normalized release data', asyn
   expect(screen.getByText('24')).toBeTruthy()
   expect(screen.getByText('2160p')).toBeTruthy()
   expect(api.getSources).toHaveBeenCalledWith(42, 'movie', 'seeders', 'desc')
+})
+
+test('repeats search through only the selected configured indexer', async () => {
+  api.getIndexers.mockResolvedValue([
+    { id: 7, name: 'RuTracker', enabled: true, protocol: 'torrent', privacy: 'private' },
+  ])
+  render(SourcesPanel, { props: { mediaId: 42, kind: 'movie' } })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Найти источники' }))
+  const indexerSelect = await screen.findByRole('combobox', { name: 'Где искать' })
+  await fireEvent.update(indexerSelect, '7')
+
+  await waitFor(() => expect(api.getSources).toHaveBeenLastCalledWith(
+    42,
+    'movie',
+    'seeders',
+    'desc',
+    undefined,
+    7,
+  ))
 })
 
 test('groups series sources by season without hiding ambiguous releases', async () => {
