@@ -695,7 +695,7 @@ test('opens matcher confirmation for an ambiguous series file and saves the choi
   render(SourcesPanel, { props: { mediaId: 42, kind: 'series', title: 'Series' } })
 
   expect(await screen.findByRole('dialog', { name: 'Проверьте соответствия серий' })).toBeTruthy()
-  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить соответствия' }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить и продолжить' }))
 
   await waitFor(() => expect(api.confirmEpisodeMatches).toHaveBeenCalledWith('task-id', [{
     file_id: 7,

@@ -20,6 +20,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: []
   confirm: [mappings: EpisodeMatchSelection[]]
+  proceed: []
 }>()
 
 const selected = ref<Record<number, string[]>>({})
@@ -64,8 +65,15 @@ const mappings = computed<EpisodeMatchSelection[]>(() => props.report.files.flat
   return episodes.length ? [{ file_id: file.file_id, episodes }] : []
 }))
 
+const confirmedFiles = computed(() => props.report.files.filter((file) => file.confirmed))
+const reviewFiles = computed(() => props.report.files.filter((file) => !file.confirmed))
+const hasReviewOptions = computed(() => reviewFiles.value.some(
+  (file) => !file.unsafe && options(file).length > 0,
+))
+
 function submit(): void {
   if (mappings.value.length) emit('confirm', mappings.value)
+  else if (!hasReviewOptions.value) emit('proceed')
 }
 
 watch(() => props.report, resetSelections, { immediate: true, deep: true })
@@ -89,23 +97,24 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
         </button>
       </header>
       <p class="episode-match-intro">
-        Точные однозначные совпадения уже сохранены. Для остальных файлов отметьте одну или несколько серий.
+        KADR связывает каждый видеофайл с номером серии, чтобы открывать нужный эпизод.
+        Точные совпадения уже сохранены автоматически. Для неопределённых файлов отметьте одну или несколько серий.
         Если один файл содержит две серии, KADR сохранит обе связи, но не сможет перейти к началу второй без временных границ.
       </p>
       <p v-if="!report.metadata_available" class="episode-match-warning">
         Метаданные эпизодов временно недоступны: автоматические привязки отключены.
       </p>
-      <div class="episode-match-list">
-        <article v-for="file in report.files" :key="file.file_id" class="episode-match-file">
+      <p v-if="!reviewFiles.length" class="episode-match-complete" role="status">
+        Все видеофайлы уже сопоставлены. Ничего выбирать не нужно — можно продолжить.
+      </p>
+      <div v-if="reviewFiles.length" class="episode-match-list">
+        <article v-for="file in reviewFiles" :key="file.file_id" class="episode-match-file">
           <div class="episode-match-file-heading">
             <strong>{{ file.file_path }}</strong>
             <span :class="`confidence-${file.confidence}`">{{ file.confidence }}</span>
           </div>
           <p v-for="reason in file.reasons" :key="reason">{{ reason }}</p>
-          <p v-if="file.confirmed" class="episode-match-saved">
-            Сохранено: {{ file.episodes.map((episode) => `S${episode.season_number}E${episode.episode_number}`).join(', ') }}
-          </p>
-          <p v-else-if="file.unsafe" class="episode-match-warning">
+          <p v-if="file.unsafe" class="episode-match-warning">
             Этот путь небезопасен и не может быть подтверждён.
           </p>
           <fieldset v-else-if="options(file).length">
@@ -130,6 +139,15 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
           <p v-else>Matcher не нашёл безопасного варианта. Выберите файл вручную в списке источника.</p>
         </article>
       </div>
+      <details v-if="confirmedFiles.length" class="episode-match-confirmed">
+        <summary>Уже сопоставлено автоматически: {{ confirmedFiles.length }}</summary>
+        <ul>
+          <li v-for="file in confirmedFiles" :key="file.file_id">
+            <span>{{ file.file_path }}</span>
+            <strong>{{ file.episodes.map((episode) => `S${episode.season_number}E${episode.episode_number}`).join(', ') }}</strong>
+          </li>
+        </ul>
+      </details>
       <p v-if="error" class="torrent-error" role="alert">{{ error }}</p>
       <footer>
         <button class="button secondary focus-ring" type="button" data-tv-back-action :disabled="busy" @click="emit('close')">
@@ -138,10 +156,10 @@ watch(() => props.report, resetSelections, { immediate: true, deep: true })
         <button
           class="button primary focus-ring"
           type="button"
-          :disabled="busy || mappings.length === 0"
+          :disabled="busy || (mappings.length === 0 && hasReviewOptions)"
           @click="submit"
         >
-          {{ busy ? 'Сохраняем…' : 'Сохранить соответствия' }}
+          {{ busy ? 'Сохраняем…' : mappings.length ? 'Сохранить и продолжить' : 'Продолжить' }}
         </button>
       </footer>
     </section>

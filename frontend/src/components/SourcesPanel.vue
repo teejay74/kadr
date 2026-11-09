@@ -516,6 +516,11 @@ async function saveEpisodeMatches(mappings: EpisodeMatchSelection[]): Promise<vo
   }
 }
 
+function proceedAfterEpisodeMatches(): void {
+  episodeMatchOpen.value = false
+  torrentNotice.value = 'Все распознанные серии уже сопоставлены. Выберите нужную серию в списке файлов.'
+}
+
 async function chooseFileAndStart(file: TorrentFile): Promise<void> {
   if (!torrent.value) return
   torrentBusy.value = true
@@ -1164,6 +1169,7 @@ onBeforeUnmount(clearTorrentTimer)
       :error="episodeMatchError"
       @close="episodeMatchOpen = false"
       @confirm="saveEpisodeMatches"
+      @proceed="proceedAfterEpisodeMatches"
     />
   </section>
 </template>

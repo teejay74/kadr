@@ -535,6 +535,33 @@ async function saveSourceMatches(mappings: EpisodeMatchSelection[]): Promise<voi
   }
 }
 
+async function proceedAfterSourceMatches(): Promise<void> {
+  if (!sourceMatchReport.value || sourceBusyId.value) return
+  sourceBusyId.value = 'confirming'
+  sourceSelectorError.value = ''
+  try {
+    if (sourceIntent.value === 'season') {
+      await finishSeasonDownload(sourceMatchReport.value)
+      return
+    }
+    if (selectedEpisode.value) {
+      if (targetIsConfirmed(sourceMatchReport.value)) {
+        await finishSourcePlayback()
+      } else {
+        sourceSelectorError.value = 'В выбранном источнике нужная серия не распознана. Выберите другой источник.'
+      }
+      return
+    }
+    sourceMatchOpen.value = false
+    sourceSelectorOpen.value = false
+    playbackMessage.value = 'Источник сохранён. Выберите эпизод для просмотра.'
+  } catch (caught) {
+    sourceSelectorError.value = friendlyApiError(caught)
+  } finally {
+    sourceBusyId.value = null
+  }
+}
+
 async function handlePrimaryAction(): Promise<void> {
   if (media.value?.kind === 'movie') {
     await openPlaybackFlow()
@@ -766,6 +793,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       :error="sourceSelectorError"
       @close="sourceMatchOpen = false"
       @confirm="saveSourceMatches"
+      @proceed="proceedAfterSourceMatches"
     />
     <NextEpisodeOverlay
       v-if="nextEpisodeOpen"

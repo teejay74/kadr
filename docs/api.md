@@ -325,6 +325,10 @@ downloads or probes a file just to match it. The response classifies each video
 as `exact`, `probable`, or `ambiguous`. Only an exact, unique, conflict-free
 result is stored automatically. Probable, ambiguous, conflicting, metadata-
 unverified, and unsafe-path results require user action or remain unbound.
+`requires_confirmation` is true only when the report contains an unconfirmed,
+safe file with at least one episode candidate the user can actually select.
+Files without candidates and unsafe paths remain unbound but do not create a
+confirmation dead end.
 
 Confirmation accepts, for example:
 

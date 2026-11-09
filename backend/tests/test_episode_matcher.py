@@ -323,6 +323,31 @@ async def test_unique_title_match_is_probable_and_never_automatic(
 
 
 @pytest.mark.asyncio
+async def test_file_without_episode_candidates_does_not_require_confirmation(
+    session: AsyncSession,
+) -> None:
+    matcher, task = await make_matcher(
+        session,
+        [
+            TorrentFile(
+                id=0,
+                name="Season 1/Unrelated Bonus Material.mkv",
+                size_bytes=100,
+                progress=0,
+                priority=0,
+                is_video=True,
+            )
+        ],
+    )
+
+    report = await matcher.analyze(task.id)
+
+    assert report.files[0].episodes == []
+    assert report.files[0].alternatives == []
+    assert report.requires_confirmation is False
+
+
+@pytest.mark.asyncio
 async def test_manual_confirmation_persists_multiple_episodes_for_one_file(
     session: AsyncSession,
 ) -> None:

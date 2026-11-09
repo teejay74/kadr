@@ -254,6 +254,13 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .episode-match-file input { margin-top: .18rem; accent-color: var(--accent-primary); }
 .episode-match-warning { color: #fca5a5 !important; }
 .episode-match-saved { color: #86efac !important; }
+.episode-match-complete { padding: .85rem 1rem; color: #bbf7d0 !important; border: 1px solid rgb(74 222 128 / .28); border-radius: .75rem; background: rgb(22 101 52 / .18); }
+.episode-match-confirmed { color: var(--text-secondary); }
+.episode-match-confirmed summary { cursor: pointer; font-weight: 700; }
+.episode-match-confirmed ul { display: grid; gap: .5rem; margin: .75rem 0 0; padding: 0; list-style: none; }
+.episode-match-confirmed li { display: flex; justify-content: space-between; gap: 1rem; font-size: .8rem; }
+.episode-match-confirmed li span { min-width: 0; overflow-wrap: anywhere; }
+.episode-match-confirmed li strong { flex: 0 0 auto; color: #86efac; }
 .source-selector-backdrop { position: fixed; z-index: 45; inset: 0; display: grid; padding: 1rem; overflow-y: auto; place-items: center; background: rgb(3 5 12 / .8); backdrop-filter: blur(9px); }
 .source-selector-dialog { display: grid; width: min(58rem, 100%); max-height: calc(100vh - 2rem); gap: 1rem; padding: 1.25rem; overflow-y: auto; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 1.1rem; background: #151720; box-shadow: 0 1.5rem 5rem rgb(0 0 0 / .55); }
 .source-selector-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }

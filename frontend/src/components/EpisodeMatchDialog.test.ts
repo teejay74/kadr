@@ -48,7 +48,7 @@ test('confirms multiple episodes for one file and explains combined playback lim
   expect((screen.getByRole('checkbox', { name: /S1E1/ }) as HTMLInputElement).checked).toBe(true)
   expect((screen.getByRole('checkbox', { name: /S1E2/ }) as HTMLInputElement).checked).toBe(true)
 
-  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить соответствия' }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить и продолжить' }))
 
   expect(result.emitted().confirm).toEqual([[
     [{
@@ -58,8 +58,8 @@ test('confirms multiple episodes for one file and explains combined playback lim
   ]])
 })
 
-test('does not offer confirmation for an unsafe path', () => {
-  render(EpisodeMatchDialog, {
+test('does not offer confirmation for an unsafe path and allows continuing', async () => {
+  const result = render(EpisodeMatchDialog, {
     props: {
       report: {
         ...report,
@@ -74,9 +74,31 @@ test('does not offer confirmation for an unsafe path', () => {
   })
 
   expect(screen.getByText(/небезопасен/i)).toBeTruthy()
-  expect((screen.getByRole('button', {
-    name: 'Сохранить соответствия',
-  }) as HTMLButtonElement).disabled).toBe(true)
+  await fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }))
+  expect(result.emitted().proceed).toHaveLength(1)
+})
+
+test('summarizes saved matches and allows continuing without another save', async () => {
+  const result = render(EpisodeMatchDialog, {
+    props: {
+      report: {
+        ...report,
+        requires_confirmation: false,
+        files: report.files.map((file) => ({
+          ...file,
+          confidence: 'exact' as const,
+          confirmed: true,
+          confirmation: 'automatic' as const,
+        })),
+      },
+    },
+  })
+
+  expect(screen.getByText(/ничего выбирать не нужно/i)).toBeTruthy()
+  expect(screen.getByText(/уже сопоставлено автоматически: 1/i)).toBeTruthy()
+  await fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }))
+  expect(result.emitted().proceed).toHaveLength(1)
+  expect(result.emitted().confirm).toBeUndefined()
 })
 
 test('describes a provider-neutral metadata outage', () => {

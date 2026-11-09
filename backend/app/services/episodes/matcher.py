@@ -167,7 +167,12 @@ class EpisodeMatcher:
             task_id=task.id,
             metadata_available=metadata_available,
             files=results,
-            requires_confirmation=any(not item.confirmed for item in results),
+            requires_confirmation=any(
+                not item.confirmed
+                and not item.unsafe
+                and bool(item.episodes or item.alternatives)
+                for item in results
+            ),
         )
 
     async def confirm(
