@@ -16,7 +16,7 @@ def parse_release_seasons(title: str) -> list[int]:
         r"(?:^|[^a-z0-9])s(\d{1,2})e\d{1,3}\s*[-–—]\s*s(\d{1,2})e\d{1,3}(?:[^a-z0-9]|$)",
         r"(?:^|[^a-z0-9])s(\d{1,2})\s*[-–—]\s*s?(\d{1,2})e\d{1,3}\s*[-–—]\s*\d{1,3}(?:[^a-z0-9]|$)",
         r"(?:^|[^a-z0-9])s(\d{1,2})\s*[-–—]\s*s?(\d{1,2})(?:[^a-z0-9]|$)",
-        r"(?:seasons?|сезоны?)\s*(\d{1,2})\s*[-–—]\s*(\d{1,2})",
+        r"(?:seasons?|сезоны?)\s*:?\s*(\d{1,2})\s*[-–—]\s*(\d{1,2})",
         r"(?:^|[^0-9])(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*(?:seasons?|сезоны?)(?:[^a-zа-яё0-9]|$)",
     )
     for pattern in range_patterns:
@@ -33,7 +33,7 @@ def parse_release_seasons(title: str) -> list[int]:
     word_markers = {
         int(value)
         for match in re.findall(
-            r"(?:seasons?|сезоны?)\s*(\d{1,2})|(?:^|[^0-9])(\d{1,2})\s*(?:season|сезон)",
+            r"(?:seasons?|сезоны?)\s*:?\s*(\d{1,2})|(?:^|[^0-9])(\d{1,2})\s*(?:season|сезон)",
             title,
             re.IGNORECASE,
         )

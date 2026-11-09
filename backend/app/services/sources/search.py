@@ -114,12 +114,46 @@ class SourceSearchService:
     ) -> tuple[str, list[dict[str, Any]]]:
         media = await self._catalog.details(media_kind, media_id)
         title = media.title or media.original_title
-        query = self._query(title, media.year, season_number)
+        titles = [title]
+        if media.original_title and media.original_title != title:
+            titles.append(media.original_title)
+
+        if season_number is not None:
+            last_query = title
+            for candidate_title in titles:
+                for query in self._season_queries(candidate_title, season_number):
+                    last_query = query
+                    raw_items = await self._provider.search(query, media_kind, indexer_id)
+                    matching_items = self._matching_season_items(raw_items, season_number)
+                    if matching_items:
+                        return query, matching_items
+            return last_query, []
+
+        query = self._query(title, media.year)
         raw_items = await self._provider.search(query, media_kind, indexer_id)
-        if not raw_items and media.original_title and media.original_title != title:
-            query = self._query(media.original_title, media.year, season_number)
+        if not raw_items and len(titles) > 1:
+            query = self._query(titles[1], media.year)
             raw_items = await self._provider.search(query, media_kind, indexer_id)
         return query, raw_items
+
+    @staticmethod
+    def _season_queries(title: str, season_number: int) -> list[str]:
+        return [
+            f"{title} S{season_number:02d}",
+            f"{title} Сезон {season_number}",
+            title,
+        ]
+
+    @staticmethod
+    def _matching_season_items(
+        raw_items: list[dict[str, Any]],
+        season_number: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in raw_items
+            if season_number in parse_release_seasons(str(item.get("title") or ""))
+        ]
 
     @staticmethod
     def _query(title: str, year: int | None, season_number: int | None = None) -> str:

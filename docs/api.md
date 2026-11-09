@@ -224,9 +224,13 @@ time boundaries.
 Runs a user-triggered Prowlarr search. Required query parameter `kind` is
 `movie` or `series`. Optional `sort` values are `seeders`, `size`,
 `resolution`, `source`, and `title`; `order` is `asc` or `desc`. Series clients
-can pass `season_number` from 1 to 100. The server adds an `S01`-style marker
-to that search and returns the same number in each normalized release so the
-source can be resolved safely later.
+can pass `season_number` from 1 to 100. For a season-specific request, KADR
+tries the localized title with an `S01`-style marker, a localized `Сезон 1`
+marker, and finally the title alone; it repeats the cascade with the original
+title only if needed. The series premiere year is deliberately omitted because
+later seasons can have a different year. Results from every attempt are
+accepted only when the release title explicitly identifies the requested
+season, including forms such as `Сезон: 2` and multi-season ranges.
 Clients can pass one positive `indexer_id` returned by `GET /api/v1/indexers`.
 KADR forwards it to Prowlarr as `indexerIds`, so only that configured indexer
 is queried. Omitting it searches all enabled indexers.

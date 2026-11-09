@@ -271,6 +271,10 @@ The source selector loads safe indexer summaries and can scope a user-triggered
 search to one configured torrent indexer. The selected numeric ID is forwarded
 to Prowlarr for both discovery and opaque-source resolution; credentials,
 tracker settings, and provider URLs remain server-side.
+Season searches use a bounded, user-triggered cascade of standard, localized,
+and broad title queries. KADR filters every response by parsed release-season
+coverage before exposing it, preventing a broad fallback from presenting a
+first-season release as the requested later season.
 
 FlareSolverr is an internal-only browser-challenge adapter on the KADR network.
 Prowlarr reaches it at `http://flaresolverr:8191`; no host port is published.

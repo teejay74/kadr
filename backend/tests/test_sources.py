@@ -44,10 +44,20 @@ class FakeIndexerProvider:
     ) -> list[dict[str, Any]]:
         self.calls.append((query, media_kind))
         self.indexer_ids.append(indexer_id)
+        first_title = (
+            "Dune.Part.Two.S02.2024.1080p.WEB-DL.x264.DDP5.1.RUS"
+            if media_kind == "series"
+            else "Dune.Part.Two.2024.1080p.WEB-DL.x264.DDP5.1.RUS"
+        )
+        second_title = (
+            "Dune.Part.Two.S02.2024.2160p.BluRay.REMUX.HEVC.HDR10.TrueHD.Atmos"
+            if media_kind == "series"
+            else "Dune.Part.Two.2024.2160p.BluRay.REMUX.HEVC.HDR10.TrueHD.Atmos"
+        )
         return [
             {
                 "guid": "release-1",
-                "title": "Dune.Part.Two.2024.1080p.WEB-DL.x264.DDP5.1.RUS",
+                "title": first_title,
                 "indexer": "Example Torrent",
                 "indexerId": 7,
                 "size": 10_000,
@@ -58,7 +68,7 @@ class FakeIndexerProvider:
             },
             {
                 "guid": "release-2",
-                "title": "Dune.Part.Two.2024.2160p.BluRay.REMUX.HEVC.HDR10.TrueHD.Atmos",
+                "title": second_title,
                 "indexer": "Example Torrent",
                 "size": 50_000,
                 "seeders": 8,
@@ -129,6 +139,7 @@ def test_release_parser_is_conservative(title: str, expected: dict[str, object])
         ("Show 2-4 сезоны WEB-DL", [2, 3, 4]),
         ("Show [S01, S03, S05]", [1, 3, 5]),
         ("Show Season 2", [2]),
+        ("Гангстерленд / MobLand / Сезон: 2 / Серии: 1-8 из 10", [2]),
         ("Movie.2025.1080p", []),
     ],
 )
@@ -237,10 +248,10 @@ async def test_source_service_searches_and_resolves_a_specific_series_season() -
     resolved = await service.resolve(42, "series", result.items[0].id, season_number=2)
 
     assert provider.calls == [
-        ("Дюна: Часть вторая 2024 S02", "series"),
-        ("Дюна: Часть вторая 2024 S02", "series"),
+        ("Дюна: Часть вторая S02", "series"),
+        ("Дюна: Часть вторая S02", "series"),
     ]
-    assert result.query == "Дюна: Часть вторая 2024 S02"
+    assert result.query == "Дюна: Часть вторая S02"
     assert all(item.season_number == 2 for item in result.items)
     assert resolved is not None
     assert resolved.release.season_number == 2
@@ -257,5 +268,69 @@ async def test_sources_endpoint_accepts_a_season_number(client: AsyncClient) -> 
     )
 
     assert response.status_code == 200
-    assert provider.calls == [("Дюна: Часть вторая 2024 S02", "series")]
+    assert provider.calls == [("Дюна: Часть вторая S02", "series")]
     assert response.json()["items"][0]["season_number"] == 2
+
+
+async def test_season_search_falls_back_to_broad_title_and_filters_other_seasons() -> None:
+    class MobLandCatalog(FakeCatalog):
+        async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+            media = await super().details(kind, media_id)
+            return media.model_copy(
+                update={
+                    "title": "Гангстерленд",
+                    "original_title": "MobLand",
+                    "year": 2025,
+                }
+            )
+
+    class RuTrackerProvider(FakeIndexerProvider):
+        async def search(
+            self,
+            query: str,
+            media_kind: str,
+            indexer_id: int | None = None,
+        ) -> list[dict[str, Any]]:
+            self.calls.append((query, media_kind))
+            self.indexer_ids.append(indexer_id)
+            if query == "Гангстерленд S02":
+                return [{"title": "Гангстерленд / S1E1-10", "protocol": "torrent"}]
+            if query == "Гангстерленд Сезон 2":
+                return []
+            if query == "Гангстерленд":
+                return [
+                    {"title": "Гангстерленд / S1E1-10", "protocol": "torrent"},
+                    {
+                        "guid": "mobland-season-2",
+                        "title": "Гангстерленд / MobLand / Сезон: 2 / Серии: 1-8 из 10",
+                        "indexer": "RuTracker.org",
+                        "indexerId": 5,
+                        "size": 5_000,
+                        "seeders": 100,
+                        "protocol": "torrent",
+                    },
+                ]
+            return []
+
+    provider = RuTrackerProvider()
+    service = SourceSearchService(MobLandCatalog(), provider)
+
+    result = await service.search(
+        247718,
+        "series",
+        "seeders",
+        "desc",
+        season_number=2,
+        indexer_id=5,
+    )
+
+    assert provider.calls == [
+        ("Гангстерленд S02", "series"),
+        ("Гангстерленд Сезон 2", "series"),
+        ("Гангстерленд", "series"),
+    ]
+    assert provider.indexer_ids == [5, 5, 5]
+    assert result.query == "Гангстерленд"
+    assert result.total == 1
+    assert result.items[0].indexer == "RuTracker.org"
+    assert result.items[0].season_numbers == [2]
