@@ -47,3 +47,10 @@ Date: 2026-11-11
 - Apply migration `0008_episode_played_ranges` when deploying the updated API,
   publish the matching web build, and install Android TV 0.8.0 on the target
   TV. Verification used isolated test environments.
+
+## Web episode button labels
+
+The episode card now uses “Отметить просмотренной” and “Снять отметку” for the
+manual actions. “Просмотрено” appears as the status when the episode is
+completed. The change is in `EpisodeCard.vue`, with regression assertions in
+`EpisodeList.test.ts`. The production web build and all 95 Vitest tests passed.

@@ -64,7 +64,7 @@ defineEmits<{
       @click="$emit('toggle-watched')"
     >
       <span aria-hidden="true">{{ status === 'completed' ? '↶' : '✓' }}</span>
-      {{ status === 'completed' ? 'Не просмотрено' : 'Просмотрено' }}
+      {{ status === 'completed' ? 'Снять отметку' : 'Отметить просмотренной' }}
     </button>
   </article>
 </template>

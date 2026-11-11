@@ -24,6 +24,8 @@ test('renders episode metadata and emits the selected episode', async () => {
   expect(screen.getByText('Возвращение')).toBeTruthy()
   expect(screen.getByText('52 мин.')).toBeTruthy()
   expect(screen.getByAltText('Кадр: Возвращение')).toBeTruthy()
+  expect(screen.queryByText('Просмотрено')).toBeNull()
+  expect(screen.getByText('Отметить просмотренной')).toBeTruthy()
 
   await fireEvent.click(screen.getByRole('button', { name: /Возвращение/ }))
 
@@ -79,6 +81,7 @@ test('renders persisted progress and emits a watched-state toggle', async () => 
   const view = render(EpisodeList, { props: { episodes: [episode], history } })
 
   expect(screen.getByText('Просмотрено')).toBeTruthy()
+  expect(screen.getByText('Снять отметку')).toBeTruthy()
   await fireEvent.click(screen.getByRole('button', { name: 'Отметить серию 1 непросмотренной' }))
   expect(view.emitted()['toggle-watched']).toEqual([[episode]])
 })
