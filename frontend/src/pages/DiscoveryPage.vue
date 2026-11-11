@@ -5,15 +5,25 @@ import { useRoute, useRouter } from 'vue-router'
 import MediaCard from '../components/MediaCard.vue'
 import StatePanel from '../components/StatePanel.vue'
 import { friendlyApiError, getMediaPage } from '../services/api'
-import type { AgeRating, MediaCardData, SortMode } from '../types/media'
+import type { AgeRating, CatalogQuery, MediaKind, MediaPage, SortMode } from '../types/media'
 
 type CollectionKind = 'new' | 'cartoons'
+
+interface DiscoverySection {
+  kind: MediaKind
+  title: string
+  moreLabel: string
+  query: CatalogQuery
+  result: MediaPage | null
+  loadingMore: boolean
+  error: string
+}
 
 const route = useRoute()
 const router = useRouter()
 const collection = computed(() => route.meta.collection as CollectionKind)
-const movies = ref<MediaCardData[]>([])
-const series = ref<MediaCardData[]>([])
+const sections = ref<DiscoverySection[]>([])
+const visibleSections = computed(() => sections.value.filter((section) => section.result?.items.length))
 const loading = ref(true)
 const error = ref('')
 const sort = ref<SortMode>('newest')
@@ -32,22 +42,53 @@ async function load(): Promise<void> {
   ageRating.value = ['0+', '6+', '12+', '16+', '18+'].includes(requestedAge)
     ? (requestedAge as AgeRating)
     : null
+  const common: CatalogQuery = {
+    sort: sort.value,
+    genre: isCartoons ? 16 : null,
+    releasedWithinDays: isCartoons ? null : 365,
+  }
+  sections.value = [
+    {
+      kind: 'movie', title: 'Фильмы', moreLabel: 'Показать ещё фильмы',
+      query: { ...common, ageRating: isCartoons ? ageRating.value : null },
+      result: null, loadingMore: false, error: '',
+    },
+    {
+      kind: 'series', title: 'Сериалы', moreLabel: 'Показать ещё сериалы',
+      query: common,
+      result: null, loadingMore: false, error: '',
+    },
+  ]
+  const currentSections = sections.value
   try {
-    const common = {
-      sort: sort.value,
-      genre: isCartoons ? 16 : null,
-      releasedWithinDays: isCartoons ? null : 365,
-    }
-    const [moviePage, seriesPage] = await Promise.all([
-      getMediaPage('movie', { ...common, ageRating: isCartoons ? ageRating.value : null }),
-      getMediaPage('series', common),
-    ])
-    movies.value = moviePage.items
-    series.value = seriesPage.items
+    const results = await Promise.all(
+      currentSections.map((section) => getMediaPage(section.kind, section.query)),
+    )
+    currentSections.forEach((section, index) => { section.result = results[index] })
   } catch (caught) {
-    error.value = friendlyApiError(caught)
+    if (currentSections === sections.value) error.value = friendlyApiError(caught)
   } finally {
-    loading.value = false
+    if (currentSections === sections.value) loading.value = false
+  }
+}
+
+async function loadMore(section: DiscoverySection): Promise<void> {
+  const current = section.result
+  if (!current || section.loadingMore || current.page >= current.total_pages) return
+
+  section.loadingMore = true
+  section.error = ''
+  try {
+    const next = await getMediaPage(section.kind, { ...section.query, page: current.page + 1 })
+    const items = new Map([...current.items, ...next.items].map((item) => [item.id, item]))
+    section.result = {
+      ...next,
+      items: [...items.values()],
+    }
+  } catch (caught) {
+    section.error = friendlyApiError(caught)
+  } finally {
+    section.loadingMore = false
   }
 }
 
@@ -80,9 +121,25 @@ watch(() => route.fullPath, load, { immediate: true })
     </div>
     <div v-if="loading" class="poster-grid" aria-label="Загрузка"><div v-for="index in 10" :key="index" class="card-skeleton" /></div>
     <StatePanel v-else-if="error" title="Не удалось загрузить подборку" :message="error" show-retry @retry="load" />
-    <template v-else-if="movies.length || series.length">
-      <section v-if="movies.length" class="search-group"><h2>Фильмы</h2><div class="poster-grid"><MediaCard v-for="item in movies" :key="`movie-${item.id}`" :media="item" /></div></section>
-      <section v-if="series.length" class="search-group"><h2>Сериалы</h2><div class="poster-grid"><MediaCard v-for="item in series" :key="`series-${item.id}`" :media="item" /></div></section>
+    <template v-else-if="visibleSections.length">
+      <section v-for="section in visibleSections" :key="section.kind" class="search-group" :aria-label="section.title">
+        <h2>{{ section.title }}</h2>
+        <div class="poster-grid" :aria-busy="section.loadingMore">
+          <MediaCard v-for="item in section.result?.items" :key="item.id" :media="item" />
+        </div>
+        <div v-if="section.result && section.result.page < section.result.total_pages" class="pagination">
+          <p v-if="section.error" role="alert">{{ section.error }}</p>
+          <button
+            class="button secondary focus-ring"
+            type="button"
+            :aria-label="section.moreLabel"
+            :aria-disabled="section.loadingMore"
+            @click="loadMore(section)"
+          >
+            {{ section.loadingMore ? 'Загрузка…' : 'Показать ещё' }}
+          </button>
+        </div>
+      </section>
     </template>
     <StatePanel v-else title="Подборка пока пуста" message="Попробуйте изменить фильтры." />
   </div>

@@ -68,3 +68,16 @@ Date: 2026-11-04
 2. Verify representative Russian film/series queries against live providers.
 3. Review age-filter coverage and decide whether a persisted certification
    enrichment cache is warranted in a later numbered increment.
+
+## Web pagination follow-up — 2026-11-11
+
+- `frontend/src/pages/DiscoveryPage.vue` loads the next page on demand in each
+  web collection section. The button keeps the applied filters, hides on the
+  final page, and allows a retry while keeping existing cards visible.
+- `frontend/src/pages/DiscoveryPage.test.ts` covers independent pagination,
+  duplicate results, filter changes during loading, and retry. The README
+  describes the new button.
+- The production build and all 98 Vitest tests passed. An isolated web preview
+  served both collection routes and the new bundle. `git diff --check` passed.
+- Next action is to deploy the web build and verify the button against the
+  live catalogue.

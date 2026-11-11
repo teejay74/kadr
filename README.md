@@ -110,6 +110,8 @@ KADR combines them in the shared history and marks the episode watched after
 more than 80% of its runtime has played.
 
 The catalogue also has dedicated **Новинки** and **Мультфильмы** sections.
+In the web interface, **Показать ещё** appends the next page for films or
+series using the applied filters.
 Movie новинки require a regional digital release rather than a theatrical-only
 premiere.
 Cartoons can be filtered by the Russian 0+/6+/12+/16+/18+ certification where
