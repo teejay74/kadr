@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     DateTime,
     ForeignKey,
     Index,
@@ -118,6 +119,9 @@ class WatchHistory(Base):
     position_seconds: Mapped[int] = mapped_column(Integer, default=0)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
     completed: Mapped[bool] = mapped_column(default=False)
+    played_ranges_ms: Mapped[list[list[int]] | None] = mapped_column(
+        JSON(none_as_null=True)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.current_timestamp(),

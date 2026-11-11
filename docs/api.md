@@ -544,3 +544,17 @@ Episode reads use the same season and episode query parameters. Title-level and
 episode-level history rows remain separate, as do rows belonging to different
 profiles.
 
+Clients reporting actual episode playback add a `playback` object to
+`PUT /history/{media_id}`. It contains the positive `duration_ms` of the
+video and `played_ranges_ms`, up to 256 pairs of start and end timestamps
+within that duration. The server merges overlapping or adjacent ranges for the
+same episode and profile and returns `completed: true` when the combined
+length exceeds 80% of the duration. A completed episode has
+`position_seconds: 0`. Later playback updates preserve the mark.
+
+The manual watched toggle sends the existing history body with
+`position_seconds: 0` and the desired `completed` value. Marking an episode
+unwatched also clears its accumulated playback ranges. Existing resume
+positions remain available and playback coverage starts with the first
+report containing ranges. Movie history uses the existing completion rules.
+

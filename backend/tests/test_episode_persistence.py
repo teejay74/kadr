@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
 import subprocess
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.dependencies import get_library_manager
 from app.core.config import Settings
+from app.main import app
 from app.models.torrent_task import TorrentTask
 from app.repositories.episodes import EpisodeRepository
 from app.repositories.library import LibraryRepository
@@ -108,6 +113,66 @@ async def test_watch_history_is_independent_by_episode_and_profile(
     assert other_profile.id != first.id
     assert (await manager.get_history(42, "series", "default", 1, 1)).position_seconds == 120  # type: ignore[union-attr]
     assert (await manager.get_history(42, "series", "guest", 1, 1)).position_seconds == 30  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_episode_completion_uses_unique_played_ranges(
+    client: AsyncClient,
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    factory = async_sessionmaker(session.bind, expire_on_commit=False)
+
+    async def get_manager() -> AsyncIterator[LibraryManager]:
+        async with factory() as request_session:
+            yield LibraryManager(
+                LibraryRepository(request_session),
+                TorrentTaskRepository(request_session),
+                object(),  # type: ignore[arg-type]
+                StreamRegistry(2),
+                Settings(library_root=str(tmp_path)),
+                EpisodeRepository(request_session),
+            )
+
+    app.dependency_overrides[get_library_manager] = get_manager
+    path = "/api/v1/history/42"
+    body = {
+        "media_kind": "series",
+        "title": "Example",
+        "season_number": 1,
+        "episode_number": 1,
+        "duration_seconds": 100,
+        "position_seconds": 95,
+    }
+
+    async def report(*ranges: tuple[int, int]) -> dict[str, object]:
+        response = await client.put(path, json={
+            **body,
+            "playback": {"duration_ms": 100_000, "played_ranges_ms": ranges},
+        })
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert (await client.put(path, json=body)).status_code == 200
+    first, second = await asyncio.gather(
+        report((90_000, 95_000)), report((0, 70_000), (60_000, 75_000))
+    )
+    assert not first["completed"] and not second["completed"]
+    completed = await report((75_000, 75_001))
+    assert completed["completed"] and completed["position_seconds"] == 0
+    assert (await report((0, 1_000)))["completed"]
+    stored = await client.get(f"{path}?media_kind=series&season_number=1&episode_number=1")
+    assert stored.json()["completed"]
+
+    reset = await client.put(path, json={**body, "position_seconds": 0, "completed": False})
+    assert reset.status_code == 200 and not reset.json()["completed"]
+    assert not (await report((75_000, 75_001)))["completed"]
+
+    invalid = await client.put(path, json={
+        **body,
+        "playback": {"duration_ms": 100_000, "played_ranges_ms": [[90_000, 110_000]]},
+    })
+    assert invalid.status_code == 422
 
 
 def test_sqlite_migration_preserves_legacy_rows_and_nullable_uniqueness(

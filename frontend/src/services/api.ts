@@ -125,9 +125,11 @@ export function getHistory(profileKey = 'default'): Promise<HistoryItem[]> {
 export function getHistoryItem(
   mediaId: number,
   kind: MediaKind,
-  episode?: EpisodeSummary | null,
+  episode?: Pick<EpisodeSummary, 'season_number' | 'number'> | null,
+  profileKey = 'default',
 ): Promise<HistoryItem | null> {
   const params = new URLSearchParams({ media_kind: kind })
+  if (profileKey !== 'default') params.set('profile_key', profileKey)
   if (episode) {
     params.set('season_number', String(episode.season_number))
     params.set('episode_number', String(episode.number))
@@ -141,7 +143,12 @@ export type HistoryUpdatePayload = Pick<
 > & Partial<Pick<
   HistoryItem,
   'profile_key' | 'season_number' | 'episode_number' | 'catalog_episode_id'
->>
+>> & {
+  playback?: {
+    duration_ms: number
+    played_ranges_ms: [number, number][]
+  }
+}
 
 export function updateHistory(
   mediaId: number,

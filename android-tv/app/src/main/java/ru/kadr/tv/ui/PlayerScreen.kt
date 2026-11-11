@@ -1,5 +1,6 @@
 package ru.kadr.tv.ui
 
+import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
@@ -53,6 +55,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
+import ru.kadr.tv.data.PlayedRange
 import kotlinx.coroutines.delay
 
 @Composable
@@ -62,7 +65,13 @@ fun PlayerScreen(
     resumePositionMs: Long,
     title: String,
     episodeLabel: String?,
-    onProgress: (positionMs: Long, durationMs: Long, completed: Boolean, final: Boolean) -> Unit,
+    onProgress: (
+        positionMs: Long,
+        durationMs: Long,
+        ended: Boolean,
+        final: Boolean,
+        playedRanges: List<PlayedRange>,
+    ) -> Unit,
     onEnded: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -79,6 +88,7 @@ fun PlayerScreen(
                 playWhenReady = true
             }
     }
+    val playedRanges = remember(player) { episodeLabel?.let { PlayedRanges() } }
     var controlsVisible by remember { mutableStateOf(true) }
     var interactionVersion by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(resumePositionMs) }
@@ -87,6 +97,7 @@ fun PlayerScreen(
     var seekTargetMs by remember { mutableStateOf<Long?>(null) }
     var isPlaying by remember { mutableStateOf(true) }
     var isBuffering by remember { mutableStateOf(true) }
+    var playbackFailed by remember { mutableStateOf(false) }
     var audioTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
     var subtitleTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
     var trackMenuVisible by remember { mutableStateOf(false) }
@@ -100,6 +111,18 @@ fun PlayerScreen(
     fun revealControls() {
         controlsVisible = true
         interactionVersion += 1
+    }
+
+    fun reportProgress(ended: Boolean, final: Boolean) {
+        val position = player.currentPosition
+        val duration = player.duration
+        onProgress(
+            position,
+            duration,
+            ended,
+            final,
+            playedRanges?.snapshot(position, duration).orEmpty(),
+        )
     }
 
     fun queueSeek(deltaMs: Long) {
@@ -171,7 +194,7 @@ fun PlayerScreen(
         while (true) {
             delay(PROGRESS_INTERVAL_MS)
             if (player.playbackState != Player.STATE_ENDED) {
-                onProgress(player.currentPosition, player.duration, false, false)
+                reportProgress(ended = false, final = false)
             }
         }
     }
@@ -190,10 +213,26 @@ fun PlayerScreen(
     DisposableEffect(player, rootView) {
         var completed = false
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playedRanges?.playbackChanged(isPlaying, player.currentPosition)
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                playedRanges?.positionDiscontinuity(
+                    oldPosition.positionMs,
+                    newPosition.positionMs,
+                    player.isPlaying,
+                )
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED && !completed) {
                     completed = true
-                    onProgress(0, player.duration, true, true)
+                    reportProgress(ended = true, final = true)
                     onEnded()
                 }
             }
@@ -201,13 +240,19 @@ fun PlayerScreen(
             override fun onTracksChanged(tracks: Tracks) {
                 updateTrackOptions(tracks)
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w("KadrPlayer", "playback_failed code=${error.errorCodeName}")
+                playbackFailed = true
+            }
         }
         player.addListener(listener)
+        playedRanges?.playbackChanged(player.isPlaying, player.currentPosition)
         updateTrackOptions(player.currentTracks)
         val previousKeepScreenOn = rootView.keepScreenOn
         rootView.keepScreenOn = true
         onDispose {
-            if (!completed) onProgress(player.currentPosition, player.duration, false, true)
+            if (!completed) reportProgress(ended = false, final = true)
             rootView.keepScreenOn = previousKeepScreenOn
             player.removeListener(listener)
             player.release()
@@ -321,9 +366,24 @@ fun PlayerScreen(
                 durationMs = durationMs,
                 bufferedPositionMs = bufferedPositionMs,
                 isPlaying = isPlaying,
-                isBuffering = isBuffering,
                 isSeeking = seekTargetMs != null,
                 tracksAvailable = audioTracks.isNotEmpty() || subtitleTracks.isNotEmpty(),
+            )
+        }
+        if (playbackFailed || isBuffering) {
+            val message = when {
+                playbackFailed -> "Не удалось воспроизвести видео"
+                episodeLabel != null -> "Буферизация серии…"
+                else -> "Буферизация…"
+            }
+            Text(
+                message,
+                color = Color.White,
+                fontSize = 22.sp,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color(0xD920222B), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 28.dp, vertical = 16.dp),
             )
         }
         if (trackMenuVisible) {
@@ -345,7 +405,6 @@ private fun TvPlayerOverlay(
     durationMs: Long,
     bufferedPositionMs: Long,
     isPlaying: Boolean,
-    isBuffering: Boolean,
     isSeeking: Boolean,
     tracksAvailable: Boolean,
 ) {
@@ -367,9 +426,7 @@ private fun TvPlayerOverlay(
         Column(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 56.dp, vertical = 42.dp),
         ) {
-            if (isBuffering) {
-                Text("Буферизация…", color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(bottom = 14.dp))
-            } else if (isSeeking) {
+            if (isSeeking) {
                 Text(
                     "Перемотка: ${formatPlayerTime(positionMs)}",
                     color = Color.White,

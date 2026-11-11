@@ -1,4 +1,4 @@
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,6 +120,11 @@ class LibraryRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def begin_episode_history_write(self) -> None:
+        # The merge reads existing coverage before writing it. Reserve SQLite's
+        # writer slot first so concurrent reports cannot merge from the same row.
+        await self._session.execute(text("BEGIN IMMEDIATE"))
 
     async def save_history(self, item: WatchHistory) -> WatchHistory:
         self._session.add(item)

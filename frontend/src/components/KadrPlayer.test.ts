@@ -657,12 +657,6 @@ test('requests one next-episode prefetch near the end and emits completion', asy
         id: 101,
         season_number: 1,
         number: 1,
-        name: 'Episode 1',
-        overview: '',
-        air_date: null,
-        runtime_minutes: 45,
-        still_url: null,
-        rating: 0,
       },
     },
   })
@@ -677,4 +671,57 @@ test('requests one next-episode prefetch near the end and emits completion', asy
 
   expect(view.emitted()['near-end']).toHaveLength(1)
   expect(view.emitted().ended).toHaveLength(1)
+  const historyUpdates = vi.mocked(fetch).mock.calls
+    .filter(([path, init]) => path === '/api/v1/history/42' && init?.method === 'PUT')
+  expect(historyUpdates).toHaveLength(2)
+  expect(historyUpdates.every(([, init]) => JSON.parse(String(init?.body)).completed === false)).toBe(true)
+})
+
+test('reports played intervals across a seek and emits server-confirmed completion', async () => {
+  vi.mocked(fetch).mockImplementation(async (_input, init) => {
+    const body = JSON.parse(String(init?.body))
+    const { playback, ...history } = body
+    const completed = playback.played_ranges_ms[0][1] > 80_000
+    return new Response(JSON.stringify({ ...history, completed }), { status: 200 })
+  })
+  const view = render(KadrPlayer, {
+    props: {
+      taskId: 'task-id',
+      title: 'Series',
+      mediaId: 42,
+      mediaKind: 'series',
+      directStreamUrl: '/api/v1/library/saved/stream',
+      initialResumeSeconds: 0,
+      autoActivate: true,
+      episode: { id: 101, season_number: 1, number: 1 },
+    },
+  })
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'duration', { value: 100 })
+  let ranges = [[0, 5], [94, 95]]
+  Object.defineProperty(player, 'played', {
+    get: () => ({
+      length: ranges.length,
+      start: (index: number) => ranges[index][0],
+      end: (index: number) => ranges[index][1],
+    }),
+  })
+  player.currentTime = 95
+  await fireEvent.timeUpdate(player)
+  await waitFor(() => expect(view.emitted()['history-saved']).toHaveLength(1))
+  expect(view.emitted()['history-saved'][0]).toEqual([expect.objectContaining({ completed: false })])
+  const [path, request] = vi.mocked(fetch).mock.calls[0]
+  expect(path).toBe('/api/v1/history/42')
+  expect(JSON.parse(String(request?.body)).playback).toEqual({
+    duration_ms: 100_000,
+    played_ranges_ms: [[0, 5000], [94_000, 95_000]],
+  })
+
+  ranges = [[0, 81], [94, 95]]
+  player.currentTime = 81
+  await fireEvent.pause(player)
+  await waitFor(() => expect(view.emitted()['history-saved']).toHaveLength(2))
+  expect(view.emitted()['history-saved'][1]).toEqual([expect.objectContaining({ completed: true })])
+  expect(localStorage.getItem('kadr:playback:42:s1:e1')).toBeNull()
 })

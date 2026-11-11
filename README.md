@@ -103,9 +103,11 @@ films. When TMDB is temporarily unavailable, a card opened from Android TV can
 be resolved through the exact title, year, and media type in the configured
 Kinopoisk fallback; provider errors are shown above the current screen instead
 of being hidden below a long catalogue row.
-Version 0.7.2 fixes upward episode focus, adds watched toggles and automatic
-next-episode playback, and changes the fresh-install server default to
-`http://192.168.1.69`.
+Version 0.7.3 makes D-pad navigation between episodes scroll in both directions
+and shows download progress while a series episode is preparing to play.
+Version 0.8.0 and the web player report played portions of each series episode.
+KADR combines them in the shared history and marks the episode watched after
+more than 80% of its runtime has played.
 
 The catalogue also has dedicated **Новинки** and **Мультфильмы** sections.
 Movie новинки require a regional digital release rather than a theatrical-only

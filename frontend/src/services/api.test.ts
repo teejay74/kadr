@@ -324,15 +324,8 @@ test('requests history for one episode independently', async () => {
   vi.stubGlobal('fetch', fetchMock)
 
   await getHistoryItem(42, 'series', {
-    id: 1003,
     season_number: 2,
     number: 3,
-    name: 'Episode 3',
-    overview: '',
-    air_date: null,
-    runtime_minutes: 45,
-    still_url: null,
-    rating: 0,
   })
 
   const [path] = fetchMock.mock.calls[0] as [string, RequestInit]

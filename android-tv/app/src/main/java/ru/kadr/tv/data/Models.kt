@@ -123,6 +123,8 @@ data class PlaybackResolution(
     val taskId: String?,
     val resumePositionSeconds: Long,
     val bufferProgress: Double,
+    val downloadProgress: Double,
+    val downloadSpeedBytes: Long,
     val message: String?,
 )
 
@@ -161,6 +163,8 @@ data class HistoryItem(
     val durationSeconds: Long,
     val completed: Boolean,
 )
+
+data class PlayedRange(val startMs: Long, val endMs: Long)
 
 fun HistoryItem.matches(item: SavedLibraryItem): Boolean =
     mediaId == item.mediaId &&

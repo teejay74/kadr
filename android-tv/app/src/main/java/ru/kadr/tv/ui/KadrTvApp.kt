@@ -1,5 +1,6 @@
 package ru.kadr.tv.ui
 
+import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -44,6 +46,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -68,6 +71,7 @@ import ru.kadr.tv.data.MediaCard
 import ru.kadr.tv.data.AgeRating
 import ru.kadr.tv.data.CatalogCollection
 import ru.kadr.tv.data.MediaDetails
+import ru.kadr.tv.data.MediaKind
 import ru.kadr.tv.data.EpisodeMatchFile
 import ru.kadr.tv.data.EpisodeSummary
 import ru.kadr.tv.data.HistoryItem
@@ -80,6 +84,11 @@ private val Background = Color(0xFF101116)
 private val Surface = Color(0xFF20222B)
 private val Accent = Color(0xFF8B5CF6)
 private val SecondaryText = Color(0xFFA1A1AA)
+
+private const val SEASON_ROW_INDEX = 1
+private const val FIRST_EPISODE_ROW_INDEX = 3
+
+private data class EpisodeFocus(val rowIndex: Int, val watchedButton: Boolean = false)
 
 @Composable
 fun KadrTvApp(viewModel: MainViewModel) {
@@ -148,15 +157,21 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 Screen.MATCH_FILES -> MatchFilesScreen(state, viewModel::selectEpisodeFile)
                 Screen.PREPARING -> PreparingScreen(state)
                 Screen.PLAYER -> state.playerUrl?.let { url ->
+                    val media = state.playerMedia
+                    val episode = state.playerEpisode
                     key(state.playerSession) {
                         PlayerScreen(
                             streamUrl = url,
                             resumePositionMs = state.resumePositionMs,
                             title = state.playerMedia?.title.orEmpty(),
-                            episodeLabel = state.playerEpisode?.let { episode ->
+                            episodeLabel = episode?.let {
                                 "Сезон ${episode.seasonNumber} · Серия ${episode.number} · ${episode.name}"
                             },
-                            onProgress = viewModel::reportPlaybackProgress,
+                            onProgress = { position, duration, ended, final, played ->
+                                if (media != null) {
+                                    viewModel.reportPlaybackProgress(media, episode, position, duration, ended, final, played)
+                                }
+                            },
                             onEnded = viewModel::playNextEpisode,
                         )
                     }
@@ -190,13 +205,28 @@ private fun EpisodeScreen(
     onEpisode: (EpisodeSummary) -> Unit,
     onToggleWatched: (EpisodeSummary) -> Unit,
 ) {
-    val selectedSeasonFocus = remember { FocusRequester() }
-    val firstEpisodeFocus = remember { FocusRequester() }
-    LaunchedEffect(state.selectedSeasonNumber, state.seasonDetails) {
-        delay(200)
-        runCatching { selectedSeasonFocus.requestFocus() }
+    val seasons = state.selected?.seasons.orEmpty()
+    val selectedSeasonIndex = seasons.indexOfFirst { it.number == state.selectedSeasonNumber }
+    val listState = rememberLazyListState()
+    val seasonListState = rememberLazyListState(initialFirstVisibleItemIndex = selectedSeasonIndex.coerceAtLeast(0))
+    var focusTarget by remember(state.selectedSeasonNumber) {
+        mutableStateOf<EpisodeFocus?>(EpisodeFocus(SEASON_ROW_INDEX))
     }
+
+    fun moveFocus(target: EpisodeFocus) {
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == target.rowIndex }) {
+            listState.requestScrollToItem(target.rowIndex)
+        }
+        if (target.rowIndex == SEASON_ROW_INDEX && selectedSeasonIndex >= 0 &&
+            seasonListState.layoutInfo.visibleItemsInfo.none { it.index == selectedSeasonIndex }
+        ) {
+            seasonListState.requestScrollToItem(selectedSeasonIndex)
+        }
+        focusTarget = target
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 42.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -210,26 +240,43 @@ private fun EpisodeScreen(
                     fontWeight = FontWeight.Black,
                 )
                 Text("Выберите сезон и серию", color = SecondaryText, fontSize = 18.sp)
+                state.message?.let { message ->
+                    Text(
+                        message,
+                        color = Color(0xFFFCA5A5),
+                        fontSize = 18.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
         item(key = "seasons") {
             LazyRow(
+                state = seasonListState,
                 modifier = Modifier.padding(top = 8.dp).focusGroup(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 64.dp),
             ) {
-                items(state.selected?.seasons.orEmpty(), key = { it.id }) { season ->
+                items(seasons, key = { it.id }) { season ->
+                    val isSelected = season.number == state.selectedSeasonNumber
+                    val focusRequester = remember { FocusRequester() }
+                    LaunchedEffect(isSelected, focusTarget) {
+                        if (isSelected && focusTarget?.rowIndex == SEASON_ROW_INDEX && focusRequester.requestFocus()) {
+                            focusTarget = null
+                        }
+                    }
                     Button(
                         onClick = { onSeason(season.number) },
                         modifier = Modifier
-                            .focusProperties { down = firstEpisodeFocus }
-                            .then(
-                                if (season.number == state.selectedSeasonNumber) {
-                                    Modifier.focusRequester(selectedSeasonFocus)
-                                } else {
-                                    Modifier
-                                },
-                            ),
+                            .focusRequester(focusRequester)
+                            .onPreviewKeyEvent { event ->
+                                val key = event.nativeKeyEvent
+                                if (key.action != KeyEvent.ACTION_DOWN || key.keyCode != KeyEvent.KEYCODE_DPAD_DOWN ||
+                                    state.seasonDetails?.episodes.isNullOrEmpty()
+                                ) return@onPreviewKeyEvent false
+                                moveFocus(EpisodeFocus(FIRST_EPISODE_ROW_INDEX))
+                                true
+                            },
                     ) {
                         Text("${season.name} · ${season.episodeCount}")
                     }
@@ -253,6 +300,7 @@ private fun EpisodeScreen(
                 }
             }
             itemsIndexed(season.episodes, key = { _, episode -> episode.id }) { index, episode ->
+                val rowIndex = FIRST_EPISODE_ROW_INDEX + index
                 EpisodeTile(
                     episode = episode,
                     history = state.episodeHistoryItems.firstOrNull {
@@ -260,18 +308,15 @@ private fun EpisodeScreen(
                     },
                     onEpisode = onEpisode,
                     onToggleWatched = onToggleWatched,
-                    focusRequester = firstEpisodeFocus.takeIf { index == 0 },
-                    upFocus = selectedSeasonFocus.takeIf { index == 0 },
-                )
-            }
-        }
-        state.message?.let { message ->
-            item(key = "episode-message") {
-                Text(
-                    message,
-                    color = Color(0xFFFCA5A5),
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 64.dp, vertical = 8.dp),
+                    focusTarget = focusTarget?.takeIf { it.rowIndex == rowIndex },
+                    onFocusReached = { focusTarget = null },
+                    onMove = { direction, watchedButton ->
+                        when (index + direction) {
+                            -1 -> if (selectedSeasonIndex >= 0) moveFocus(EpisodeFocus(SEASON_ROW_INDEX))
+                            in season.episodes.indices -> moveFocus(EpisodeFocus(rowIndex + direction, watchedButton))
+                            else -> Unit
+                        }
+                    },
                 )
             }
         }
@@ -284,9 +329,31 @@ private fun EpisodeTile(
     history: HistoryItem?,
     onEpisode: (EpisodeSummary) -> Unit,
     onToggleWatched: (EpisodeSummary) -> Unit,
-    focusRequester: FocusRequester?,
-    upFocus: FocusRequester?,
+    focusTarget: EpisodeFocus?,
+    onFocusReached: () -> Unit,
+    onMove: (direction: Int, watchedButton: Boolean) -> Unit,
 ) {
+    val playFocus = remember { FocusRequester() }
+    val watchedFocus = remember { FocusRequester() }
+    LaunchedEffect(focusTarget) {
+        if (focusTarget != null) {
+            val requester = if (focusTarget.watchedButton) watchedFocus else playFocus
+            if (requester.requestFocus()) onFocusReached()
+        }
+    }
+
+    fun Modifier.episodeNavigation(watchedButton: Boolean): Modifier = onPreviewKeyEvent { event ->
+        val key = event.nativeKeyEvent
+        if (key.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+        val direction = when (key.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> -1
+            KeyEvent.KEYCODE_DPAD_DOWN -> 1
+            else -> return@onPreviewKeyEvent false
+        }
+        onMove(direction, watchedButton)
+        true
+    }
+
     Row(
         modifier = Modifier.padding(horizontal = 64.dp).fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -296,11 +363,8 @@ private fun EpisodeTile(
             onClick = { onEpisode(episode) },
             modifier = Modifier
                 .weight(1f)
-                .then(
-                    if (upFocus != null) Modifier.focusProperties { up = upFocus }
-                    else Modifier,
-                )
-                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+                .focusRequester(playFocus)
+                .episodeNavigation(watchedButton = false),
         ) {
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
@@ -344,7 +408,7 @@ private fun EpisodeTile(
         }
         Button(
             onClick = { onToggleWatched(episode) },
-            modifier = if (upFocus != null) Modifier.focusProperties { up = upFocus } else Modifier,
+            modifier = Modifier.focusRequester(watchedFocus).episodeNavigation(watchedButton = true),
         ) {
             Text(if (history?.completed == true) "Снять ✓" else "Отметить ✓")
         }
@@ -481,18 +545,28 @@ private fun SourceTile(source: SourceRelease, recommended: Boolean, onSelect: (S
 
 @Composable
 private fun PreparingScreen(state: UiState) {
+    val episode = state.selectedEpisode
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 96.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Подготовка фильма", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Black)
+        val heading = if (state.selected?.card?.kind == MediaKind.SERIES) "Подготовка серии" else "Подготовка фильма"
+        Text(heading, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Black)
         Text(
             state.selected?.card?.title.orEmpty(),
             color = SecondaryText,
             fontSize = 22.sp,
             modifier = Modifier.padding(top = 10.dp),
         )
+        if (episode != null) {
+            Text(
+                "Сезон ${episode.seasonNumber} · Серия ${episode.number} · ${episode.name}",
+                color = SecondaryText,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
         Box(Modifier.padding(top = 32.dp).size(22.dp).background(Accent, RoundedCornerShape(99.dp)))
         Text(
             state.message ?: "Подключаем источник…",
@@ -501,7 +575,7 @@ private fun PreparingScreen(state: UiState) {
             modifier = Modifier.padding(top = 22.dp),
         )
         Text(
-            "Можно нажать Назад и выбрать другой источник.",
+            "Нажмите Назад, чтобы вернуться.",
             color = SecondaryText,
             fontSize = 15.sp,
             modifier = Modifier.padding(top = 14.dp),

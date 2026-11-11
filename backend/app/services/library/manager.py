@@ -202,6 +202,8 @@ class LibraryManager:
         return await self._history_response(item) if item else None
 
     async def history(self, media_id: int, body: HistoryUpdateRequest) -> HistoryResponse:
+        if body.episode_number is not None:
+            await self._repository.begin_episode_history_write()
         episode = await self._episode_for(
             media_id,
             body.media_kind,
@@ -216,8 +218,34 @@ class LibraryManager:
             episode.id if episode else None,
         )
         values = body.model_dump(
-            exclude={"season_number", "episode_number", "catalog_episode_id"}
+            exclude={"season_number", "episode_number", "catalog_episode_id", "playback"}
         )
+        if episode is not None:
+            completed = body.completed
+            ranges = item.played_ranges_ms if item else None
+            if body.playback is not None:
+                progress = body.playback
+                previous = [(start, end) for start, end in ranges or []]
+                merged = merge_played_ranges([*previous, *progress.played_ranges_ms])
+                watched_ms = sum(
+                    min(end, progress.duration_ms) - start
+                    for start, end in merged
+                    if start < progress.duration_ms
+                )
+                completed = (
+                    bool(item and item.completed)
+                    or watched_ms * 5 > progress.duration_ms * 4
+                )
+                ranges = [[start, end] for start, end in merged]
+            elif body.position_seconds == 0:
+                # Explicit watched/unwatched actions clear the previous coverage.
+                ranges = None
+            elif item and item.completed:
+                completed = True
+            values["completed"] = completed
+            values["played_ranges_ms"] = None if completed else ranges
+            if completed:
+                values["position_seconds"] = 0
         if item is None:
             item = WatchHistory(
                 id=str(uuid.uuid4()),
@@ -378,3 +406,14 @@ class LibraryManager:
         if episode is None:
             return None
         return EpisodeIdentity.model_validate(episode, from_attributes=True)
+
+
+def merge_played_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            previous_start, previous_end = merged[-1]
+            merged[-1] = (previous_start, max(previous_end, end))
+        else:
+            merged.append((start, end))
+    return merged

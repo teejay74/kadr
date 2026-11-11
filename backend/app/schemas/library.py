@@ -61,7 +61,7 @@ class FavoriteResponse(MediaSnapshot):
     created_at: datetime
 
 
-class HistoryUpdateRequest(EpisodeIdentityRequest):
+class HistorySnapshot(EpisodeIdentityRequest):
     media_kind: MediaKind
     profile_key: str = Field(default="default", min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=512)
@@ -71,7 +71,33 @@ class HistoryUpdateRequest(EpisodeIdentityRequest):
     completed: bool = False
 
 
-class HistoryResponse(HistoryUpdateRequest):
+class EpisodePlaybackProgress(BaseModel):
+    duration_ms: int = Field(gt=0, le=86_400_000)
+    played_ranges_ms: list[tuple[int, int]] = Field(max_length=256)
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> "EpisodePlaybackProgress":
+        if any(
+            not 0 <= start < end <= self.duration_ms
+            for start, end in self.played_ranges_ms
+        ):
+            raise ValueError("Played ranges must be within the playback duration")
+        return self
+
+
+class HistoryUpdateRequest(HistorySnapshot):
+    playback: EpisodePlaybackProgress | None = None
+
+    @model_validator(mode="after")
+    def validate_playback_episode(self) -> "HistoryUpdateRequest":
+        if self.playback is not None and (
+            self.media_kind != "series" or self.episode_number is None
+        ):
+            raise ValueError("Played ranges require a series episode")
+        return self
+
+
+class HistoryResponse(HistorySnapshot):
     model_config = ConfigDict(from_attributes=True)
 
     id: str

@@ -22,6 +22,7 @@ import ru.kadr.tv.data.HistoryItem
 import ru.kadr.tv.data.MediaCard
 import ru.kadr.tv.data.MediaDetails
 import ru.kadr.tv.data.MediaKind
+import ru.kadr.tv.data.PlayedRange
 import ru.kadr.tv.data.PlaybackResolution
 import ru.kadr.tv.data.PlaybackStatus
 import ru.kadr.tv.data.ServerAddress
@@ -459,25 +460,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentApi = api ?: return
         val selected = mutableState.value.selected ?: return
         playbackJob?.cancel()
-        mutableState.value = mutableState.value.copy(
-            selectedEpisode = episode,
-            loading = true,
-            message = null,
-        )
         playbackJob = viewModelScope.launch {
             try {
-                val playback = currentApi.resolveEpisode(selected.card.id, episode)
-                when (playback.status) {
-                    PlaybackStatus.READY -> openPlayer(playback)
-                    PlaybackStatus.BUFFERING -> waitForStreamReady(currentApi, playback)
-                    PlaybackStatus.SOURCE_REQUIRED,
-                    PlaybackStatus.UNAVAILABLE -> loadSources(
-                        currentApi,
-                        selected.card.id,
-                        MediaKind.SERIES,
-                        episode.seasonNumber,
-                    )
-                }
+                prepareEpisode(currentApi, selected.card.id, episode)
             } catch (reason: CancellationException) {
                 throw reason
             } catch (reason: Exception) {
@@ -486,6 +471,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     loading = false,
                     message = reason.message ?: "Не удалось подготовить эпизод",
                 )
+            }
+        }
+    }
+
+    private suspend fun prepareEpisode(client: KadrApi, mediaId: Int, episode: EpisodeSummary) {
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.PREPARING,
+            selectedEpisode = episode,
+            playerUrl = null,
+            sources = emptyList(),
+            loading = false,
+            message = "Проверяем готовность серии…",
+        )
+        val playback = client.resolveEpisode(mediaId, episode)
+        when (playback.status) {
+            PlaybackStatus.READY -> openPlayer(playback)
+            PlaybackStatus.BUFFERING -> waitForStreamReady(client, playback)
+            PlaybackStatus.SOURCE_REQUIRED,
+            PlaybackStatus.UNAVAILABLE -> {
+                mutableState.value = mutableState.value.copy(message = "Ищем источники для серии…")
+                loadSources(client, mediaId, MediaKind.SERIES, episode.seasonNumber)
             }
         }
     }
@@ -516,15 +522,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } + replacement,
             message = null,
         )
-        viewModelScope.launch {
+        val previousUpdate = historyJob
+        historyJob = viewModelScope.launch {
+            previousUpdate?.join()
             try {
-                currentApi.updateHistory(
+                val saved = currentApi.updateHistory(
                     media = media,
                     episode = episode,
                     positionSeconds = 0,
                     durationSeconds = replacement.durationSeconds,
                     completed = completed,
                 )
+                applyEpisodeHistory(saved)
             } catch (reason: CancellationException) {
                 throw reason
             } catch (reason: Exception) {
@@ -552,16 +561,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val followingSeasonNumber = nextSeasonNumber(current.seasonNumber, selected.seasons)
             ?: return
         val currentApi = api ?: return
-        viewModelScope.launch {
+        playbackJob?.cancel()
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.PREPARING,
+            selectedEpisode = null,
+            playerUrl = null,
+            sources = emptyList(),
+            loading = false,
+            message = "Загружаем список серий следующего сезона…",
+        )
+        playbackJob = viewModelScope.launch {
             try {
                 val season = currentApi.season(selected.card.id, followingSeasonNumber)
-                val next = season.episodes.minByOrNull { it.number } ?: return@launch
+                val next = checkNotNull(season.episodes.minByOrNull { it.number }) {
+                    "В следующем сезоне нет серий"
+                }
                 mutableState.value = mutableState.value.copy(
                     selectedSeasonNumber = followingSeasonNumber,
                     seasonDetails = season,
-                    selectedEpisode = next,
                 )
-                playEpisode(next)
+                prepareEpisode(currentApi, selected.card.id, next)
             } catch (reason: CancellationException) {
                 throw reason
             } catch (reason: Exception) {
@@ -644,47 +663,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(message = null)
     }
 
-    fun reportPlaybackProgress(positionMs: Long, durationMs: Long, completed: Boolean, final: Boolean) {
+    fun reportPlaybackProgress(
+        media: MediaCard,
+        episode: EpisodeSummary?,
+        positionMs: Long,
+        durationMs: Long,
+        ended: Boolean,
+        final: Boolean,
+        playedRanges: List<PlayedRange>,
+    ) {
         val currentApi = api ?: return
-        val media = mutableState.value.playerMedia ?: return
-        val episode = mutableState.value.playerEpisode
-        if (episode != null && final) {
-            val replacement = HistoryItem(
-                mediaId = media.id,
-                mediaKind = media.kind,
-                title = media.title,
-                posterUrl = media.posterUrl,
-                seasonNumber = episode.seasonNumber,
-                episodeNumber = episode.number,
-                catalogEpisodeId = episode.id,
-                positionSeconds = if (completed) 0 else positionMs.coerceAtLeast(0) / 1_000,
-                durationSeconds = durationMs.coerceAtLeast(0) / 1_000,
-                completed = completed,
-            )
-            mutableState.value = mutableState.value.copy(
-                episodeHistoryItems = mutableState.value.episodeHistoryItems.filterNot {
-                    it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.number
-                } + replacement,
-            )
-        }
+        if (episode != null && durationMs !in 1..86_400_000) return
         val previousUpdate = historyJob
         if (!final && previousUpdate?.isActive == true) return
         historyJob = viewModelScope.launch {
             if (final) previousUpdate?.join()
             try {
-                currentApi.updateHistory(
+                val saved = currentApi.updateHistory(
                     media = media,
                     episode = episode,
-                    positionSeconds = if (completed) 0 else positionMs.coerceAtLeast(0) / 1_000,
+                    positionSeconds = if (ended) 0 else positionMs.coerceAtLeast(0) / 1_000,
                     durationSeconds = durationMs.coerceAtLeast(0) / 1_000,
-                    completed = completed,
+                    completed = ended && episode == null,
+                    playbackDurationMs = durationMs.takeIf { episode != null },
+                    playedRanges = playedRanges,
                 )
+                if (episode != null) applyEpisodeHistory(saved)
             } catch (reason: CancellationException) {
                 throw reason
             } catch (reason: Exception) {
                 Log.w(LOG_TAG, "watch_history_update_failed", reason)
             }
         }
+    }
+
+    private fun applyEpisodeHistory(saved: HistoryItem) {
+        val state = mutableState.value
+        if (state.selected?.card?.id != saved.mediaId || state.selected.card.kind != MediaKind.SERIES) return
+        mutableState.value = state.copy(
+            episodeHistoryItems = state.episodeHistoryItems.filterNot {
+                it.seasonNumber == saved.seasonNumber && it.episodeNumber == saved.episodeNumber
+            } + saved,
+        )
     }
 
     fun changeServer() {
@@ -748,7 +768,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             playbackJob?.cancel()
             val destination = when {
                 mutableState.value.sources.isNotEmpty() -> Screen.SOURCES
-                mutableState.value.selectedEpisode != null -> Screen.EPISODES
+                mutableState.value.seasonDetails != null -> Screen.EPISODES
                 else -> Screen.DETAILS
             }
             mutableState.value = mutableState.value.copy(screen = destination, message = null)
@@ -896,7 +916,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(
             screen = Screen.PREPARING,
             loading = false,
-            message = preparationMessage(displayedProgress, 0.0, 0),
+            message = preparationMessage(
+                displayedProgress,
+                playback.downloadProgress,
+                playback.downloadSpeedBytes,
+            ),
         )
         repeat(BUFFER_ATTEMPTS) { attempt ->
             if (attempt > 0) delay(PLAYBACK_POLL_INTERVAL_MS)
@@ -930,33 +954,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun openPlayer(playback: PlaybackResolution) {
-        val url = playback.streamUrl
-        mutableState.value = if (url == null) {
-            mutableState.value.copy(loading = false, message = "Сервер не вернул адрес видеопотока")
-        } else {
-            mutableState.value.copy(
-                screen = Screen.PLAYER,
-                playerUrl = url,
-                resumePositionMs = playback.resumePositionSeconds * 1_000,
-                playerMedia = mutableState.value.selected?.card,
-                playerEpisode = mutableState.value.selectedEpisode,
-                playerSession = mutableState.value.playerSession + 1,
-                playerReturnScreen = if (mutableState.value.selectedEpisode != null) {
-                    Screen.EPISODES
-                } else {
-                    Screen.DETAILS
-                },
-                loading = false,
-                message = null,
-            )
-        }
+        val url = checkNotNull(playback.streamUrl) { "Сервер не вернул адрес видеопотока" }
+        mutableState.value = mutableState.value.copy(
+            screen = Screen.PLAYER,
+            playerUrl = url,
+            resumePositionMs = playback.resumePositionSeconds * 1_000,
+            playerMedia = mutableState.value.selected?.card,
+            playerEpisode = mutableState.value.selectedEpisode,
+            playerSession = mutableState.value.playerSession + 1,
+            playerReturnScreen = if (mutableState.value.selectedEpisode != null) {
+                Screen.EPISODES
+            } else {
+                Screen.DETAILS
+            },
+            loading = false,
+            message = null,
+        )
     }
 
     private fun preparationMessage(progress: Double, fileProgress: Double, speedBytes: Long): String {
         val bufferPercent = (progress.coerceIn(0.0, 1.0) * 100).toInt()
         val filePercent = (fileProgress.coerceIn(0.0, 1.0) * 100).toInt()
         val speed = if (speedBytes > 0) " · ${formatSpeed(speedBytes)}" else ""
-        return "Начальный буфер: $bufferPercent% · файл: $filePercent%$speed"
+        return "Начальный буфер: $bufferPercent% · загружено: $filePercent%$speed"
     }
 
     private fun formatSpeed(bytes: Long): String {

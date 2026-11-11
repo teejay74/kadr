@@ -64,6 +64,11 @@ onMounted(load)
             :media-id="item.media_id"
             :media-kind="item.media_kind"
             :poster-url="item.poster_url"
+            :episode="item.episode ? {
+              id: item.episode.catalog_episode_id,
+              season_number: item.episode.season_number,
+              number: item.episode.episode_number,
+            } : null"
             :download-progress="1"
             download-state="stoppedUP"
             :direct-stream-url="item.stream_url"

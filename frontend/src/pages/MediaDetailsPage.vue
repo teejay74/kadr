@@ -81,7 +81,6 @@ const nextEpisodeOpen = ref(false)
 const nextPrefetchStarted = ref(false)
 const autoNext = ref(readAutoNext())
 const historyItems = ref<HistoryItem[]>([])
-const completedEpisodeKeys = ref<string[]>([])
 const historyBusyKey = ref('')
 const historyError = ref('')
 let seasonRequestId = 0
@@ -241,15 +240,15 @@ function episodeKey(episode: EpisodeSummary): string {
   return `${episode.season_number}:${episode.number}`
 }
 
-function markEpisodeCompletedLocally(episode: EpisodeSummary): void {
-  const key = episodeKey(episode)
-  if (!completedEpisodeKeys.value.includes(key)) {
-    completedEpisodeKeys.value = [...completedEpisodeKeys.value, key]
-  }
+function applySavedEpisodeHistory(saved: HistoryItem): void {
+  if (saved.media_id !== media.value?.id || media.value.kind !== 'series') return
+  historyItems.value = [
+    ...historyItems.value.filter((item) => item.id !== saved.id),
+    saved,
+  ]
 }
 
 async function handleEpisodeEnded(): Promise<void> {
-  if (selectedEpisode.value) markEpisodeCompletedLocally(selectedEpisode.value)
   await showNextEpisode()
 }
 
@@ -260,8 +259,7 @@ async function toggleEpisodeWatched(episode: EpisodeSummary): Promise<void> {
     item.season_number === episode.season_number
     && item.episode_number === episode.number
   ))
-  const locallyCompleted = completedEpisodeKeys.value.includes(key)
-  const completed = !(current?.completed || locallyCompleted)
+  const completed = !current?.completed
   historyBusyKey.value = key
   historyError.value = ''
   try {
@@ -276,13 +274,7 @@ async function toggleEpisodeWatched(episode: EpisodeSummary): Promise<void> {
       episode_number: episode.number,
       catalog_episode_id: episode.id,
     })
-    historyItems.value = [
-      ...historyItems.value.filter((item) => item.id !== saved.id),
-      saved,
-    ]
-    completedEpisodeKeys.value = completed
-      ? [...new Set([...completedEpisodeKeys.value, key])]
-      : completedEpisodeKeys.value.filter((item) => item !== key)
+    applySavedEpisodeHistory(saved)
   } catch (caught) {
     historyError.value = friendlyApiError(caught)
   } finally {
@@ -629,7 +621,6 @@ async function loadDetails(): Promise<void> {
   sourceMatchOpen.value = false
   seasonDownloadMessage.value = ''
   historyItems.value = []
-  completedEpisodeKeys.value = []
   historyBusyKey.value = ''
   historyError.value = ''
   try {
@@ -741,7 +732,6 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       <EpisodeList
         :episodes="seasonDetails?.episodes ?? []"
         :history="historyItems"
-        :completed-episode-keys="completedEpisodeKeys"
         :history-busy-key="historyBusyKey"
         :loading="seasonLoading"
         :error="seasonError"
@@ -764,7 +754,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
       />
       <KadrPlayer
         v-else-if="playback && playback.task_id"
-        :key="`${playback.source}:${playback.task_id}:${playback.file_id ?? 'saved'}`"
+        :key="`${playback.source}:${playback.task_id}:${playback.file_id ?? 'saved'}:${selectedEpisode ? episodeKey(selectedEpisode) : ''}`"
         :task-id="playback.task_id"
         :title="media.title"
         :selection-label="selectedEpisode ? `Сезон ${selectedEpisode.season_number} · Серия ${selectedEpisode.number}` : media.title"
@@ -783,6 +773,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         auto-activate
         @near-end="prepareNextEpisode"
         @ended="handleEpisodeEnded"
+        @history-saved="applySavedEpisodeHistory"
       />
     </section>
 

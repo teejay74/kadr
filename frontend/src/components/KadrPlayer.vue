@@ -15,6 +15,7 @@ import {
 } from '../services/api'
 import type {
   EpisodeSummary,
+  HistoryItem,
   MediaKind,
   PlaybackMode,
   PlaybackPreparation,
@@ -31,7 +32,7 @@ const props = withDefaults(defineProps<{
   mediaKind?: MediaKind
   posterUrl?: string | null
   fileId?: number
-  episode?: EpisodeSummary | null
+  episode?: (Pick<EpisodeSummary, 'season_number' | 'number'> & { id: number | null }) | null
   downloadProgress?: number
   downloadState?: string
   downloadSpeedBytes?: number
@@ -61,6 +62,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'near-end': []
   'ended': []
+  'history-saved': [item: HistoryItem]
 }>()
 
 const active = ref(false)
@@ -89,6 +91,8 @@ const externalSubtitleUrl = ref('')
 const externalSubtitleTrackId = ref('')
 const trackSwitchPosition = ref(0)
 let lastSavedSecond = -1
+let lastEpisodeReport = ''
+let episodeCompleted = false
 let playbackEnded = false
 let nearEndEmitted = false
 let readinessTimer: ReturnType<typeof setTimeout> | undefined
@@ -316,6 +320,7 @@ async function saveTrackSelection(
 
 async function prepareSelectedAudioTrack(): Promise<void> {
   if (!pendingCompatibleAudioTrackId.value) return
+  savePosition()
   trackSwitchPosition.value = video.value?.currentTime ?? 0
   compatibleTrackId.value = pendingCompatibleAudioTrackId.value
   preparationId += 1
@@ -451,15 +456,25 @@ async function activate(): Promise<void> {
   error.value = ''
   waiting.value = true
   playbackEnded = false
+  episodeCompleted = false
+  lastEpisodeReport = ''
+  lastSavedSecond = -1
   nearEndEmitted = false
   readinessAttempts = 0
-  resumeAt.value = Math.max(readSavedPosition(), props.initialResumeSeconds)
+  resumeAt.value = props.episode && props.initialResumeSeconds >= 0
+    ? props.initialResumeSeconds
+    : Math.max(readSavedPosition(), props.initialResumeSeconds)
   if (props.initialResumeSeconds < 0) {
     try {
       const history = props.mediaId > 0
-        ? await getHistoryItem(props.mediaId, props.mediaKind, props.episode)
+        ? await getHistoryItem(props.mediaId, props.mediaKind, props.episode, props.profileKey)
         : null
-      if (history && !history.completed) resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
+      if (history?.completed && props.episode) {
+        resumeAt.value = 0
+        episodeCompleted = true
+      } else if (history && !history.completed) {
+        resumeAt.value = Math.max(resumeAt.value, history.position_seconds)
+      }
     } catch {
       // Browser-local resume remains available when the API is unavailable.
     }
@@ -633,6 +648,10 @@ function restartPlayback(): void {
 
 function savePosition(): void {
   if (playbackEnded) return
+  if (props.episode) {
+    saveEpisodePosition()
+    return
+  }
   const current = Math.floor(video.value?.currentTime ?? 0)
   if (current < 5 || current === lastSavedSecond) return
   lastSavedSecond = current
@@ -649,17 +668,67 @@ function savePosition(): void {
     position_seconds: current,
     duration_seconds: Math.floor(video.value?.duration ?? 0),
     completed: false,
-    ...(props.episode ? {
-      season_number: props.episode.season_number,
-      episode_number: props.episode.number,
-      catalog_episode_id: props.episode.id,
-    } : {}),
   }).catch(() => undefined)
+}
+
+function saveEpisodePosition(ended = false): void {
+  const element = video.value
+  const episode = props.episode
+  if (!element || !episode || episodeCompleted || props.mediaId <= 0) return
+  const durationMs = Math.round(element.duration * 1000)
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 86_400_000) return
+  const position = Math.floor(element.currentTime)
+  lastSavedSecond = position
+  const ranges: [number, number][] = []
+  const played = element.played
+  for (let index = 0; index < Math.min(played.length, 256); index += 1) {
+    const start = Math.max(0, Math.ceil(played.start(index) * 1000))
+    const end = Math.min(durationMs, Math.floor(played.end(index) * 1000))
+    if (end > start) ranges.push([start, end])
+  }
+  if (ranges.length === 0 && position < 5) return
+  const report = JSON.stringify([position, ended, durationMs, ranges])
+  if (report === lastEpisodeReport) return
+  lastEpisodeReport = report
+  const key = storageKey.value
+  try {
+    if (ended) localStorage.removeItem(key)
+    else if (position >= 5) localStorage.setItem(key, String(position))
+  } catch {
+    // Playback remains usable when browser storage is unavailable.
+  }
+  void updateHistory(props.mediaId, {
+    media_kind: props.mediaKind,
+    profile_key: props.profileKey,
+    title: props.title,
+    poster_url: props.posterUrl,
+    position_seconds: ended ? 0 : position,
+    duration_seconds: Math.floor(durationMs / 1000),
+    completed: false,
+    season_number: episode.season_number,
+    episode_number: episode.number,
+    catalog_episode_id: episode.id,
+    playback: { duration_ms: durationMs, played_ranges_ms: ranges },
+  }).then((saved) => {
+    if (episodeCompleted) return
+    episodeCompleted = saved.completed
+    if (saved.completed) {
+      try {
+        localStorage.removeItem(key)
+      } catch {
+        // The server still has the completed status.
+      }
+    }
+    emit('history-saved', saved)
+  }).catch(() => {
+    if (lastEpisodeReport === report) lastEpisodeReport = ''
+  })
 }
 
 function onTimeUpdate(): void {
   const current = Math.floor(video.value?.currentTime ?? 0)
-  if (current - lastSavedSecond >= 5) savePosition()
+  const progress = current - lastSavedSecond
+  if ((props.episode ? Math.abs(progress) : progress) >= 5) savePosition()
   const duration = video.value?.duration ?? 0
   if (
     props.episode
@@ -674,6 +743,7 @@ function onTimeUpdate(): void {
 }
 
 function onEnded(): void {
+  if (props.episode) saveEpisodePosition(true)
   playbackEnded = true
   try {
     localStorage.removeItem(storageKey.value)
@@ -682,7 +752,7 @@ function onEnded(): void {
   }
   lastSavedSecond = -1
   emit('ended')
-  if (props.mediaId <= 0) return
+  if (props.episode || props.mediaId <= 0) return
   void updateHistory(props.mediaId, {
     media_kind: props.mediaKind,
     title: props.title,
@@ -690,11 +760,6 @@ function onEnded(): void {
     position_seconds: 0,
     duration_seconds: Math.floor(video.value?.duration ?? 0),
     completed: true,
-    ...(props.episode ? {
-      season_number: props.episode.season_number,
-      episode_number: props.episode.number,
-      catalog_episode_id: props.episode.id,
-    } : {}),
   }).catch(() => undefined)
 }
 
@@ -735,6 +800,7 @@ function onPlaybackError(): void {
 }
 
 async function retryPlayback(): Promise<void> {
+  savePosition()
   error.value = ''
   waiting.value = true
   readinessAttempts = 0

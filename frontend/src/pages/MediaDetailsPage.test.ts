@@ -630,14 +630,22 @@ test('uses the backend next episode across seasons and opens it in the shared pl
         SourcesPanel: { template: '<section>Legacy sources</section>' },
         KadrPlayer: {
           props: ['selectionLabel'],
-          emits: ['near-end', 'ended'],
-          template: '<div><span>{{ selectionLabel }}</span><button @click="$emit(\'ended\')">Finish episode</button></div>',
+          emits: ['near-end', 'ended', 'history-saved'],
+          template: `<div>
+            <span>{{ selectionLabel }}</span>
+            <button @click="$emit('history-saved', {
+              id: 'history-1', media_id: 42, season_number: 1, episode_number: 1, completed: true
+            })">Save played progress</button>
+            <button @click="$emit('ended')">Finish episode</button>
+          </div>`,
         },
       },
     },
   })
 
   await fireEvent.click(await screen.findByRole('button', { name: /Эпизод сезона 1/ }))
+  await fireEvent.click(await screen.findByRole('button', { name: 'Save played progress' }))
+  expect(await screen.findByRole('button', { name: 'Отметить серию 1 непросмотренной' })).toBeTruthy()
   await fireEvent.click(await screen.findByRole('button', { name: 'Finish episode' }))
   expect((screen.getByRole('checkbox', { name: 'Автоматически запускать следующую серию' }) as HTMLInputElement).checked).toBe(true)
   await fireEvent.click(await screen.findByRole('button', { name: /▶ Следующая серия/ }))

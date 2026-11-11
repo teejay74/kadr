@@ -66,22 +66,7 @@ class KadrApi(private val serverUrl: String) {
 
     suspend fun history(): List<HistoryItem> = requestArray(
         "/api/v1/history?profile_key=default",
-    ) { items ->
-        items.mapObjects { item ->
-            HistoryItem(
-                mediaId = item.getInt("media_id"),
-                mediaKind = parseKind(item.getString("media_kind")),
-                title = item.getString("title"),
-                posterUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("poster_url")),
-                seasonNumber = item.optNullableInt("season_number"),
-                episodeNumber = item.optNullableInt("episode_number"),
-                catalogEpisodeId = item.optNullableInt("catalog_episode_id"),
-                positionSeconds = item.optLong("position_seconds", 0),
-                durationSeconds = item.optLong("duration_seconds", 0),
-                completed = item.optBoolean("completed", false),
-            )
-        }
-    }
+    ) { items -> items.mapObjects(::parseHistoryItem) }
 
     suspend fun updateHistory(
         media: MediaCard,
@@ -89,7 +74,9 @@ class KadrApi(private val serverUrl: String) {
         positionSeconds: Long,
         durationSeconds: Long,
         completed: Boolean,
-    ) {
+        playbackDurationMs: Long? = null,
+        playedRanges: List<PlayedRange> = emptyList(),
+    ): HistoryItem =
         request(
             path = "/api/v1/history/${media.id}",
             method = "PUT",
@@ -107,10 +94,32 @@ class KadrApi(private val serverUrl: String) {
                         put("episode_number", episode.number)
                         if (episode.id > 0) put("catalog_episode_id", episode.id)
                     }
+                    if (playbackDurationMs != null) {
+                        val ranges = JSONArray()
+                        for (range in playedRanges) {
+                            ranges.put(JSONArray().put(range.startMs).put(range.endMs))
+                        }
+                        put(
+                            "playback",
+                            JSONObject().put("duration_ms", playbackDurationMs).put("played_ranges_ms", ranges),
+                        )
+                    }
                 }
                 .toString(),
-        ) { Unit }
-    }
+        ) { parseHistoryItem(it) }
+
+    private fun parseHistoryItem(item: JSONObject): HistoryItem = HistoryItem(
+        mediaId = item.getInt("media_id"),
+        mediaKind = parseKind(item.getString("media_kind")),
+        title = item.getString("title"),
+        posterUrl = ServerAddress.resolveImage(serverUrl, item.optNullableString("poster_url")),
+        seasonNumber = item.optNullableInt("season_number"),
+        episodeNumber = item.optNullableInt("episode_number"),
+        catalogEpisodeId = item.optNullableInt("catalog_episode_id"),
+        positionSeconds = item.optLong("position_seconds", 0),
+        durationSeconds = item.optLong("duration_seconds", 0),
+        completed = item.optBoolean("completed", false),
+    )
 
     suspend fun search(kind: MediaKind, query: String): List<MediaCard> {
         val encoded = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
@@ -360,6 +369,8 @@ class KadrApi(private val serverUrl: String) {
         taskId = body.optNullableString("task_id"),
         resumePositionSeconds = body.optLong("resume_position_seconds", 0),
         bufferProgress = body.optDouble("buffer_progress", 0.0),
+        downloadProgress = body.optDouble("download_progress", 0.0),
+        downloadSpeedBytes = body.optLong("download_speed_bytes", 0),
         message = body.optNullableString("message"),
     )
 
