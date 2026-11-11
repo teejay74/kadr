@@ -70,3 +70,47 @@ These rules apply to the whole repository and are derived from
 - Keep `README.md`, `docs/architecture.md`, `docs/deployment.md`, `docs/api.md`,
   `docs/streaming.md`, `docs/storage.md`, and `docs/troubleshooting.md` current.
 
+## Project Memory
+
+Keep project memory in Git under `.codex/memory/`:
+
+- `architecture.md` records durable component facts, dependencies, interactions,
+  and constraints that are hard to infer from the code. Use **Component**,
+  **Fact**, and **Reason**.
+- `decisions.md` records significant architectural choices, their rationale,
+  alternatives considered, and constraints. Use **Component**, **Decision**,
+  **Reason**, **Alternatives**, and **Constraints**.
+- `lessons.md` records verified troubleshooting experience. Use **Component**,
+  **Problem**, **Cause**, **Solution**, **Verification**, and **Lesson**.
+
+Before starting a task, consider whether memory could help with the components
+involved. Skip lookup for trivial tasks or when memory would add no value.
+Use `rg -n` with component names and keywords in `.codex/memory/`. Read only
+matching sections and apply relevant findings when planning and implementing.
+Read the full memory only when the task requires it. Summarize entries to the
+user only when needed. Follow current source code if it conflicts with a memory
+entry, and tell the user about the discrepancy.
+
+After substantive work, consider proposing an entry for a verified fix to a
+non-obvious bug, a significant constraint, an architectural decision, a
+library or platform behavior, or a solution likely to be reused. Skip routine
+or cosmetic changes, obvious facts, temporary diagnostics, unverified
+hypotheses, and knowledge already recorded. Omit a memory report when there
+is nothing worth proposing.
+
+Before proposing a new entry, select the target file and search for similar
+entries across memory. Skip duplicates and propose updating an outdated
+entry when appropriate. Use a descriptive level-two heading and compact
+Markdown, usually 50–150 words per entry. Keep secrets out of memory.
+
+**Obtain explicit user approval before every change to memory.** Show the
+target file and exact proposed text for a new entry. For updates, merges, or
+deletions, show the exact before and after text for each affected entry. Let
+the user approve, decline, or request revisions. Obtain approval for the
+final wording and apply only the approved change. General task authorization
+and approval of another entry do not authorize a memory change.
+
+Use Markdown and standard Git versioning. Keep the files eligible for
+tracking in this repository. Do not automate writes, cleanup, reorganization,
+commits, or pushes. Do not add indexes, background processes, separate
+models for history analysis, automatic session summaries, or transcript files.
