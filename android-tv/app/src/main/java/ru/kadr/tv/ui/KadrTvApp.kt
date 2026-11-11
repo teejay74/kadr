@@ -1277,13 +1277,16 @@ private fun DetailsScreen(
         if (details.originalTitle.isNotBlank() && details.originalTitle != details.card.title) {
             Text(details.originalTitle, color = SecondaryText, fontSize = 20.sp)
         }
+        val ratings = listOfNotNull(
+            details.imdbRating?.let { "IMDb ${"%.1f".format(it)}" },
+            details.kinopoiskRating?.let { "Кинопоиск ${"%.1f".format(it)}" },
+        ).ifEmpty { listOf("★ ${"%.1f".format(details.card.rating)}") }
         Text(
             listOfNotNull(
                 details.card.year?.toString(),
                 details.runtimeMinutes?.let { "$it мин" },
                 details.genres.take(3).joinToString(" · ").takeIf { it.isNotBlank() },
-                "★ ${"%.1f".format(details.card.rating)}",
-            ).joinToString("   "),
+            ).plus(ratings).joinToString("   "),
             color = Color.White,
             fontSize = 18.sp,
             modifier = Modifier.padding(top = 18.dp),

@@ -140,6 +140,8 @@ class KadrApi(private val serverUrl: String) {
                 originalTitle = body.optString("original_title"),
                 runtimeMinutes = body.optNullableInt("runtime_minutes"),
                 tagline = body.optNullableString("tagline"),
+                imdbRating = body.optDouble("imdb_rating").takeIf { it > 0 && it <= 10 },
+                kinopoiskRating = body.optDouble("kinopoisk_rating").takeIf { it > 0 && it <= 10 },
                 genres = body.optJSONArray("genres")?.mapObjects { it.getString("name") }.orEmpty(),
                 seasons = body.optJSONArray("seasons")?.mapObjects { item ->
                     SeasonSummary(

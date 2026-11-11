@@ -49,6 +49,8 @@ data class MediaDetails(
     val tagline: String?,
     val genres: List<String>,
     val seasons: List<SeasonSummary>,
+    val imdbRating: Double? = null,
+    val kinopoiskRating: Double? = null,
 )
 
 data class SeasonSummary(

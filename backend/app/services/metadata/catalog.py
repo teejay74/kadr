@@ -219,6 +219,7 @@ class CatalogService:
         *,
         fallback_title: str | None = None,
         fallback_year: int | None = None,
+        include_ratings: bool = False,
     ) -> MediaDetails:
         if self._is_kinopoisk_id(media_id):
             return await self._kinopoisk_details(kind, media_id)
@@ -244,7 +245,39 @@ class CatalogService:
                     exc_info=True,
                 )
                 raise primary_error from fallback_error
-        return self._details(payload, kind)
+        details = self._details(payload, kind)
+        if include_ratings and kind == "movie":
+            await self._enrich_movie_ratings(details, payload.get("imdb_id"))
+        return details
+
+    async def _enrich_movie_ratings(self, details: MediaDetails, imdb_id: object) -> None:
+        if (
+            self._kinopoisk_client is None
+            or not self._settings.kinopoisk_api_key
+            or not isinstance(imdb_id, str)
+            or re.fullmatch(r"tt[0-9]+", imdb_id) is None
+        ):
+            return
+        try:
+            payload = await self._kinopoisk_request("/api/v2.2/films", {"imdbId": imdb_id})
+        except MetadataError as error:
+            logger.warning(
+                "Kinopoisk ratings unavailable for movie %s (%s)", details.id, type(error).__name__
+            )
+            return
+        items = payload.get("items")
+        if not isinstance(items, list):
+            return
+        matches = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and item.get("imdbId") == imdb_id
+            and self._kinopoisk_matches_kind(item, "movie")
+        ]
+        if len(matches) == 1:
+            details.imdb_rating = self._external_rating(matches[0].get("ratingImdb"))
+            details.kinopoisk_rating = self._external_rating(matches[0].get("ratingKinopoisk"))
 
     async def _kinopoisk_details_by_title(
         self,
@@ -503,6 +536,12 @@ class CatalogService:
             **card.model_dump(),
             genres=genres,
             runtime_minutes=runtime,
+            imdb_rating=(
+                self._external_rating(payload.get("ratingImdb")) if kind == "movie" else None
+            ),
+            kinopoisk_rating=(
+                self._external_rating(payload.get("ratingKinopoisk")) if kind == "movie" else None
+            ),
             status=status,
             tagline=self._optional_text(payload.get("slogan")),
             cast=[],
@@ -748,6 +787,11 @@ class CatalogService:
             return float(value) if value is not None else 0
         except (TypeError, ValueError):
             return 0
+
+    @classmethod
+    def _external_rating(cls, value: object) -> float | None:
+        rating = cls._float_value(value)
+        return rating if not isinstance(value, bool) and 0 < rating <= 10 else None
 
     def _image(self, path: object, size: str) -> str | None:
         if not isinstance(path, str):

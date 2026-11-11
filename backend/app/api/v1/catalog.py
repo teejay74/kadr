@@ -61,6 +61,7 @@ async def movie_details(
         media_id,
         fallback_title=fallback_title.strip() if fallback_title else None,
         fallback_year=fallback_year,
+        include_ratings=True,
     )
 
 

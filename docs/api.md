@@ -34,7 +34,7 @@ provider errors are never returned to the browser.
 | `GET /series/search` | Search series | `q`, `page`, optional `year` |
 | `GET /movies/genres` | Film genres | none |
 | `GET /series/genres` | Series genres | none |
-| `GET /movies/{id}` | Film details, cast, trailer | positive KADR catalogue ID; optional `fallback_title`, `fallback_year` |
+| `GET /movies/{id}` | Film details, cast, trailer, available external ratings | positive KADR catalogue ID; optional `fallback_title`, `fallback_year` |
 | `GET /series/{id}` | Series details, cast, trailer, seasons | positive KADR catalogue ID; optional `fallback_title`, `fallback_year` |
 | `GET /series/{id}/seasons/{season_number}` | Normalized season and episode metadata | positive KADR catalogue ID; season `0`-`100` |
 
@@ -57,6 +57,13 @@ details, posters, series seasons, episodes, and source search. KADR uses a
 reserved positive internal ID range to prevent provider-ID collisions. Missing
 credentials or a secondary-provider failure does not disable ordinary TMDB
 search. Both providers use the persistent metadata cache.
+
+Film details include nullable `imdb_rating` and `kinopoisk_rating` fields on
+the 10-point scale. With Kinopoisk Unofficial configured, KADR uses the IMDb ID
+from the TMDB film details to look up an exact match and caches the provider
+response. Films whose details come from Kinopoisk use the ratings in that
+response. The details endpoint still returns the film when external ratings
+are unavailable.
 
 Detail clients that already hold a trusted catalogue card may pass its title
 and year as `fallback_title` and `fallback_year`. If TMDB is temporarily

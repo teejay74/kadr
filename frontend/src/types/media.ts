@@ -69,6 +69,8 @@ export interface MediaPage {
 }
 
 export interface MediaDetails extends MediaCardData {
+  imdb_rating?: number | null
+  kinopoisk_rating?: number | null
   genres: Genre[]
   runtime_minutes: number | null
   status: string | null

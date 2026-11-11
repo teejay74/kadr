@@ -81,3 +81,21 @@ Date: 2026-11-04
   served both collection routes and the new bundle. `git diff --check` passed.
 - Next action is to deploy the web build and verify the button against the
   live catalogue.
+
+## Film ratings follow-up
+
+- The film details API uses the IMDb ID from TMDB to query Kinopoisk Unofficial
+  for IMDb and Kinopoisk ratings. The existing metadata cache stores successful
+  responses. Kinopoisk-backed films use ratings from their details response.
+- Web film pages and Android TV 0.9.0 show available scores with provider
+  labels. If both are unavailable, the page shows the existing catalogue
+  rating when available.
+- Changes cover the catalogue API and metadata service, web film page,
+  Android TV details screen, and related tests and documentation.
+- Ruff and 157 backend tests passed. The API started with a temporary
+  database, returned a healthy status, and exposed both rating fields in
+  OpenAPI. The web production build, 98 Vitest tests, 25 Android JVM tests,
+  and the debug APK build passed.
+- Coverage depends on a matching IMDb ID and the scores available from
+  Kinopoisk Unofficial. Next action is to deploy the API and web build, then
+  verify film details with the live provider and the updated TV app.

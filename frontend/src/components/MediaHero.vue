@@ -26,7 +26,9 @@ defineProps<{ media: MediaDetails }>()
         <p v-if="media.tagline" class="tagline">{{ media.tagline }}</p>
         <div class="hero-meta">
           <span v-if="media.year">{{ media.year }}</span>
-          <span v-if="media.rating">★ {{ media.rating.toFixed(1) }}</span>
+          <span v-if="media.imdb_rating">IMDb {{ media.imdb_rating.toFixed(1) }}</span>
+          <span v-if="media.kinopoisk_rating">Кинопоиск {{ media.kinopoisk_rating.toFixed(1) }}</span>
+          <span v-if="!media.imdb_rating && !media.kinopoisk_rating && media.rating">★ {{ media.rating.toFixed(1) }}</span>
           <span v-if="media.runtime_minutes">{{ media.runtime_minutes }} мин.</span>
           <span v-if="media.season_count">{{ media.season_count }} сез.</span>
         </div>

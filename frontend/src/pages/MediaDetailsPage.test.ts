@@ -189,6 +189,8 @@ test('uses the same backend resolver for the movie primary action', async () => 
     ...details,
     kind: 'movie',
     title: 'Тестовый фильм',
+    imdb_rating: 8.4,
+    kinopoisk_rating: 8.1,
     seasons: [],
     season_count: null,
     episode_count: null,
@@ -207,6 +209,8 @@ test('uses the same backend resolver for the movie primary action', async () => 
     },
   })
 
+  expect(await screen.findByText('IMDb 8.4')).toBeTruthy()
+  expect(screen.getByText('Кинопоиск 8.1')).toBeTruthy()
   await fireEvent.click(await screen.findByRole('button', { name: 'Смотреть' }))
 
   await waitFor(() => expect(api.resolvePlayback).toHaveBeenCalledWith(42, 'movie', null))

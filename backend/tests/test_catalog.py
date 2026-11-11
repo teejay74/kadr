@@ -36,9 +36,12 @@ class FakeKinopoiskClient:
     def __init__(self, payloads: dict[str, dict[str, Any]]) -> None:
         self.payloads = payloads
         self.calls: list[tuple[str, dict[str, str | int | bool]]] = []
+        self.unavailable = False
 
     async def get(self, path: str, params: dict[str, str | int | bool]) -> dict[str, Any]:
         self.calls.append((path, params))
+        if self.unavailable:
+            raise MetadataUnavailableError("provider unavailable")
         return self.payloads[path]
 
 
@@ -432,6 +435,58 @@ async def test_details_endpoint_uses_kinopoisk_when_tmdb_is_unavailable(
     )
     assert wrong_year.status_code == 502
     assert wrong_year.json()["code"] == "metadata_unavailable"
+
+
+async def test_movie_details_return_and_cache_only_exact_imdb_ratings(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    tmdb = FakeTMDBClient({"id": 11, "title": "Звёздные войны", "imdb_id": "tt0076759"})
+    kinopoisk = FakeKinopoiskClient({
+        "/api/v2.2/films": {"items": [
+            {"type": "FILM", "imdbId": "tt7654321", "ratingImdb": 4.0},
+            {"type": "TV_SERIES", "imdbId": "tt0076759", "ratingImdb": 5.0},
+            {
+                "type": "FILM", "imdbId": "tt0076759",
+                "ratingImdb": 8.6, "ratingKinopoisk": 8.1,
+            },
+        ]},
+    })
+    service = CatalogService(
+        tmdb, MetadataCacheRepository(session), Settings(kinopoisk_api_key="test"), kinopoisk
+    )
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    assert (await service.details("movie", 11)).imdb_rating is None
+    assert kinopoisk.calls == []
+    for _ in range(2):
+        response = await client.get("/api/v1/movies/11")
+        assert response.status_code == 200
+        assert response.json()["imdb_rating"] == 8.6
+        assert response.json()["kinopoisk_rating"] == 8.1
+    assert kinopoisk.calls == [("/api/v2.2/films", {"imdbId": "tt0076759"})]
+
+
+async def test_movie_details_keep_working_when_ratings_provider_fails(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    tmdb = FakeTMDBClient({
+        "id": 11, "title": "Звёздные войны", "imdb_id": "tt0076759", "vote_average": 8.2,
+    })
+    kinopoisk = FakeKinopoiskClient({})
+    kinopoisk.unavailable = True
+    service = CatalogService(
+        tmdb, MetadataCacheRepository(session), Settings(kinopoisk_api_key="test"), kinopoisk
+    )
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    response = await client.get("/api/v1/movies/11")
+    assert response.status_code == 200
+    assert response.json()["rating"] == 8.2
+    assert response.json()["imdb_rating"] is None
+    assert response.json()["kinopoisk_rating"] is None
+    assert len(kinopoisk.calls) == 1
 
 
 async def test_search_uses_kinopoisk_when_tmdb_is_unavailable(

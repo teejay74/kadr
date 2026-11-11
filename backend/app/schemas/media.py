@@ -72,6 +72,8 @@ class MediaPage(BaseModel):
 
 
 class MediaDetails(MediaCard):
+    imdb_rating: float | None = None
+    kinopoisk_rating: float | None = None
     genres: list[Genre] = Field(default_factory=list)
     runtime_minutes: int | None = None
     status: str | None = None
