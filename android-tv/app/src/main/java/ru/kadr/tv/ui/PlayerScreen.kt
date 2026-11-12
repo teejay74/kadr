@@ -1,5 +1,6 @@
 package ru.kadr.tv.ui
 
+import android.net.Uri
 import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
@@ -51,8 +52,11 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import ru.kadr.tv.data.PlayedRange
@@ -77,13 +81,24 @@ fun PlayerScreen(
     val context = LocalContext.current
     val rootView = LocalView.current
     val focusRequester = remember { FocusRequester() }
+    val streamUri = remember(streamUrl) { Uri.parse(streamUrl) }
+    val torrentStream = streamUri.path?.startsWith("/api/v1/torrents/") == true
     val player = remember(streamUrl) {
         ExoPlayer.Builder(context)
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
+            .apply {
+                if (torrentStream) {
+                    val http = DefaultHttpDataSource.Factory().setReadTimeoutMs(TORRENT_HTTP_READ_TIMEOUT_MS)
+                    setMediaSourceFactory(
+                        DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
+                            .setLoadErrorHandlingPolicy(TorrentLoadErrorPolicy()),
+                    )
+                }
+            }
             .build().apply {
                 setSeekParameters(SeekParameters.CLOSEST_SYNC)
-                setMediaItem(MediaItem.fromUri(streamUrl), resumePositionMs)
+                setMediaItem(MediaItem.fromUri(streamUri), resumePositionMs)
                 prepare()
                 playWhenReady = true
             }
@@ -97,7 +112,8 @@ fun PlayerScreen(
     var seekTargetMs by remember { mutableStateOf<Long?>(null) }
     var isPlaying by remember { mutableStateOf(true) }
     var isBuffering by remember { mutableStateOf(true) }
-    var playbackFailed by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf<PlaybackException?>(null) }
+    val canRetryTorrent = torrentStream && playbackError?.let(::isTransientTorrentLoadError) == true
     var audioTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
     var subtitleTracks by remember { mutableStateOf<List<PlayerTrackOption>>(emptyList()) }
     var trackMenuVisible by remember { mutableStateOf(false) }
@@ -243,7 +259,7 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w("KadrPlayer", "playback_failed code=${error.errorCodeName}")
-                playbackFailed = true
+                playbackError = error
             }
         }
         player.addListener(listener)
@@ -319,7 +335,12 @@ fun PlayerScreen(
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                         if (native.action == KeyEvent.ACTION_DOWN && native.repeatCount == 0) {
                             val target = seekTargetMs
-                            if (target != null) {
+                            if (canRetryTorrent) {
+                                playbackError = null
+                                seekTargetMs = null
+                                player.prepare()
+                                player.play()
+                            } else if (target != null) {
                                 player.seekTo(target)
                                 seekTargetMs = null
                             } else if (player.isPlaying) {
@@ -370,9 +391,10 @@ fun PlayerScreen(
                 tracksAvailable = audioTracks.isNotEmpty() || subtitleTracks.isNotEmpty(),
             )
         }
-        if (playbackFailed || isBuffering) {
+        if (playbackError != null || isBuffering) {
             val message = when {
-                playbackFailed -> "Не удалось воспроизвести видео"
+                canRetryTorrent -> "Поток не отвечает. Нажмите OK, чтобы повторить."
+                playbackError != null -> "Не удалось воспроизвести видео"
                 episodeLabel != null -> "Буферизация серии…"
                 else -> "Буферизация…"
             }

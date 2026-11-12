@@ -90,6 +90,12 @@ codec-specific player error. The retry action creates a fresh media request,
 and “Change source” returns to the release list without deleting the existing
 KADR download.
 
+On native Android TV, Media3 allows 45 seconds for a read from a torrent
+stream, compared with the server's default 30-second piece wait. If the
+connection fails or the server returns HTTP 502, 503, or 504, Media3 retries
+up to four consecutive times, waiting 2, 4, 6, and 8 seconds between attempts.
+If those retries run out, the viewer can press OK to retry in the player.
+
 ## Track discovery
 
 KADR can inspect audio and subtitle streams on demand through the selected

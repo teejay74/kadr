@@ -54,6 +54,12 @@ enum class Screen {
     PLAYER,
 }
 
+enum class LibraryTab(val title: String, val emptyMessage: String) {
+    CONTINUE("Продолжить просмотр", "Нет незавершённых просмотров."),
+    SAVED("Моя библиотека", "В библиотеке пока нет сохранённых видео."),
+    FAVORITES("Избранное", "В избранном пока ничего нет."),
+}
+
 data class UiState(
     val screen: Screen = Screen.SETUP,
     val serverUrl: String? = null,
@@ -67,6 +73,7 @@ data class UiState(
     val searchMovies: List<MediaCard> = emptyList(),
     val searchSeries: List<MediaCard> = emptyList(),
     val searchLoading: Boolean = false,
+    val libraryTab: LibraryTab = LibraryTab.SAVED,
     val libraryItems: List<SavedLibraryItem> = emptyList(),
     val favoriteItems: List<MediaCard> = emptyList(),
     val historyItems: List<HistoryItem> = emptyList(),
@@ -218,44 +225,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun retryDiscovery() = loadDiscovery()
 
-    fun openLibrary() {
+    fun openLibrary(tab: LibraryTab) {
         val currentApi = api ?: return
         libraryJob?.cancel()
         discoveryJob?.cancel()
         mutableState.value = mutableState.value.copy(
             screen = Screen.LIBRARY,
+            libraryTab = tab,
             loading = true,
             message = null,
         )
         libraryJob = viewModelScope.launch {
             try {
-                val (libraryAndFavorites, history) = coroutineScope {
-                    val saved = async { currentApi.library() }
-                    val favorites = async { currentApi.favorites() }
-                    val watched = async { currentApi.history() }
-                    (saved.await() to favorites.await()) to watched.await()
+                when (tab) {
+                    LibraryTab.CONTINUE -> {
+                        val history = currentApi.history().filter { !it.completed && it.positionSeconds > 0 }
+                        mutableState.value = mutableState.value.copy(historyItems = history)
+                    }
+                    LibraryTab.SAVED -> {
+                        val (saved, history) = coroutineScope {
+                            val videos = async { currentApi.library() }
+                            val watched = async {
+                                try {
+                                    currentApi.history().filter { !it.completed && it.positionSeconds > 0 }
+                                } catch (reason: CancellationException) {
+                                    throw reason
+                                } catch (reason: Exception) {
+                                    Log.w(LOG_TAG, "library_resume_history_load_failed", reason)
+                                    null
+                                }
+                            }
+                            videos.await() to watched.await()
+                        }
+                        val state = mutableState.value
+                        mutableState.value = state.copy(
+                            libraryItems = saved,
+                            historyItems = history ?: state.historyItems,
+                        )
+                    }
+                    LibraryTab.FAVORITES -> {
+                        val favorites = currentApi.favorites()
+                        mutableState.value = mutableState.value.copy(favoriteItems = favorites)
+                    }
                 }
-                mutableState.value = mutableState.value.copy(
-                    screen = Screen.LIBRARY,
-                    libraryItems = libraryAndFavorites.first,
-                    favoriteItems = libraryAndFavorites.second,
-                    historyItems = history.filter { !it.completed && it.positionSeconds > 0 },
-                    loading = false,
-                    message = null,
-                )
+                mutableState.value = mutableState.value.copy(loading = false)
             } catch (reason: CancellationException) {
                 throw reason
             } catch (reason: Exception) {
                 mutableState.value = mutableState.value.copy(
                     screen = Screen.LIBRARY,
                     loading = false,
-                    message = reason.message ?: "Не удалось загрузить библиотеку",
+                    message = reason.message ?: "Не удалось загрузить раздел «${tab.title}»",
                 )
             }
         }
     }
 
-    fun retryLibrary() = openLibrary()
+    fun retryLibrary() = openLibrary(mutableState.value.libraryTab)
 
     fun openLibraryItem(item: SavedLibraryItem) {
         val history = mutableState.value.historyItems.firstOrNull { it.matches(item) }

@@ -6,6 +6,7 @@ import CastCarousel from '../components/CastCarousel.vue'
 import EpisodeMatchDialog from '../components/EpisodeMatchDialog.vue'
 import EpisodeList from '../components/EpisodeList.vue'
 import KadrPlayer from '../components/KadrPlayer.vue'
+import LibrarySaveAction from '../components/LibrarySaveAction.vue'
 import MediaActions from '../components/MediaActions.vue'
 import MediaHero from '../components/MediaHero.vue'
 import NextEpisodeOverlay from '../components/NextEpisodeOverlay.vue'
@@ -780,6 +781,15 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         @near-end="prepareNextEpisode"
         @ended="handleEpisodeEnded"
         @history-saved="applySavedEpisodeHistory"
+      />
+      <LibrarySaveAction
+        v-if="playback?.source === 'torrent' && playback.task_id && playback.file_id !== null"
+        :key="`${playback.task_id}:${playback.file_id}:${selectedEpisode ? episodeKey(selectedEpisode) : ''}`"
+        :task-id="playback.task_id"
+        :file-id="playback.file_id"
+        :initial-progress="playback.download_progress"
+        :media="media"
+        :episode="selectedEpisode"
       />
     </section>
 

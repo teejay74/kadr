@@ -104,6 +104,22 @@ async def test_save_stream_and_delete_library_item(session: AsyncSession, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_save_rejects_a_file_that_is_no_longer_selected(
+    session: AsyncSession, tmp_path: Path
+) -> None:
+    manager, _, task = await make_manager(session, tmp_path)
+
+    with pytest.raises(LibraryConflictError, match="selected video changed"):
+        await manager.save(
+            SaveLibraryItemRequest(
+                task_id=task.id, file_id=1, media_id=42, media_kind="movie", title="Example"
+            )
+        )
+
+    assert await manager.list() == []
+
+
+@pytest.mark.asyncio
 async def test_library_stream_endpoint_supports_byte_ranges(
     client: AsyncClient,
     session: AsyncSession,

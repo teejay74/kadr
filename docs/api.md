@@ -542,7 +542,9 @@ returns `playback_artifact_not_ready` (409).
 | `POST /cache/cleanup` | Run the guarded TTL cleanup immediately |
 | `GET /system/storage` | Report library/cache counts, bytes, and free space |
 
-Saving requires a task whose selected video is fully downloaded. A series save
+Saving requires a task whose selected video is fully downloaded. Clients can
+send `file_id` to guard a new save against a changed selection. If a different
+file is now selected, the API returns `409 library_conflict`. A series save
 may add `season_number`, `episode_number`, and optional `catalog_episode_id` to
 the existing media snapshot body. The response includes `file_id` and the
 logical `episode` object when applicable. KADR creates

@@ -83,11 +83,13 @@ export function saveEpisodeToLibrary(
   taskId: string,
   media: MediaSnapshot,
   episode?: EpisodeSummary | null,
+  fileId?: number,
 ): Promise<LibraryItem> {
   return request<LibraryItem>('/api/v1/library', {
     method: 'POST',
     body: JSON.stringify({
       task_id: taskId,
+      file_id: fileId,
       ...media,
       ...(episode ? {
         season_number: episode.season_number,

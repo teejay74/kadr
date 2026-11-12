@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import * as api from '../services/api'
+import LibrarySaveAction from '../components/LibrarySaveAction.vue'
 import MediaDetailsPage from './MediaDetailsPage.vue'
 
 vi.mock('../services/api', async (importOriginal) => ({
@@ -19,6 +20,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   prefetchNextEpisode: vi.fn(),
   resolvePlayback: vi.fn(),
   resolveNextEpisode: vi.fn(),
+  saveEpisodeToLibrary: vi.fn(),
   selectTorrentFile: vi.fn(),
   getSeriesSeason: vi.fn(),
   getTorrentFiles: vi.fn(),
@@ -217,6 +219,63 @@ test('uses the same backend resolver for the movie primary action', async () => 
   expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
   expect(screen.getByRole('dialog', { name: 'Выберите источник' })).toBeTruthy()
   expect(screen.getByRole('link', { name: 'Открыть загрузки' })).toBeTruthy()
+})
+
+test('saves a completed torrent file from the current movie player', async () => {
+  vi.mocked(api.getMediaDetails).mockResolvedValueOnce({ ...details, kind: 'movie', seasons: [] })
+  vi.mocked(api.resolvePlayback).mockResolvedValueOnce({
+    status: 'ready',
+    source: 'torrent',
+    stream_url: '/api/v1/torrents/task/stream',
+    task_id: 'task',
+    file_id: 0,
+    library_item_id: null,
+    resume_position_seconds: 0,
+    buffer_progress: 1,
+    download_progress: 1,
+    download_state: 'stoppedUP',
+    download_speed_bytes: 0,
+    message: null,
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }, downloadsTestRoute],
+  })
+  await router.push('/movies/42')
+  await router.isReady()
+  render(MediaDetailsPage, {
+    global: { plugins: [router], stubs: { KadrPlayer: true } },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Смотреть' }))
+  await fireEvent.click(await screen.findByRole('button', { name: 'Сохранить в библиотеку' }))
+
+  expect(api.saveEpisodeToLibrary).toHaveBeenCalledWith(
+    'task', expect.objectContaining({ media_id: 42, media_kind: 'movie' }), null, 0,
+  )
+  expect(await screen.findByText('Видео сохранено в библиотеке.')).toBeTruthy()
+})
+
+test('enables saving when the playing episode finishes ahead of the rest of the torrent', async () => {
+  vi.useFakeTimers()
+  const file = { name: 'episode.mkv', size_bytes: 100, priority: 1, is_video: true, duration_seconds: null }
+  vi.mocked(api.getTorrentFiles)
+    .mockResolvedValueOnce([{ ...file, id: 0, progress: 1 }, { ...file, id: 1, progress: 0.9 }])
+    .mockResolvedValueOnce([{ ...file, id: 0, progress: 0.5 }, { ...file, id: 1, progress: 1 }])
+  try {
+    render(LibrarySaveAction, {
+      props: { taskId: 'task', fileId: 1, initialProgress: 0.5, media: details, episode: season(1).episodes[0]! },
+    })
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Сохранить в библиотеку' })
+    expect(button.disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(button.disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(button.disabled).toBe(false)
+  } finally {
+    cleanup()
+    vi.useRealTimers()
+  }
 })
 
 test('selects a movie source in the modal and retries unified playback', async () => {

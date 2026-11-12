@@ -81,20 +81,23 @@ class LibraryManager:
         task = await self._tasks.get(body.task_id)
         if task is None or task.media_id != body.media_id or task.media_kind != body.media_kind:
             raise LibraryNotFoundError("The selected torrent task does not belong to this media")
-        if task.selected_file_id is None or task.selected_file_path is None:
+        file_id, file_path = task.selected_file_id, task.selected_file_path
+        if file_id is None or file_path is None:
             raise LibraryConflictError("Select a video file before saving it")
+        if body.file_id is not None and body.file_id != file_id:
+            raise LibraryConflictError("The selected video changed; reopen playback before saving")
         files = await self._client.files(task.torrent_hash)
         selected = next(
             (
                 item
                 for index, item in enumerate(files)
-                if int(item.get("index", index)) == task.selected_file_id
+                if int(item.get("index", index)) == file_id
             ),
             None,
         )
         if selected is None or float(selected.get("progress") or 0) < 1:
             raise LibraryConflictError("The selected video must finish downloading before saving")
-        source = self._safe_download(task.storage_path, task.selected_file_path)
+        source = self._safe_download(task.storage_path, file_path)
         if not await asyncio.to_thread(source.is_file):
             raise LibraryStorageError("The downloaded video file is unavailable")
         target = self._library_target(body.media_kind, body.media_id, source.name)
@@ -106,7 +109,7 @@ class LibraryManager:
             id=str(uuid.uuid4()),
             task_id=task.id,
             episode_id=episode.id if episode else None,
-            file_id=task.selected_file_id,
+            file_id=file_id,
             media_id=body.media_id,
             media_kind=body.media_kind,
             title=body.title,

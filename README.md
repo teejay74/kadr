@@ -82,8 +82,8 @@ buffering, and opens the stream fullscreen in Media3 ExoPlayer. Native series
 playback includes season/episode selection and server-owned episode matching.
 Native catalogue search covers films and series with TV-keyboard input. It is
 paired with cached posters, detail backdrops, and episode stills. The native
-library now reads saved files, favorites, and shared `default`-profile history;
-the player keeps the display awake, uses 10-second seeking, and writes resume
+client shows saved files, favorites, and unfinished `default`-profile history in
+separate tabs. The player keeps the display awake, uses 10-second seeking, and writes resume
 progress back to the server. Version 0.5.0 replaces the generic Media3 controls
 with a D-pad-first TV overlay showing title, episode, played/buffered timeline,
 time labels, pause, and buffering state. Version 0.6.0 adds a native audio and
@@ -171,7 +171,8 @@ FFmpeg never starts automatically.
 See the [qBittorrent setup guide](docs/qbittorrent.md) and
 [streaming guide](docs/streaming.md).
 
-After a selected video reaches 100%, use «Сохранить в библиотеку». The
+On the film or episode page, choose «Сохранить в библиотеку» below the player
+after that video reaches 100%. The
 «Библиотека» page reports saved size, plays the independent copy, and requires
 confirmation before deletion. Temporary stopped downloads older than the
 configured TTL are eligible for cache cleanup; saved and active media are

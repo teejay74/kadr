@@ -36,6 +36,7 @@ class EpisodeIdentityRequest(BaseModel):
 
 class SaveLibraryItemRequest(MediaSnapshot, EpisodeIdentityRequest):
     task_id: str = Field(min_length=36, max_length=36)
+    file_id: int | None = Field(default=None, ge=0)
 
 
 class LibraryItemResponse(MediaSnapshot):

@@ -13,19 +13,30 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -54,16 +65,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Tab
+import androidx.tv.material3.TabDefaults
+import androidx.tv.material3.TabRow
+import androidx.tv.material3.TabRowDefaults
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.delay
+import ru.kadr.tv.LibraryTab
 import ru.kadr.tv.MainViewModel
 import ru.kadr.tv.Screen
 import ru.kadr.tv.UiState
@@ -139,6 +158,7 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 )
                 Screen.LIBRARY -> LibraryScreen(
                     state = state,
+                    onTab = viewModel::openLibrary,
                     onSaved = viewModel::openLibraryItem,
                     onHistory = viewModel::openHistoryItem,
                     onFavorite = viewModel::openMedia,
@@ -354,64 +374,47 @@ private fun EpisodeTile(
         true
     }
 
-    Row(
-        modifier = Modifier.padding(horizontal = 64.dp).fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Button(
-            onClick = { onEpisode(episode) },
-            modifier = Modifier
-                .weight(1f)
-                .focusRequester(playFocus)
-                .episodeNavigation(watchedButton = false),
-        ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Text(
-                    episode.number.toString().padStart(2, '0'),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.width(54.dp),
-                )
-                Box(
-                    modifier = Modifier
-                        .width(160.dp)
-                        .height(90.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF30323D)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("KADR", color = SecondaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    RemoteImage(
-                        url = episode.stillUrl,
-                        contentDescription = "Кадр серии ${episode.number}",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
-                    Text(episode.name.ifBlank { "Серия ${episode.number}" }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        listOfNotNull(
-                            episode.runtimeMinutes?.let { "$it мин" },
-                            "★ ${"%.1f".format(episode.rating)}".takeIf { episode.rating > 0 },
-                            when {
-                                history?.completed == true -> "✓ Просмотрено"
-                                (history?.positionSeconds ?: 0) > 0 -> "Продолжить"
-                                else -> null
-                            },
-                        ).joinToString(" · "),
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 3.dp),
-                    )
-                }
+    val status = listOfNotNull(
+        "Серия ${episode.number}",
+        episode.runtimeMinutes?.let { "$it мин" },
+        "★ ${"%.1f".format(episode.rating)}".takeIf { episode.rating > 0 },
+        "✓ Просмотрено".takeIf { history?.completed == true },
+    ).joinToString(" · ")
+    WideMediaCard(
+        imageUrl = episode.stillUrl,
+        placeholder = "${episode.number}",
+        imageWidth = 192.dp,
+        height = 144.dp,
+        modifier = Modifier.padding(horizontal = 64.dp),
+        playModifier = Modifier.focusRequester(playFocus).episodeNavigation(watchedButton = false),
+        onClick = { onEpisode(episode) },
+        trailing = {
+            Button(
+                onClick = { onToggleWatched(episode) },
+                modifier = Modifier.padding(end = 12.dp)
+                    .focusRequester(watchedFocus).episodeNavigation(watchedButton = true),
+                shape = ButtonDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                colors = ButtonDefaults.colors(
+                    containerColor = Background,
+                    contentColor = Color(0xFFDDD6FE),
+                    focusedContainerColor = Color(0xFFDDD6FE),
+                    focusedContentColor = Background,
+                ),
+            ) {
+                Text(if (history?.completed == true) "Снять ✓" else "Отметить ✓", fontSize = 14.sp)
             }
+        },
+    ) {
+        Text(status, color = SecondaryText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        WideCardTitle(episode.name.ifBlank { "Серия ${episode.number}" }, maxLines = 1)
+        if (episode.overview.isNotBlank()) {
+            Text(
+                episode.overview, color = SecondaryText, fontSize = 14.sp, lineHeight = 18.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
         }
-        Button(
-            onClick = { onToggleWatched(episode) },
-            modifier = Modifier.focusRequester(watchedFocus).episodeNavigation(watchedButton = true),
-        ) {
-            Text(if (history?.completed == true) "Снять ✓" else "Отметить ✓")
-        }
+        val action = if (history?.completed == false && history.positionSeconds > 0) "Продолжить" else "Смотреть"
+        Text("▶ $action", color = Color(0xFFDDD6FE), fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -654,91 +657,146 @@ private fun SetupScreen(state: UiState, onConnect: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun LibraryScreen(
     state: UiState,
+    onTab: (LibraryTab) -> Unit,
     onSaved: (SavedLibraryItem) -> Unit,
     onHistory: (HistoryItem) -> Unit,
     onFavorite: (MediaCard) -> Unit,
     onRetry: () -> Unit,
 ) {
-    val hasContent = state.libraryItems.isNotEmpty() ||
-        state.historyItems.isNotEmpty() ||
-        state.favoriteItems.isNotEmpty()
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 64.dp, vertical = 42.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    val selectedTab = state.libraryTab
+    val selectedTabFocus = remember { FocusRequester() }
+    val firstCardFocus = remember { FocusRequester() }
+    val compactCards = selectedTab != LibraryTab.CONTINUE
+    var tabsReady by remember { mutableStateOf(false) }
+    val hasContent = when (selectedTab) {
+        LibraryTab.CONTINUE -> state.historyItems.isNotEmpty()
+        LibraryTab.SAVED -> state.libraryItems.isNotEmpty()
+        LibraryTab.FAVORITES -> state.favoriteItems.isNotEmpty()
+    }
+    LaunchedEffect(Unit) {
+        selectedTabFocus.requestFocus()
+        tabsReady = true
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item(key = "library-header") {
-            Column(modifier = Modifier.padding(bottom = 10.dp)) {
-                Text("Моя библиотека", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
-                Text(
-                    "Синхронизировано с сервером KADR",
-                    color = SecondaryText,
-                    fontSize = 17.sp,
-                    modifier = Modifier.padding(top = 5.dp),
-                )
+        TabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            indicator = { positions, focused ->
+                positions.getOrNull(selectedTab.ordinal)?.let { position ->
+                    TabRowDefaults.PillIndicator(position, focused, activeColor = Color.White, inactiveColor = Surface)
+                }
+            },
+        ) {
+            LibraryTab.entries.forEach { tab ->
+                Tab(
+                    selected = tab == selectedTab,
+                    onFocus = { if (tabsReady && tab != selectedTab) onTab(tab) },
+                    modifier = if (tab == selectedTab) {
+                        Modifier.focusRequester(selectedTabFocus).focusProperties {
+                            if (hasContent && !state.loading) down = firstCardFocus
+                        }
+                    } else Modifier,
+                    colors = TabDefaults.pillIndicatorTabColors(
+                        contentColor = Color.White,
+                        inactiveContentColor = SecondaryText,
+                        selectedContentColor = Color.White,
+                        focusedContentColor = Background,
+                    ),
+                    onClick = { if (tab != selectedTab) onTab(tab) },
+                ) {
+                    Text(tab.title, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+                }
             }
         }
-        if (state.historyItems.isNotEmpty()) {
-            item(key = "history-title") { LibrarySectionTitle("Продолжить просмотр") }
-            items(state.historyItems, key = {
-                "history-${it.mediaKind}-${it.mediaId}-${it.seasonNumber}-${it.episodeNumber}"
-            }) { item ->
-                LibraryRow(
-                    title = item.title,
-                    subtitle = listOfNotNull(
-                        item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
-                        "Продолжить с ${formatDuration(item.positionSeconds)}",
-                        "${item.progressPercent()}%",
-                    ).joinToString(" · "),
-                    posterUrl = item.posterUrl,
-                    onClick = { onHistory(item) },
-                )
-            }
-        }
-        if (state.libraryItems.isNotEmpty()) {
-            item(key = "saved-title") { LibrarySectionTitle("Сохранено на сервере") }
-            items(state.libraryItems, key = { "saved-${it.id}" }) { item ->
-                LibraryRow(
-                    title = item.title,
-                    subtitle = listOfNotNull(
-                        item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
-                        formatSize(item.sizeBytes),
-                    ).joinToString(" · "),
-                    posterUrl = item.posterUrl,
-                    onClick = { onSaved(item) },
-                )
-            }
-        }
-        if (state.favoriteItems.isNotEmpty()) {
-            item(key = "favorites-title") { LibrarySectionTitle("Избранное") }
-            items(state.favoriteItems, key = { "favorite-${it.kind}-${it.id}" }) { item ->
-                LibraryRow(
-                    title = item.title,
-                    subtitle = if (item.kind == ru.kadr.tv.data.MediaKind.MOVIE) "Фильм" else "Сериал",
-                    posterUrl = item.posterUrl,
-                    onClick = { onFavorite(item) },
-                )
-            }
-        }
-        if (!hasContent && state.message == null && !state.loading) {
-            item(key = "library-empty") {
-                Text(
-                    "Библиотека и избранное пока пусты.",
-                    color = SecondaryText,
-                    fontSize = 20.sp,
-                    modifier = Modifier.padding(top = 24.dp),
-                )
-            }
-        }
-        state.message?.let { message ->
-            item(key = "library-error") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
-                    Button(onClick = onRetry, modifier = Modifier.padding(start = 20.dp)) {
-                        Text("Повторить")
+        key(selectedTab) {
+            val gridState = rememberLazyGridState()
+            fun cardModifier(index: Int): Modifier = Modifier.fillMaxWidth()
+                .focusProperties {
+                    if (gridState.layoutInfo.visibleItemsInfo.any { it.index == index && it.row == 0 }) {
+                        up = selectedTabFocus
+                    }
+                }
+                .then(if (index == 0) Modifier.focusRequester(firstCardFocus) else Modifier)
+
+            LazyVerticalGrid(
+                columns = if (compactCards) GridCells.FixedSize(144.dp) else GridCells.Fixed(1),
+                state = gridState,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(if (compactCards) 10.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compactCards) 16.dp else 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (state.loading && !hasContent) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("Загружаем…", color = SecondaryText, fontSize = 20.sp)
+                    }
+                } else {
+                    when (selectedTab) {
+                        LibraryTab.CONTINUE -> gridItemsIndexed(
+                            state.historyItems,
+                            key = { _, item ->
+                                "history-${item.mediaKind}-${item.mediaId}-${item.seasonNumber}-${item.episodeNumber}"
+                            },
+                        ) { index, item ->
+                            LibraryRow(
+                                title = item.title,
+                                subtitle = listOfNotNull(
+                                    item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
+                                    "Продолжить с ${formatDuration(item.positionSeconds)}",
+                                    "${item.progressPercent()}%",
+                                ).joinToString(" · "),
+                                posterUrl = item.posterUrl,
+                                modifier = cardModifier(index),
+                                onClick = { if (!state.loading) onHistory(item) },
+                            )
+                        }
+                        LibraryTab.SAVED -> gridItemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
+                            PosterTile(
+                                title = item.title,
+                                subtitle = listOfNotNull(
+                                    item.seasonNumber?.let { "S${it}E${item.episodeNumber}" },
+                                    formatSize(item.sizeBytes),
+                                ).joinToString(" · "),
+                                posterUrl = item.posterUrl,
+                                modifier = cardModifier(index),
+                                compact = true,
+                                onClick = { if (!state.loading) onSaved(item) },
+                            )
+                        }
+                        LibraryTab.FAVORITES -> gridItemsIndexed(
+                            state.favoriteItems, key = { _, item -> "${item.kind}-${item.id}" },
+                        ) { index, item ->
+                            PosterTile(
+                                title = item.title,
+                                subtitle = if (item.kind == MediaKind.MOVIE) "Фильм" else "Сериал",
+                                posterUrl = item.posterUrl,
+                                modifier = cardModifier(index),
+                                compact = true,
+                                onClick = { if (!state.loading) onFavorite(item) },
+                            )
+                        }
+                    }
+                    if (!hasContent && state.message == null) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(selectedTab.emptyMessage, color = SecondaryText, fontSize = 20.sp)
+                        }
+                    }
+                    state.message?.let { message ->
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
+                                Button(onClick = onRetry, modifier = Modifier.padding(start = 20.dp)) {
+                                    Text("Повторить")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -747,45 +805,70 @@ private fun LibraryScreen(
 }
 
 @Composable
-private fun LibrarySectionTitle(title: String) {
+private fun LibraryRow(title: String, subtitle: String, posterUrl: String?, modifier: Modifier, onClick: () -> Unit) {
+    WideMediaCard(
+        imageUrl = posterUrl,
+        placeholder = title.take(1),
+        imageWidth = 80.dp,
+        height = 120.dp,
+        maxWidth = 560.dp,
+        playModifier = modifier,
+        onClick = onClick,
+    ) {
+        WideCardTitle(title)
+        Text(subtitle, color = SecondaryText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun WideCardTitle(title: String, maxLines: Int = 2) {
     Text(
-        title,
-        color = Color.White,
-        fontSize = 25.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+        title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+        maxLines = maxLines, overflow = TextOverflow.Ellipsis,
     )
 }
 
 @Composable
-private fun LibraryRow(title: String, subtitle: String, posterUrl: String?, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+private fun WideMediaCard(
+    imageUrl: String?,
+    placeholder: String,
+    imageWidth: Dp,
+    height: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxWidth: Dp = 760.dp,
+    playModifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = modifier.wrapContentWidth(Alignment.Start).widthIn(max = maxWidth).fillMaxWidth().height(height)
+            .clip(shape).background(Surface)
+            .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else Color(0xFF30323D), shape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            modifier = playModifier.weight(1f).fillMaxHeight()
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier
-                    .width(72.dp)
-                    .height(108.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF30323D)),
+                modifier = Modifier.width(imageWidth).fillMaxHeight().background(Color(0xFF30323D)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(title.take(1), fontSize = 26.sp, fontWeight = FontWeight.Black)
-                RemoteImage(
-                    url = posterUrl,
-                    contentDescription = "Постер: $title",
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Text(placeholder, color = SecondaryText, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                RemoteImage(url = imageUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
             }
-            Column(modifier = Modifier.padding(start = 18.dp).weight(1f)) {
-                Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                if (subtitle.isNotBlank()) {
-                    Text(subtitle, fontSize = 15.sp, modifier = Modifier.padding(top = 5.dp))
-                }
-            }
+            Column(
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                content = content,
+            )
         }
+        trailing?.invoke()
     }
 }
 
@@ -916,7 +999,7 @@ private fun CatalogScreen(
     onOpen: (MediaCard) -> Unit,
     onRetry: () -> Unit,
     onSearch: () -> Unit,
-    onLibrary: () -> Unit,
+    onLibrary: (LibraryTab) -> Unit,
     onNewReleases: () -> Unit,
     onCartoons: () -> Unit,
     onChangeServer: () -> Unit,
@@ -953,8 +1036,15 @@ private fun CatalogScreen(
                     Button(onClick = onSearch) { Text("Поиск") }
                     Button(onClick = onNewReleases) { Text("Новинки") }
                     Button(onClick = onCartoons) { Text("Мультфильмы") }
-                    Button(onClick = onLibrary) { Text("Моя библиотека") }
                     Button(onClick = onChangeServer) { Text("Сменить сервер") }
+                }
+                Row(
+                    modifier = Modifier.padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    LibraryTab.entries.forEach { tab ->
+                        Button(onClick = { onLibrary(tab) }) { Text(tab.title) }
+                    }
                 }
             }
         }
@@ -1131,12 +1221,17 @@ private fun MediaRail(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 56.dp, vertical = 12.dp),
         ) {
             itemsIndexed(items, key = { _, item -> "${item.kind}-${item.id}" }) { index, media ->
-                MediaTile(
-                    media = media,
-                    onOpen = onOpen,
-                    focusRequester = firstItemFocus.takeIf { index == 0 },
-                    upFocus = upFocus,
-                    downFocus = downFocus,
+                PosterTile(
+                    title = media.title,
+                    posterUrl = media.posterUrl,
+                    subtitle = "${media.year ?: "—"}  ★ ${"%.1f".format(media.rating)}",
+                    modifier = Modifier.width(210.dp)
+                        .focusProperties {
+                            if (upFocus != null) up = upFocus
+                            if (downFocus != null) down = downFocus
+                        }
+                        .then(if (index == 0) Modifier.focusRequester(firstItemFocus) else Modifier),
+                    onClick = { onOpen(media) },
                 )
             }
         }
@@ -1144,34 +1239,28 @@ private fun MediaRail(
 }
 
 @Composable
-private fun MediaTile(
-    media: MediaCard,
-    onOpen: (MediaCard) -> Unit,
-    focusRequester: FocusRequester?,
-    upFocus: FocusRequester?,
-    downFocus: FocusRequester?,
+private fun PosterTile(
+    title: String,
+    posterUrl: String?,
+    subtitle: String,
+    modifier: Modifier,
+    compact: Boolean = false,
+    onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     Column(
-        modifier = Modifier
-            .width(210.dp)
+        modifier = modifier
             .scale(if (focused) 1.07f else 1f)
             .border(if (focused) 4.dp else 1.dp, if (focused) Color.White else Color(0xFF30323D), RoundedCornerShape(14.dp))
             .background(Surface, RoundedCornerShape(14.dp))
-            .clickable(interactionSource = interaction, indication = null) { onOpen(media) }
-            .focusProperties {
-                if (upFocus != null) up = upFocus
-                if (downFocus != null) down = downFocus
-            }
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .focusable(interactionSource = interaction)
-            .padding(12.dp),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(if (compact) 8.dp else 12.dp),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
+                .aspectRatio(5f / 7f)
                 .clip(RoundedCornerShape(10.dp))
                 .background(
                     Brush.linearGradient(listOf(Accent, Color(0xFF281B43), Background)),
@@ -1179,27 +1268,29 @@ private fun MediaTile(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(media.title.take(1), color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
+            Text(title.take(1), color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
             RemoteImage(
-                url = media.posterUrl,
-                contentDescription = "Постер: ${media.title}",
+                url = posterUrl,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
             )
         }
         Text(
-            media.title,
+            title,
             color = Color.White,
-            fontSize = 18.sp,
+            fontSize = if (compact) 16.sp else 18.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 14.dp),
+            modifier = Modifier.padding(top = if (compact) 8.dp else 14.dp),
         )
         Text(
-            "${media.year ?: "—"}  ★ ${"%.1f".format(media.rating)}",
+            subtitle,
             color = SecondaryText,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(top = 6.dp),
+            fontSize = if (compact) 13.sp else 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp),
         )
     }
 }
