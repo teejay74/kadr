@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { friendlyApiError, getTorrentFiles, saveEpisodeToLibrary } from '../services/api'
+import { ApiError, friendlyApiError, getTorrentFiles, saveEpisodeToLibrary } from '../services/api'
 import type { EpisodeSummary, MediaDetails } from '../types/media'
 
 const props = defineProps<{
@@ -51,7 +51,9 @@ async function save(): Promise<void> {
     }, props.episode, props.fileId)
     saved.value = true
   } catch (caught) {
-    error.value = friendlyApiError(caught)
+    error.value = caught instanceof ApiError && caught.status === 504
+      ? 'Сервер ещё может сохранять файл. Проверьте «Библиотеку» перед повторной попыткой.'
+      : friendlyApiError(caught)
   } finally {
     busy.value = false
   }
@@ -67,6 +69,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="library-save-row">
     <p v-if="saved" role="status">Видео сохранено в библиотеке.</p>
+    <p v-else-if="busy" role="status">Сохранение большого файла может занять несколько минут.</p>
     <p v-else-if="!complete">Сохранение доступно после полной загрузки видео.</p>
     <button class="button secondary focus-ring" type="button" :disabled="!complete || busy || saved" @click="save">
       {{ saved ? 'Сохранено' : busy ? 'Сохраняем…' : 'Сохранить в библиотеку' }}

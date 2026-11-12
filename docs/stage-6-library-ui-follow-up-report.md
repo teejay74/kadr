@@ -52,3 +52,20 @@ together so the server can validate the file ID sent by the new button.
   loaded data from KADR and produced no Android runtime errors during the
   check. Install the APK on a physical TV to check the layout at its display
   scale.
+
+## Web save timeout follow-up
+
+- The deployed Nginx proxy returned HTTP 504 after 30 seconds for a 12 GB
+  video. API and storage checks confirmed that the copy finished and the
+  library entry was created after the browser timed out.
+- `frontend/nginx.conf` now allows up to ten minutes on the exact library
+  endpoint. `LibrarySaveAction.vue` explains that large files take time and
+  asks the viewer to check the library before retrying after a 504.
+  `MediaDetailsPage.test.ts` covers that message, and `docs/troubleshooting.md`
+  describes the recovery path.
+- All 102 web tests and the production build passed. Two isolated Nginx
+  containers on Debian replayed a 32-second upstream response. The old
+  configuration returned HTTP 504 after 30 seconds, and the new configuration
+  returned HTTP 201 after 32 seconds.
+- The change is prepared locally. Rebuild and replace the KADR web container
+  after deployment approval, then check its health endpoint and startup logs.

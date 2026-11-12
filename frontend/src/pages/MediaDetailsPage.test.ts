@@ -278,6 +278,17 @@ test('enables saving when the playing episode finishes ahead of the rest of the 
   }
 })
 
+test('explains that a gateway timeout can leave a library save running', async () => {
+  vi.mocked(api.saveEpisodeToLibrary).mockRejectedValueOnce(new api.ApiError(504, 'request_failed', 'Request failed'))
+  render(LibrarySaveAction, {
+    props: { taskId: 'task', fileId: 1, initialProgress: 1, media: details, episode: season(1).episodes[0]! },
+  })
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Сохранить в библиотеку' }))
+
+  expect((await screen.findByRole('alert')).textContent).toContain('Проверьте «Библиотеку»')
+})
+
 test('selects a movie source in the modal and retries unified playback', async () => {
   vi.mocked(api.getMediaDetails).mockResolvedValueOnce({
     ...details,

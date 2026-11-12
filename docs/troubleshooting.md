@@ -348,6 +348,11 @@ for resume.
 
 ## Saving to the library is unavailable
 
+When hard linking is unavailable, saving copies the full video file. The web
+proxy waits up to ten minutes for `/api/v1/library`. If a save returns HTTP
+504, check the library before retrying because the server may still finish
+the copy and add the item.
+
 The selected file must reach 100%. Confirm `data/library` is writable by the
 configured KADR UID/GID and remains an isolated KADR-only directory. Do not
 make unrelated paths writable as a workaround.
