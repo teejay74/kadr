@@ -37,6 +37,17 @@ outbound DNS/HTTPS, the token, and TMDB availability. KADR serves a previously
 cached response during a temporary provider outage when one exists; otherwise
 it returns a controlled `502`. Do not increase polling frequency as a remedy.
 
+If cached cards open but uncached ones fail, check `api.themoviedb.org` from
+the KADR API container as well as the host. A loopback address such as
+`127.0.0.1` cannot reach TMDB. Make sure the container uses a resolver that
+returns a public address and that HTTPS to that address goes through the
+intended VPN route. Checking from the browser alone does not test this path.
+The separate `image.tmdb.org` host serves artwork; a working artwork host does
+not establish that the metadata API is reachable.
+
+During an outage, the web home keeps the collections that loaded. A card can
+show saved catalogue information until the full details are reachable again.
+
 For a Russian title missing from TMDB, verify that
 `KADR_KINOPOISK_API_KEY` is present without printing its value, recreate only
 the API container, and repeat the search. KADR accepts only title-compatible

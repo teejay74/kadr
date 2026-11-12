@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from app.core.config import Settings
 from app.main import app
 from app.models.metadata_cache import MetadataCache
 from app.repositories.metadata_cache import MetadataCacheRepository
+from app.services.metadata import catalog
 from app.services.metadata.catalog import CatalogService
 from app.services.metadata.exceptions import MetadataNotConfiguredError, MetadataUnavailableError
 from app.services.metadata.kinopoisk import KinopoiskClient
@@ -580,6 +582,60 @@ async def test_catalog_uses_expired_cache_during_provider_outage(
 
     assert actual == expected
     assert len(fake_client.calls) == 2
+
+
+async def test_detail_uses_only_matching_catalogue_entry_during_outage(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    tmdb = FakeTMDBClient(movie_page_payload())
+    service = CatalogService(tmdb, MetadataCacheRepository(session), Settings())
+    app.dependency_overrides[get_catalog_service] = lambda: service
+
+    assert (await client.get("/api/v1/movies")).status_code == 200
+    tmdb.unavailable = True
+
+    response = await client.get("/api/v1/movies/11")
+    assert response.status_code == 200
+    assert response.json()["metadata_partial"] is True
+    assert response.json()["id"] == 11
+    assert response.json()["title"] == "Звёздные войны"
+    assert (await client.get("/api/v1/series/11")).status_code == 502
+    assert (await client.get("/api/v1/movies/99")).status_code == 502
+
+    tmdb.unavailable = False
+    tmdb.payload = {"id": 11, "title": "Звёздные войны", "runtime": 121}
+    recovered = await client.get("/api/v1/movies/11")
+    assert recovered.status_code == 200
+    assert recovered.json()["metadata_partial"] is False
+    assert recovered.json()["runtime_minutes"] == 121
+
+
+async def test_release_window_uses_yesterdays_matching_page_during_outage(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 11, 11, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return cls.current.astimezone(tz)
+
+    monkeypatch.setattr(catalog, "datetime", FrozenDateTime)
+    tmdb = FakeTMDBClient(movie_page_payload())
+    service = CatalogService(tmdb, MetadataCacheRepository(session), Settings())
+    app.dependency_overrides[get_catalog_service] = lambda: service
+    params = {"sort": "newest", "released_within_days": 365, "genre": 12}
+    previous = await client.get("/api/v1/movies", params=params)
+    assert previous.status_code == 200
+
+    FrozenDateTime.current += timedelta(days=1)
+    tmdb.unavailable = True
+    current = await client.get("/api/v1/movies", params=params)
+    assert current.status_code == 200
+    assert current.json() == previous.json()
+    assert tmdb.calls[-1][1]["release_date.lte"] == "2026-11-12"
+    missing = await client.get("/api/v1/movies", params={**params, "page": 2})
+    assert missing.status_code == 502
 
 
 async def test_tmdb_client_sends_bearer_token_and_language() -> None:

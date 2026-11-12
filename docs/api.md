@@ -47,6 +47,8 @@ theatrical premieres; for series it uses first-air dates. The web client's
 Новинки view uses 365 days; Мультфильмы uses TMDB animation
 genre `16` and applies the age filter to films. TV discovery does not expose a
 compatible Russian certification filter, so series are not falsely age-rated.
+During a TMDB outage, discovery with a release window may reuse yesterday's
+cached response for the same page and filters if today's response is missing.
 
 When `KADR_KINOPOISK_API_KEY` is configured, first-page text search checks up
 to three type-compatible Kinopoisk Unofficial matches. Only normalized exact or
@@ -73,6 +75,12 @@ contains the reserved KADR ID of the Kinopoisk object; clients must use that
 returned ID for subsequent season, source-search, and playback requests. The
 fallback is not attempted for ordinary TMDB not-found responses and does not
 turn fuzzy provider results into a different title.
+
+If full details are unavailable, the detail endpoint can return a cached TMDB
+catalogue entry for the same ID and media type with `metadata_partial: true`.
+This preserves the TMDB ID. Seasons, cast, runtime, and external ratings may
+be absent. Without either a full response or a matching cached entry, the
+endpoint returns `502 metadata_unavailable`.
 
 Season details contain the series and season identity plus normalized episodes:
 

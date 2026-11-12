@@ -88,17 +88,36 @@ class CatalogService:
         if age_rating is not None and kind == "movie":
             params["certification_country"] = "RU"
             params["certification"] = age_rating
+        tmdb_kind = "movie" if kind == "movie" else "tv"
+        path = f"/discover/{tmdb_kind}"
+        previous_window: dict[str, str | int | bool] | None = None
         if released_within_days is not None:
             today = datetime.now(UTC).date()
             date_prefix = "release_date" if kind == "movie" else "first_air_date"
-            params[f"{date_prefix}.gte"] = str(today - timedelta(days=released_within_days))
+            start = today - timedelta(days=released_within_days)
+            params[f"{date_prefix}.gte"] = str(start)
             params[f"{date_prefix}.lte"] = str(today)
             if kind == "movie":
                 # TMDB release type 4 is digital. Combined with RU region this
                 # excludes theatrical-only premieres from the new-release rail.
                 params["with_release_type"] = 4
-        tmdb_kind = "movie" if kind == "movie" else "tv"
-        payload = await self._request(f"/discover/{tmdb_kind}", params)
+            previous_window = {
+                **params,
+                f"{date_prefix}.gte": str(start - timedelta(days=1)),
+                f"{date_prefix}.lte": str(today - timedelta(days=1)),
+            }
+        try:
+            payload = await self._request(path, params)
+        except MetadataUnavailableError:
+            if previous_window is None:
+                raise
+            payload = await self._cache.get(
+                self._cache_key("tmdb", path, previous_window, self._settings.tmdb_language),
+                allow_expired=True,
+            )
+            if payload is None:
+                raise
+            logger.warning("Serving previous TMDB release window for %s", path)
         return self._page(payload, kind)
 
     async def search(
@@ -220,6 +239,7 @@ class CatalogService:
         fallback_title: str | None = None,
         fallback_year: int | None = None,
         include_ratings: bool = False,
+        allow_partial: bool = False,
     ) -> MediaDetails:
         if self._is_kinopoisk_id(media_id):
             return await self._kinopoisk_details(kind, media_id)
@@ -229,22 +249,33 @@ class CatalogService:
                 f"/{tmdb_kind}/{media_id}",
                 {"append_to_response": "credits,videos"},
             )
-        except MetadataUnavailableError as primary_error:
-            if fallback_title is None or self._kinopoisk_client is None:
+        except MetadataUnavailableError:
+            if fallback_title is not None and self._kinopoisk_client is not None:
+                try:
+                    return await self._kinopoisk_details_by_title(
+                        kind, fallback_title, fallback_year
+                    )
+                except MetadataError as fallback_error:
+                    logger.warning(
+                        "Kinopoisk details fallback failed for TMDB media %s (%s)",
+                        media_id,
+                        type(fallback_error).__name__,
+                    )
+            if not allow_partial:
                 raise
-            try:
-                return await self._kinopoisk_details_by_title(
-                    kind,
-                    fallback_title,
-                    fallback_year,
-                )
-            except MetadataError as fallback_error:
+            cached_item = await self._cache.find_catalogue_item(
+                media_id,
+                title_key="title" if kind == "movie" else "name",
+                date_key="release_date" if kind == "movie" else "first_air_date",
+            )
+            if cached_item is not None:
                 logger.warning(
-                    "Kinopoisk details fallback failed for TMDB media %s",
-                    media_id,
-                    exc_info=True,
+                    "Serving partial TMDB details from catalogue for %s/%s", kind, media_id
                 )
-                raise primary_error from fallback_error
+                return MediaDetails(
+                    **self._card(cached_item, kind).model_dump(), metadata_partial=True
+                )
+            raise
         details = self._details(payload, kind)
         if include_ratings and kind == "movie":
             await self._enrich_movie_ratings(details, payload.get("imdb_id"))
@@ -361,12 +392,7 @@ class CatalogService:
         params: dict[str, str | int | bool],
         language: str | None,
     ) -> dict[str, Any]:
-        cache_material = json.dumps(
-            [provider_name, path, language, params],
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        key = hashlib.sha256(cache_material.encode()).hexdigest()
+        key = self._cache_key(provider_name, path, params, language)
         cached = await self._cache.get(key)
         if cached is not None:
             return cached
@@ -380,6 +406,18 @@ class CatalogService:
             raise
         await self._cache.set(key, payload, self._settings.metadata_cache_ttl_seconds)
         return payload
+
+    @staticmethod
+    def _cache_key(
+        provider_name: str,
+        path: str,
+        params: dict[str, str | int | bool],
+        language: str | None,
+    ) -> str:
+        material = json.dumps(
+            [provider_name, path, language, params], sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(material.encode()).hexdigest()
 
     def _page(self, payload: dict[str, Any], kind: MediaKind) -> MediaPage:
         results = payload.get("results")

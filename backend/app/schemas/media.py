@@ -72,6 +72,7 @@ class MediaPage(BaseModel):
 
 
 class MediaDetails(MediaCard):
+    metadata_partial: bool = False
     imdb_rating: float | None = None
     kinopoisk_rating: float | None = None
     genres: list[Genre] = Field(default_factory=list)

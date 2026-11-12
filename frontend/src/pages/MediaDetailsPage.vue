@@ -684,6 +684,12 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
   </div>
   <article v-else-if="media" class="details-page">
     <MediaHero :media="media">
+      <p v-if="media.metadata_partial" role="status">
+        Показаны сохранённые данные. Подробности временно недоступны.
+        <button class="button secondary focus-ring" type="button" @click="loadDetails">
+          Обновить карточку
+        </button>
+      </p>
       <MediaActions
         :play-label="media.kind === 'movie' ? 'Смотреть' : 'Выбрать эпизод'"
         :favorite="favorite"

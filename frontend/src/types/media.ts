@@ -69,6 +69,7 @@ export interface MediaPage {
 }
 
 export interface MediaDetails extends MediaCardData {
+  metadata_partial?: boolean
   imdb_rating?: number | null
   kinopoisk_rating?: number | null
   genres: Genre[]

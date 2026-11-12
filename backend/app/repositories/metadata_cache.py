@@ -4,6 +4,7 @@ import json
 import time
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,27 @@ class MetadataCacheRepository:
             return None
         payload = json.loads(entry.payload)
         return payload if isinstance(payload, dict) else None
+
+    async def find_catalogue_item(
+        self, media_id: int, *, title_key: str, date_key: str
+    ) -> dict[str, Any] | None:
+        result = await self._session.execute(
+            text("""
+                SELECT item.value
+                FROM metadata_cache AS cache
+                CROSS JOIN json_each(cache.payload, '$.results') AS item
+                WHERE CASE WHEN item.type = 'object' THEN
+                    json_extract(item.value, '$.id') = :media_id
+                    AND json_type(item.value, :title_path) = 'text'
+                    AND json_type(item.value, :date_path) IS NOT NULL
+                ELSE 0 END
+                ORDER BY cache.updated_at DESC
+                LIMIT 1
+            """),
+            {"media_id": media_id, "title_path": f"$.{title_key}", "date_path": f"$.{date_key}"},
+        )
+        payload = result.scalar_one_or_none()
+        return json.loads(payload) if payload is not None else None
 
     async def set(self, key: str, payload: dict[str, Any], ttl_seconds: int) -> None:
         statement = insert(MetadataCache).values(
