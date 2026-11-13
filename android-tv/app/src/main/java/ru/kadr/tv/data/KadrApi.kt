@@ -359,6 +359,7 @@ class KadrApi(private val serverUrl: String) {
         kind = parseKind(body.getString("kind")),
         title = body.getString("title"),
         overview = body.optString("overview"),
+        originalTitle = body.optString("original_title"),
         year = body.optNullableInt("year"),
         rating = body.optDouble("rating", 0.0),
         posterUrl = ServerAddress.resolveImage(serverUrl, body.optNullableString("poster_url")),

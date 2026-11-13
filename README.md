@@ -126,6 +126,10 @@ Russian-title matches that are absent from TMDB are returned as normalized KADR
 cards with details, posters, seasons, and episodes. Provider IDs are namespaced
 internally so they cannot collide with TMDB IDs.
 
+The web search field and Android TV **Поиск** show live film and series
+suggestions with original titles, years, and highlighted matches. On the web,
+press Enter without selecting a suggestion to see the full results page.
+
 ## Quick start
 
 Requirements: Docker Engine with Docker Compose v2.

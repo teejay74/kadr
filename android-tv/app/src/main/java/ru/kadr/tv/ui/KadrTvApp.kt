@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,13 +56,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
@@ -98,6 +103,7 @@ import ru.kadr.tv.data.SavedLibraryItem
 import ru.kadr.tv.data.ServerAddress
 import ru.kadr.tv.data.SourceRelease
 import ru.kadr.tv.data.progressPercent
+import ru.kadr.tv.data.searchLabel
 
 private val Background = Color(0xFF101116)
 private val Surface = Color(0xFF20222B)
@@ -204,7 +210,6 @@ fun KadrTvApp(viewModel: MainViewModel) {
                 state.screen in setOf(
                     Screen.CATALOG,
                     Screen.DISCOVERY,
-                    Screen.SEARCH,
                     Screen.LIBRARY,
                 )
             ) {
@@ -885,111 +890,141 @@ private fun SearchScreen(
     onOpen: (MediaCard) -> Unit,
 ) {
     val fieldFocus = remember { FocusRequester() }
-    val firstMovieFocus = remember { FocusRequester() }
-    val firstSeriesFocus = remember { FocusRequester() }
+    val firstResultFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val resultsFocus = when {
-        state.searchMovies.isNotEmpty() -> firstMovieFocus
-        state.searchSeries.isNotEmpty() -> firstSeriesFocus
-        else -> FocusRequester.Default
+    val hasResults = state.searchResults.isNotEmpty()
+    val submit = {
+        keyboard?.hide()
+        if (hasResults) firstResultFocus.requestFocus() else onSubmit()
+        Unit
+    }
+    val matcher = remember(state.searchQuery) {
+        state.searchQuery.trim().takeIf { it.length >= 2 }
+            ?.let { Regex(Regex.escape(it), RegexOption.IGNORE_CASE) }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().imePadding().padding(horizontal = 64.dp, vertical = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Поиск", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = state.searchQuery,
+                onValueChange = onQuery,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submit() }),
+                textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Surface, RoundedCornerShape(12.dp))
+                    .border(2.dp, Accent, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 20.dp, vertical = 17.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (hasResults && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                            event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN
+                        ) {
+                            keyboard?.hide()
+                            firstResultFocus.requestFocus()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    .focusProperties { down = if (hasResults) firstResultFocus else FocusRequester.Default }
+                    .focusRequester(fieldFocus),
+                decorationBox = { inner ->
+                    Box {
+                        if (state.searchQuery.isBlank()) {
+                            Text("Название фильма или сериала", color = SecondaryText, fontSize = 22.sp)
+                        }
+                        inner()
+                    }
+                },
+            )
+            if (state.searchQuery.isNotEmpty()) {
+                Button(onClick = {
+                    fieldFocus.requestFocus()
+                    onQuery("")
+                    keyboard?.show()
+                }) {
+                    Text("Очистить")
+                }
+            }
+            Button(onClick = submit) {
+                Text("Искать")
+            }
+        }
+        if (state.searchLoading) {
+            Text("Ищем…", color = SecondaryText, fontSize = 16.sp)
+        }
+        state.message?.let { message ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(message, color = SecondaryText, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                if (!state.searchLoading && !hasResults && matcher != null) {
+                    Button(onClick = onRetry) { Text("Повторить") }
+                }
+            }
+        }
+        if (hasResults) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Surface),
+                contentPadding = PaddingValues(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                itemsIndexed(state.searchResults, key = { _, card -> "${card.kind}-${card.id}" }) { index, card ->
+                    val label = card.searchLabel()
+                    val title = buildAnnotatedString {
+                        var end = 0
+                        matcher?.findAll(label)?.forEach { match ->
+                            append(label.substring(end, match.range.first))
+                            withStyle(SpanStyle(color = Color(0xFFDDD6FE), fontWeight = FontWeight.Bold)) {
+                                append(match.value)
+                            }
+                            end = match.range.last + 1
+                        }
+                        append(label.substring(end))
+                    }
+                    Button(
+                        onClick = {
+                            keyboard?.hide()
+                            onOpen(card)
+                        },
+                        enabled = !state.loading,
+                        modifier = Modifier.fillMaxWidth().then(
+                            if (index == 0) Modifier
+                                .focusProperties { up = fieldFocus }
+                                .focusRequester(firstResultFocus)
+                                .onFocusChanged { if (it.isFocused) keyboard?.hide() }
+                            else Modifier,
+                        ),
+                        shape = ButtonDefaults.shape(shape = RoundedCornerShape(8.dp)),
+                        colors = ButtonDefaults.colors(
+                            containerColor = Surface,
+                            contentColor = Color.White,
+                            focusedContainerColor = Color(0xFF523489),
+                            focusedContentColor = Color.White,
+                        ),
+                    ) {
+                        Text(title, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
     }
     LaunchedEffect(Unit) {
         delay(250)
-        runCatching { fieldFocus.requestFocus() }
-        keyboard?.show()
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 40.dp),
-    ) {
-        item(key = "search-header") {
-            Column(modifier = Modifier.padding(horizontal = 64.dp)) {
-                Text("Поиск", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
-                Text(
-                    "Введите название фильма или сериала",
-                    color = SecondaryText,
-                    fontSize = 17.sp,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                Row(
-                    modifier = Modifier.padding(top = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BasicTextField(
-                        value = state.searchQuery,
-                        onValueChange = onQuery,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                        textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
-                        modifier = Modifier
-                            .width(720.dp)
-                            .background(Surface, RoundedCornerShape(12.dp))
-                            .border(2.dp, Accent, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 20.dp, vertical = 17.dp)
-                            .focusProperties { down = resultsFocus }
-                            .focusRequester(fieldFocus),
-                        decorationBox = { inner ->
-                            Box {
-                                if (state.searchQuery.isBlank()) {
-                                    Text("Например: Интерстеллар", color = SecondaryText, fontSize = 22.sp)
-                                }
-                                inner()
-                            }
-                        },
-                    )
-                    Button(onClick = onSubmit, modifier = Modifier.padding(start = 16.dp)) {
-                        Text("Искать")
-                    }
-                }
-                if (state.searchLoading) {
-                    Text(
-                        "Ищем…",
-                        color = SecondaryText,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(top = 14.dp),
-                    )
-                }
-            }
-        }
-        if (state.searchMovies.isNotEmpty()) {
-            item(key = "search-movies") {
-                MediaRail(
-                    title = "Фильмы",
-                    items = state.searchMovies,
-                    onOpen = onOpen,
-                    firstItemFocus = firstMovieFocus,
-                    upFocus = fieldFocus,
-                    downFocus = firstSeriesFocus.takeIf { state.searchSeries.isNotEmpty() },
-                )
-            }
-        }
-        if (state.searchSeries.isNotEmpty()) {
-            item(key = "search-series") {
-                MediaRail(
-                    title = "Сериалы",
-                    items = state.searchSeries,
-                    onOpen = onOpen,
-                    firstItemFocus = firstSeriesFocus,
-                    upFocus = if (state.searchMovies.isNotEmpty()) firstMovieFocus else fieldFocus,
-                )
-            }
-        }
-        state.message?.let { message ->
-            item(key = "search-message") {
-                Row(
-                    modifier = Modifier.padding(horizontal = 64.dp, vertical = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(message, color = Color(0xFFFCA5A5), fontSize = 18.sp)
-                    if (state.searchQuery.trim().length >= 2 && state.searchMovies.isEmpty() && state.searchSeries.isEmpty()) {
-                        Button(onClick = onRetry, modifier = Modifier.padding(start = 20.dp)) {
-                            Text("Повторить")
-                        }
-                    }
-                }
-            }
-        }
+        fieldFocus.requestFocus()
+        if (state.searchQuery.isBlank()) keyboard?.show()
     }
 }
 

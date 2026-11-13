@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.kadr.tv.data.KadrApi
 import ru.kadr.tv.data.AgeRating
 import ru.kadr.tv.data.CatalogCollection
@@ -38,6 +40,7 @@ import ru.kadr.tv.data.recommendedSourceId
 import ru.kadr.tv.data.hasConfirmedEpisode
 import ru.kadr.tv.data.matches
 import ru.kadr.tv.data.searchableQuery
+import ru.kadr.tv.data.searchSuggestions
 import ru.kadr.tv.data.asMediaCard
 
 enum class Screen {
@@ -70,8 +73,7 @@ data class UiState(
     val discoverySeries: List<MediaCard> = emptyList(),
     val discoveryAgeRating: AgeRating? = null,
     val searchQuery: String = "",
-    val searchMovies: List<MediaCard> = emptyList(),
-    val searchSeries: List<MediaCard> = emptyList(),
+    val searchResults: List<MediaCard> = emptyList(),
     val searchLoading: Boolean = false,
     val libraryTab: LibraryTab = LibraryTab.SAVED,
     val libraryItems: List<SavedLibraryItem> = emptyList(),
@@ -102,6 +104,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var api: KadrApi? = null
     private var playbackJob: Job? = null
     private var searchJob: Job? = null
+    private val searchMutex = Mutex()
     private var historyJob: Job? = null
     private var libraryJob: Job? = null
     private var discoveryJob: Job? = null
@@ -207,6 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSearch() {
         mutableState.value = mutableState.value.copy(screen = Screen.SEARCH, message = null)
+        if (mutableState.value.searchResults.isEmpty()) submitSearch()
     }
 
     fun openNewReleases() = openDiscovery(CatalogCollection.NEW_RELEASES)
@@ -366,23 +370,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateSearchQuery(query: String) {
-        searchJob?.cancel()
         val normalized = normalizeSearchInput(query)
+        if (normalized == mutableState.value.searchQuery) return
+        searchJob?.cancel()
         val searchable = searchableQuery(normalized)
         mutableState.value = mutableState.value.copy(
             searchQuery = normalized,
             searchLoading = searchable != null,
             message = null,
-            searchMovies = if (searchable != null) {
-                mutableState.value.searchMovies
-            } else {
-                emptyList()
-            },
-            searchSeries = if (searchable != null) {
-                mutableState.value.searchSeries
-            } else {
-                emptyList()
-            },
+            searchResults = emptyList(),
         )
         if (searchable == null) return
         searchJob = viewModelScope.launch {
@@ -1086,15 +1082,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun performSearch(query: String) {
         val currentApi = api ?: return
         try {
-            val (movies, series) = coroutineScope {
-                val movieRequest = async { currentApi.search(MediaKind.MOVIE, query) }
-                val seriesRequest = async { currentApi.search(MediaKind.SERIES, query) }
-                movieRequest.await() to seriesRequest.await()
+            val (movies, series) = searchMutex.withLock {
+                coroutineScope {
+                    val movieRequest = async { currentApi.search(MediaKind.MOVIE, query) }
+                    val seriesRequest = async { currentApi.search(MediaKind.SERIES, query) }
+                    movieRequest.await() to seriesRequest.await()
+                }
             }
             if (mutableState.value.searchQuery.trim() != query) return
             mutableState.value = mutableState.value.copy(
-                searchMovies = movies,
-                searchSeries = series,
+                searchResults = searchSuggestions(movies, series, query),
                 searchLoading = false,
                 message = if (movies.isEmpty() && series.isEmpty()) {
                     "По запросу «$query» ничего не найдено"

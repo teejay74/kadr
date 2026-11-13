@@ -71,6 +71,13 @@ remains available as a manual fallback until its replacement selector is
 implemented and verified. Empty integration packages continue to reserve later
 seams without presenting future features as implemented.
 
+Web and Android TV catalogue suggestions reuse the first-page movie and series
+search endpoints. Both clients debounce input, rank exact matches before
+prefix and substring matches, and replace the previous query's results.
+The web field cancels superseded requests and displays up to 12 suggestions.
+Android TV uses a scrollable D-pad list and bounds concurrent search requests
+while its HTTP client finishes cancelled calls.
+
 Episode catalogue identity is stored independently as series ID, season number,
 episode number, and optional provider episode ID. A separate file-variant row
 identifies a physical `task_id`/`file_id`, while an association table connects

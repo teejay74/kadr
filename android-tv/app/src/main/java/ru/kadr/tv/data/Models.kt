@@ -25,7 +25,7 @@ enum class AgeRating(val apiValue: String) {
     EIGHTEEN("18+"),
 }
 
-const val MAX_SEARCH_QUERY_LENGTH = 120
+const val MAX_SEARCH_QUERY_LENGTH = 100
 
 fun normalizeSearchInput(input: String): String = input.take(MAX_SEARCH_QUERY_LENGTH)
 
@@ -40,7 +40,31 @@ data class MediaCard(
     val rating: Double,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val originalTitle: String = "",
 )
+
+fun MediaCard.searchLabel(): String = buildString {
+    append(title)
+    val original = originalTitle.trim()
+    if (original.isNotEmpty() && !original.equals(title, ignoreCase = true)) append(" / $original")
+    if (year != null) append(" ($year)")
+}
+
+fun searchSuggestions(movies: List<MediaCard>, series: List<MediaCard>, query: String): List<MediaCard> =
+    buildList {
+        repeat(maxOf(movies.size, series.size)) { index ->
+            movies.getOrNull(index)?.let { add(it) }
+            series.getOrNull(index)?.let { add(it) }
+        }
+    }.sortedBy { card ->
+        val titles = listOf(card.title, card.originalTitle)
+        when {
+            titles.any { it.equals(query, ignoreCase = true) } -> 0
+            titles.any { it.startsWith(query, ignoreCase = true) } -> 1
+            titles.any { it.contains(query, ignoreCase = true) } -> 2
+            else -> 3
+        }
+    }
 
 data class MediaDetails(
     val card: MediaCard,

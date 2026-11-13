@@ -31,6 +31,18 @@ a { color: inherit; text-decoration: none; }
 .focus-ring:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent-hover); outline-offset: 3px; }
 .global-search input, .filters input, .filters select { width: 100%; color: var(--text-primary); background: rgb(32 34 43 / .82); border: 1px solid var(--border-color); border-radius: .8rem; padding: .7rem .85rem; }
 .global-search input::placeholder { color: var(--text-secondary); }
+.global-search { position: relative; width: 100%; max-width: 28rem; }
+.search-input { position: relative; }
+.search-input input { padding-right: 2.65rem; }
+.search-clear { position: absolute; inset: .25rem .25rem .25rem auto; width: 2rem; border: 0; border-radius: .55rem; background: transparent; color: var(--text-primary); font-size: 1.35rem; cursor: pointer; }
+.search-popup { position: absolute; z-index: 1; inset: calc(100% + .4rem) 0 auto; min-width: 100%; max-height: min(24rem, 55dvh); overflow: auto; background: var(--background-card); border: 1px solid var(--border-color); border-radius: .85rem; box-shadow: 0 1rem 2rem rgb(0 0 0 / .38); }
+.search-popup ul { margin: 0; padding: .35rem; list-style: none; }
+.search-popup ul:empty { display: none; }
+.search-popup li, .search-popup p { margin: 0; padding: .65rem .7rem; line-height: 1.4; overflow-wrap: anywhere; }
+.search-popup li { border-radius: .5rem; cursor: pointer; }
+.search-popup li:hover, .search-popup li[aria-selected="true"] { background: rgb(167 139 250 / .18); }
+.search-popup mark { background: transparent; color: #c4b5fd; font-weight: 750; }
+.search-popup p { color: var(--text-secondary); }
 .tv-mode-badge { display: none; padding: .3rem .48rem; color: #ddd6fe; border: 1px solid rgb(167 139 250 / .45); border-radius: .45rem; font-size: .7rem; font-weight: 850; letter-spacing: .08em; }
 .page-container { width: min(92rem, 100%); min-height: calc(100vh - 12rem); margin: 0 auto; padding: clamp(2.5rem, 5vw, 5rem) clamp(1.25rem, 4vw, 4rem); }
 .centered-state { display: grid; place-items: center; }
@@ -424,7 +436,7 @@ html[data-tv="true"] .video-frame video { min-height: min(68vh, 48rem); }
   .history-entry { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .history-entry > .button { grid-column: 2; justify-self: start; }
   .topbar { gap: .8rem; padding: .85rem 1rem; }
-  .global-search input { width: 9rem; }
+  .search-popup { width: min(23rem, calc(100vw - 2rem)); inset-inline-start: auto; }
   .featured-hero { min-height: 68vh; padding-top: 7rem; background-position: 62% center; }
   .hero-overview { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
   .section-heading { align-items: center; }

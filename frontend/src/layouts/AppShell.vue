@@ -1,20 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import GlobalSearch from '../components/GlobalSearch.vue'
 import TmdbCredit from '../components/TmdbCredit.vue'
 import { useTvNavigation } from '../composables/useTvNavigation'
 
 const router = useRouter()
-const search = ref('')
 const { tvMode } = useTvNavigation(router)
-
-function submitSearch(): void {
-  const query = search.value.trim()
-  if (query.length >= 2) {
-    void router.push({ name: 'search', query: { q: query } })
-  }
-}
 </script>
 
 <template>
@@ -31,10 +23,7 @@ function submitSearch(): void {
         <RouterLink class="nav-link focus-ring" to="/library">Библиотека</RouterLink>
         <RouterLink class="nav-link focus-ring" to="/downloads">Загрузки</RouterLink>
       </nav>
-      <form class="global-search" role="search" @submit.prevent="submitSearch">
-        <label class="sr-only" for="global-search">Поиск фильмов и сериалов</label>
-        <input id="global-search" v-model="search" minlength="2" placeholder="Найти…" />
-      </form>
+      <GlobalSearch />
       <span v-if="tvMode" class="tv-mode-badge" aria-label="Включён режим телевизора">TV</span>
     </header>
     <main>

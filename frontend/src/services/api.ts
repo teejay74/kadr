@@ -454,9 +454,9 @@ export function getMediaPage(kind: MediaKind, query: CatalogQuery = {}): Promise
   return request<MediaPage>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}?${params}`)
 }
 
-export function searchMedia(kind: MediaKind, search: string, page = 1): Promise<MediaPage> {
+export function searchMedia(kind: MediaKind, search: string, page = 1, signal?: AbortSignal): Promise<MediaPage> {
   const params = new URLSearchParams({ q: search, page: String(page) })
-  return request<MediaPage>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}/search?${params}`)
+  return request<MediaPage>(`/api/v1/${kind === 'movie' ? 'movies' : 'series'}/search?${params}`, { signal })
 }
 
 export function getMediaDetails(kind: MediaKind, id: number): Promise<MediaDetails> {
