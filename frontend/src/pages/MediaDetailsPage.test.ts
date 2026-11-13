@@ -148,7 +148,7 @@ test('asks the backend to resolve an episode before opening the source selector'
   expect(screen.getByRole('link', { name: 'Открыть загрузки' })).toBeTruthy()
 })
 
-test('opens the shared player when the backend resolves a saved episode', async () => {
+test('opens the exact saved episode and resumes when linked from the journal', async () => {
   vi.mocked(api.resolvePlayback).mockResolvedValueOnce({
     status: 'ready',
     source: 'library',
@@ -167,7 +167,8 @@ test('opens the shared player when the backend resolves a saved episode', async 
     history: createMemoryHistory(),
     routes: [{ path: '/series/:id', component: MediaDetailsPage, meta: { kind: 'series' } }, downloadsTestRoute],
   })
-  await router.push('/series/42')
+  localStorage.setItem('kadr:season:42', '1')
+  await router.push('/series/42?season=2&episode=1&resume=1')
   await router.isReady()
 
   render(MediaDetailsPage, {
@@ -175,14 +176,19 @@ test('opens the shared player when the backend resolves a saved episode', async 
       plugins: [router],
       stubs: {
         SourcesPanel: { template: '<section id="media-sources">Legacy sources</section>' },
-        KadrPlayer: { template: '<div>Unified player</div>' },
+        KadrPlayer: {
+          props: ['initialResumeSeconds', 'resumeImmediately'],
+          template: '<div>Unified player {{ initialResumeSeconds }} {{ resumeImmediately }}</div>',
+        },
       },
     },
   })
 
-  await fireEvent.click(await screen.findByRole('button', { name: /Эпизод сезона 1/ }))
-
-  expect(await screen.findByText('Unified player')).toBeTruthy()
+  expect(await screen.findByText('Unified player 90 true')).toBeTruthy()
+  expect(api.resolvePlayback).toHaveBeenLastCalledWith(
+    42, 'series', expect.objectContaining({ id: 602, season_number: 2, number: 1 }),
+  )
+  expect(await screen.findByRole('button', { name: /Эпизод сезона 2/ })).toBeTruthy()
   expect(screen.queryByText(/Для ручного выбора/)).toBeNull()
 })
 
@@ -219,6 +225,19 @@ test('uses the same backend resolver for the movie primary action', async () => 
   expect(await screen.findByText(/Выберите источник для начала просмотра/)).toBeTruthy()
   expect(screen.getByRole('dialog', { name: 'Выберите источник' })).toBeTruthy()
   expect(screen.getByRole('link', { name: 'Открыть загрузки' })).toBeTruthy()
+})
+
+test('opens the source selector when continuing a movie with no saved source', async () => {
+  vi.mocked(api.getMediaDetails).mockResolvedValueOnce({ ...details, kind: 'movie', seasons: [] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/movies/:id', component: MediaDetailsPage, meta: { kind: 'movie' } }, downloadsTestRoute],
+  })
+  await router.push('/movies/42?resume=1')
+  render(MediaDetailsPage, { global: { plugins: [router] } })
+
+  expect(await screen.findByRole('dialog', { name: 'Выберите источник' })).toBeTruthy()
+  expect(api.resolvePlayback).toHaveBeenLastCalledWith(42, 'movie', null)
 })
 
 test('saves a completed torrent file from the current movie player', async () => {

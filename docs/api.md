@@ -561,6 +561,12 @@ Episode reads use the same season and episode query parameters. Title-level and
 episode-level history rows remain separate, as do rows belonging to different
 profiles.
 
+`GET /history` returns the latest saved row for each title or logical episode
+in the selected profile, ordered by `updated_at` descending. The web journal
+uses these rows to show both unfinished and completed titles. Continuing
+playback calls the existing resolver with the title and optional episode
+identity, then seeks to the returned `resume_position_seconds`.
+
 Clients reporting actual episode playback add a `playback` object to
 `PUT /history/{media_id}`. It contains the positive `duration_ms` of the
 video and `played_ranges_ms`, up to 256 pairs of start and end timestamps

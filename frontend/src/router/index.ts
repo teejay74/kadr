@@ -8,6 +8,7 @@ import DownloadsPage from '../pages/DownloadsPage.vue'
 import DiscoveryPage from '../pages/DiscoveryPage.vue'
 import MediaDetailsPage from '../pages/MediaDetailsPage.vue'
 import SearchPage from '../pages/SearchPage.vue'
+import WatchHistoryPage from '../pages/WatchHistoryPage.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +23,7 @@ export const router = createRouter({
     { path: '/series/:id', name: 'series-details', component: MediaDetailsPage, meta: { kind: 'series' } },
     { path: '/search', name: 'search', component: SearchPage },
     { path: '/credits', name: 'credits', component: CreditsPage },
+    { path: '/history', name: 'history', component: WatchHistoryPage },
     { path: '/library', name: 'library', component: LibraryPage },
     { path: '/downloads', name: 'downloads', component: DownloadsPage },
   ],

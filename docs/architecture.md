@@ -149,6 +149,13 @@ automatic continuation defaults to enabled unless the viewer disabled it.
 Episode-list up/down keys move to the same action on the adjacent card before
 the page-wide spatial TV navigator runs.
 
+The web watch journal at `/history` reads the shared default-profile history
+in last-update order. A resume link carries the title and, for a series,
+the season and episode numbers. The detail page passes that episode to the
+Playback Resolver. The player uses the current server position when media
+metadata loads. Legacy series entries without episode identity link to
+episode selection.
+
 The Playback Resolver accepts title identity plus optional logical episode and
 profile identity. It reads resume history, prefers an available saved-library
 copy, then reuses persisted episode/file variants. For a film it can reuse the

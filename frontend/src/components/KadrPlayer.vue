@@ -22,6 +22,7 @@ import type {
   PlaybackTrack,
   PlaybackTrackList,
 } from '../types/media'
+import { formatPlaybackTime } from '../utils/formatPlaybackTime'
 
 const props = withDefaults(defineProps<{
   taskId: string
@@ -41,6 +42,7 @@ const props = withDefaults(defineProps<{
   profileKey?: string
   autoActivate?: boolean
   initialResumeSeconds?: number
+  resumeImmediately?: boolean
 }>(), {
   selectionLabel: '',
   fileName: '',
@@ -57,6 +59,7 @@ const props = withDefaults(defineProps<{
   profileKey: 'default',
   autoActivate: false,
   initialResumeSeconds: -1,
+  resumeImmediately: false,
 })
 
 const emit = defineEmits<{
@@ -190,16 +193,6 @@ function readSavedPosition(): number {
   } catch {
     return 0
   }
-}
-
-function formatTime(seconds: number): string {
-  const total = Math.floor(seconds)
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const remainder = total % 60
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
-    : `${minutes}:${String(remainder).padStart(2, '0')}`
 }
 
 function formatBytes(bytes: number): string {
@@ -461,7 +454,7 @@ async function activate(): Promise<void> {
   lastSavedSecond = -1
   nearEndEmitted = false
   readinessAttempts = 0
-  resumeAt.value = props.episode && props.initialResumeSeconds >= 0
+  resumeAt.value = (props.episode || props.resumeImmediately) && props.initialResumeSeconds >= 0
     ? props.initialResumeSeconds
     : Math.max(readSavedPosition(), props.initialResumeSeconds)
   if (props.initialResumeSeconds < 0) {
@@ -628,7 +621,12 @@ function onLoadedMetadata(): void {
     resumeAt.value = 0
     void video.value.play().catch(() => undefined)
   }
-  if (resumeAt.value >= Math.max(duration - 10, 5)) resumeAt.value = 0
+  if (props.resumeImmediately) {
+    if (Number.isFinite(duration) && resumeAt.value >= duration) resumeAt.value = 0
+    continuePlayback()
+  } else if (resumeAt.value >= Math.max(duration - 10, 5)) {
+    resumeAt.value = 0
+  }
 }
 
 function continuePlayback(): void {
@@ -1016,8 +1014,8 @@ onBeforeUnmount(stopPlayback)
           </button>
         </div>
       </div>
-      <div v-if="resumeAt" class="resume-prompt" role="status">
-        <span>Продолжить с {{ formatTime(resumeAt) }}?</span>
+      <div v-if="resumeAt && !resumeImmediately" class="resume-prompt" role="status">
+        <span>Продолжить с {{ formatPlaybackTime(resumeAt) }}?</span>
         <button class="button primary focus-ring" type="button" @click="continuePlayback">Продолжить</button>
         <button class="button secondary focus-ring" type="button" @click="restartPlayback">Сначала</button>
       </div>

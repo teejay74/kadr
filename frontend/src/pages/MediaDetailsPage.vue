@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import CastCarousel from '../components/CastCarousel.vue'
@@ -57,6 +57,7 @@ const error = ref('')
 const favorite = ref(false)
 const favoriteBusy = ref(false)
 const selectedSeasonNumber = ref(0)
+const showSpecials = ref(false)
 const seasonDetails = ref<SeasonDetails | null>(null)
 const seasonLoading = ref(false)
 const seasonError = ref('')
@@ -84,12 +85,15 @@ const autoNext = ref(readAutoNext())
 const historyItems = ref<HistoryItem[]>([])
 const historyBusyKey = ref('')
 const historyError = ref('')
+const playbackError = ref('')
+const resumeFromHistory = ref(false)
+let detailsRequestId = 0
 let seasonRequestId = 0
 
 const availableSeasons = computed<SeasonSummary[]>(() => {
   const seasons = media.value?.seasons ?? []
   const regular = seasons.filter((season) => season.number > 0)
-  return regular.length ? regular : seasons
+  return regular.length && !showSpecials.value ? regular : seasons
 })
 const seasonStorageKey = computed(() => `kadr:season:${media.value?.id ?? 'unknown'}`)
 
@@ -135,7 +139,7 @@ function setAutoNext(value: boolean): void {
   }
 }
 
-async function loadSeason(resetPlayback = true): Promise<void> {
+async function loadSeason(resetPlayback = true): Promise<SeasonDetails | undefined> {
   if (!media.value || media.value.kind !== 'series') return
   const requestId = ++seasonRequestId
   seasonLoading.value = true
@@ -147,7 +151,10 @@ async function loadSeason(resetPlayback = true): Promise<void> {
   }
   try {
     const result = await getSeriesSeason(media.value.id, selectedSeasonNumber.value)
-    if (requestId === seasonRequestId) seasonDetails.value = result
+    if (requestId === seasonRequestId) {
+      seasonDetails.value = result
+      return result
+    }
   } catch (caught) {
     if (requestId === seasonRequestId) {
       seasonDetails.value = null
@@ -165,8 +172,11 @@ function selectSeason(number: number): void {
   void loadSeason()
 }
 
-async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<void> {
+async function openPlaybackFlow(episode: EpisodeSummary | null = null, resume = false): Promise<void> {
   if (!media.value || playbackLoading.value) return
+  const requestId = detailsRequestId
+  resumeFromHistory.value = resume
+  playbackError.value = ''
   selectedEpisode.value = episode
   nextEpisodeOpen.value = false
   nextEpisodeResult.value = null
@@ -176,6 +186,7 @@ async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<
   playbackLoading.value = true
   try {
     const result = await resolvePlayback(media.value.id, media.value.kind, episode)
+    if (requestId !== detailsRequestId) return
     if (result.status === 'ready' || result.status === 'buffering') {
       playback.value = result
       await nextTick()
@@ -185,9 +196,9 @@ async function openPlaybackFlow(episode: EpisodeSummary | null = null): Promise<
     playbackMessage.value = result.message ?? 'Выберите источник для начала просмотра.'
     await openSourceSelector('playback')
   } catch (caught) {
-    playbackMessage.value = friendlyApiError(caught)
+    if (requestId === detailsRequestId) playbackError.value = friendlyApiError(caught)
   } finally {
-    playbackLoading.value = false
+    if (requestId === detailsRequestId) playbackLoading.value = false
   }
 }
 
@@ -287,6 +298,7 @@ async function playNextEpisode(): Promise<void> {
   const result = nextEpisodeResult.value
   if (!result?.episode || !result.playback || !media.value) return
   selectedEpisode.value = result.episode
+  resumeFromHistory.value = false
   playback.value = result.playback
   playbackMessage.value = ''
   nextEpisodeOpen.value = false
@@ -305,6 +317,7 @@ async function chooseNextEpisodeSource(): Promise<void> {
   const episode = nextEpisodeResult.value?.episode
   if (!episode || !media.value) return
   selectedEpisode.value = episode
+  resumeFromHistory.value = false
   playback.value = null
   playbackMessage.value = nextEpisodeResult.value?.message
     ?? 'Выберите источник для следующего эпизода.'
@@ -598,6 +611,7 @@ async function handlePrimaryAction(): Promise<void> {
 }
 
 async function loadDetails(): Promise<void> {
+  const requestId = ++detailsRequestId
   const id = Number(route.params.id)
   if (!Number.isInteger(id) || id <= 0) {
     error.value = 'Некорректный идентификатор.'
@@ -606,12 +620,23 @@ async function loadDetails(): Promise<void> {
   }
   loading.value = true
   error.value = ''
+  const requestedKind = kind.value
+  const resume = route.query.resume === '1'
+  const requestedSeason = typeof route.query.season === 'string' && /^\d+$/.test(route.query.season)
+    ? Number(route.query.season)
+    : null
+  const requestedEpisode = typeof route.query.episode === 'string' && /^[1-9]\d*$/.test(route.query.episode)
+    ? Number(route.query.episode)
+    : null
   seasonRequestId += 1
   seasonDetails.value = null
   seasonError.value = ''
   selectedEpisode.value = null
   playback.value = null
+  playbackLoading.value = false
   playbackMessage.value = ''
+  playbackError.value = ''
+  resumeFromHistory.value = false
   sourceSelectorOpen.value = false
   sourceIntent.value = 'playback'
   sourceSelectorError.value = ''
@@ -625,23 +650,41 @@ async function loadDetails(): Promise<void> {
   historyBusyKey.value = ''
   historyError.value = ''
   try {
-    media.value = await getMediaDetails(kind.value, id)
+    const details = await getMediaDetails(requestedKind, id)
     const [favorites, history] = await Promise.all([
       getFavorites(),
       getHistory().catch(() => [] as HistoryItem[]),
     ])
+    if (requestId !== detailsRequestId) return
+    media.value = details
     historyItems.value = history.filter((item) => (
-      item.media_id === id && item.media_kind === kind.value
+      item.media_id === id && item.media_kind === requestedKind
     ))
-    favorite.value = favorites.some((item) => item.media_id === id && item.media_kind === kind.value)
-    if (media.value.kind === 'series' && availableSeasons.value.length) {
-      selectedSeasonNumber.value = initialSeason()
-      await loadSeason()
+    favorite.value = favorites.some((item) => item.media_id === id && item.media_kind === requestedKind)
+    const linkedSeason = requestedSeason !== null && requestedSeason <= 100
+      && (resume || details.seasons.some((season) => season.number === requestedSeason))
+      ? requestedSeason : null
+    showSpecials.value = linkedSeason === 0
+    let season: SeasonDetails | undefined
+    if (details.kind === 'series' && (availableSeasons.value.length || linkedSeason !== null)) {
+      selectedSeasonNumber.value = linkedSeason ?? initialSeason()
+      season = await loadSeason()
+    }
+    if (requestId !== detailsRequestId || !resume) return
+    loading.value = false
+    if (details.kind === 'movie') {
+      await openPlaybackFlow(null, true)
+    } else {
+      const episode = linkedSeason !== null
+        ? season?.episodes.find((item) => item.number === requestedEpisode)
+        : undefined
+      if (episode) await openPlaybackFlow(episode, true)
+      else playbackError.value = seasonError.value || 'Серия из журнала больше не найдена в каталоге.'
     }
   } catch (caught) {
-    error.value = friendlyApiError(caught)
+    if (requestId === detailsRequestId) error.value = friendlyApiError(caught)
   } finally {
-    loading.value = false
+    if (requestId === detailsRequestId) loading.value = false
   }
 }
 
@@ -671,6 +714,10 @@ async function toggleFavorite(): Promise<void> {
 }
 
 watch(() => route.fullPath, loadDetails, { immediate: true })
+onBeforeUnmount(() => {
+  detailsRequestId += 1
+  seasonRequestId += 1
+})
 </script>
 
 <template>
@@ -701,6 +748,10 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         @change-source="openSourceSelector"
       />
     </MediaHero>
+
+    <p v-if="playbackError" class="details-section legacy-playback-notice" role="alert">
+      Не удалось открыть видео: {{ playbackError }}
+    </p>
 
     <section
       v-if="media.kind === 'series' && availableSeasons.length"
@@ -777,6 +828,7 @@ watch(() => route.fullPath, loadDetails, { immediate: true })
         :direct-stream-url="playback.source === 'library' ? playback.stream_url ?? '' : ''"
         :library-item-id="playback.source === 'library' ? playback.library_item_id ?? '' : ''"
         :initial-resume-seconds="playback.resume_position_seconds"
+        :resume-immediately="resumeFromHistory"
         auto-activate
         @near-end="prepareNextEpisode"
         @ended="handleEpisodeEnded"

@@ -108,6 +108,10 @@ and shows download progress while a series episode is preparing to play.
 Version 0.8.0 and the web player report played portions of each series episode.
 KADR combines them in the shared history and marks the episode watched after
 more than 80% of its runtime has played.
+In the web navigation, **Продолжить просмотр** opens a watch journal with
+the latest record for each film or episode, ordered by last update. Use
+**В процессе** or **Просмотрено** to filter the shared history. **Продолжить**
+opens the exact film or episode at its server-saved position.
 Film detail pages in the web interface and Android TV 0.9.0 show available
 IMDb and Kinopoisk ratings using the configured Kinopoisk Unofficial API.
 

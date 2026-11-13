@@ -130,6 +130,28 @@ test('offers the saved playback position after metadata is available', async () 
   expect(player.currentTime).toBe(125)
 })
 
+test('seeks to the server position when continuing from the journal', async () => {
+  localStorage.setItem('kadr:playback:saved-task', '420')
+  render(KadrPlayer, {
+    props: {
+      taskId: 'saved-task',
+      title: 'Saved video',
+      directStreamUrl: '/api/v1/library/saved/stream',
+      autoActivate: true,
+      initialResumeSeconds: 125,
+      resumeImmediately: true,
+    },
+  })
+
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull())
+  const player = document.querySelector('video') as HTMLVideoElement
+  Object.defineProperty(player, 'duration', { configurable: true, value: 600 })
+  await fireEvent.loadedMetadata(player)
+
+  expect(player.currentTime).toBe(125)
+  expect(screen.queryByRole('button', { name: 'Продолжить' })).toBeNull()
+})
+
 test('shows a controlled message when the browser rejects the stream', async () => {
   render(KadrPlayer, { props: { taskId: 'task-id', title: 'Video.mp4' } })
   await fireEvent.click(screen.getByRole('button', { name: 'Начать просмотр' }))
