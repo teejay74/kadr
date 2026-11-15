@@ -69,10 +69,10 @@ class FakeResolver:
 
 class FakeTorrents:
     def __init__(self) -> None:
-        self.prefetch_calls: list[tuple[str, list[int]]] = []
+        self.prefetch_calls: list[tuple[str, int | None]] = []
 
-    async def configure_prefetch(self, task_id: str, file_ids: list[int]) -> None:
-        self.prefetch_calls.append((task_id, file_ids))
+    async def queue_files(self, task_id: str, file_id: int | None) -> None:
+        self.prefetch_calls.append((task_id, file_id))
 
 
 def service(
@@ -183,7 +183,7 @@ async def test_prefetch_enables_only_the_next_bound_file(
     )
 
     assert result.prefetched is True
-    assert torrents.prefetch_calls == [(task.id, [7])]
+    assert torrents.prefetch_calls == [(task.id, 7)]
 
 
 @pytest.mark.asyncio

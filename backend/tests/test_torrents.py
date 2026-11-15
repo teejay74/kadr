@@ -168,7 +168,7 @@ async def test_torrent_manager_adds_selects_and_starts_real_state() -> None:
     assert added.state == "stoppedDL"
     assert [item.is_video for item in files] == [False, True]
     assert selected.selected_file_path == "Sintel.mp4"
-    assert client.priority_calls == [([0, 1], 0), ([0, 1], 0), ([1], 1)]
+    assert client.priority_calls == [([0, 1], 0), ([0], 0)]
     assert started.state == "downloading"
     assert started.progress == 0.25
 
@@ -389,6 +389,76 @@ async def test_torrent_manager_rejects_invalid_prefetch_selection() -> None:
         await manager.configure_prefetch(task.id, [1, 1])
 
 
+async def test_queue_files_adds_only_missing_videos_and_preserves_playback_selection(
+    client: AsyncClient,
+) -> None:
+    class SeriesClient(FakeTorrentClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.items = [
+                {"name": "E01.mkv", "progress": 1, "priority": 1},
+                {"name": "E02.mkv", "progress": 0.18, "priority": 0},
+                {"name": "E03.mkv", "progress": 0, "priority": 1},
+                {"name": "E04.mkv", "progress": 0, "priority": 0},
+                {"name": "bonus.jpg", "progress": 0, "priority": 0},
+                {"name": "../unsafe.mkv", "progress": 0, "priority": 0},
+            ]
+
+        async def list(
+            self, *, torrent_hash: str | None = None, tag: str | None = None
+        ) -> list[dict[str, Any]]:
+            return await super().list(torrent_hash=torrent_hash or "abc123", tag=tag)
+
+        async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
+            return self.items
+
+        async def set_file_priority(
+            self, torrent_hash: str, file_ids: list[int], priority: int
+        ) -> None:
+            await super().set_file_priority(torrent_hash, file_ids, priority)
+            for file_id in file_ids:
+                self.items[file_id]["priority"] = priority
+
+    torrent_client = SeriesClient()
+    repository = FakeRepository()
+    manager = TorrentManager(
+        torrent_client,
+        FakeSources(),
+        repository,
+        Settings(
+            qbittorrent_password="x",
+            min_free_space_gb=0,
+            torrent_storage_root="/tmp",
+            torrent_save_path="/tmp/cache",
+        ),
+    )
+    task = await manager.add(42, "series", "a" * 24)
+    await repository.select_file(repository.tasks[task.id], 0, "E01.mkv")
+    app.dependency_overrides[get_torrent_manager] = lambda: manager
+    endpoint = f"/api/v1/torrents/{task.id}/files/queue"
+
+    invalid = await client.post(endpoint, json={"file_id": 5})
+    assert invalid.status_code == 422
+    assert torrent_client.priority_calls == []
+    assert not torrent_client.started
+
+    single = await client.post(endpoint, json={"file_id": 1})
+    assert single.status_code == 200
+    assert single.json()["selected_file_id"] == 0
+    assert single.json()["state"] == "downloading"
+    assert torrent_client.items[1]["progress"] == 0.18
+
+    queued = await client.post(endpoint, json={})
+    assert queued.status_code == 200
+    assert queued.json()["selected_file_id"] == 0
+    assert (await client.post(endpoint, json={})).status_code == 200
+    assert torrent_client.priority_calls == [([1], 1), ([3], 1)]
+
+    switched = await manager.select_file(task.id, 2)
+    assert switched.selected_file_id == 2
+    assert [row["priority"] for row in torrent_client.items] == [0, 1, 1, 1, 0, 0]
+
+
 def test_whole_season_prefetch_request_accepts_up_to_one_hundred_files() -> None:
     request = PrefetchTorrentFilesRequest(file_ids=list(range(100)))
 
@@ -411,7 +481,7 @@ def test_episode_file_selection_requires_complete_identity() -> None:
         SelectTorrentFileRequest(file_id=3, season_number=1)
 
 
-async def test_switching_episode_keeps_only_the_forward_prefetch_queue() -> None:
+async def test_switching_episode_retires_previous_file_and_keeps_queued_files() -> None:
     class StatefulSeriesClient(FakeTorrentClient):
         def __init__(self) -> None:
             super().__init__()
@@ -454,7 +524,7 @@ async def test_switching_episode_keeps_only_the_forward_prefetch_queue() -> None
     switched = await manager.select_file(task.id, 1)
 
     assert switched.selected_file_id == 1
-    assert client.priority_calls[-2:] == [([0, 1, 2], 0), ([1, 2], 1)]
+    assert client.priority_calls[-1] == ([0], 0)
 
 
 async def test_existing_torrent_bypasses_new_download_limit() -> None:

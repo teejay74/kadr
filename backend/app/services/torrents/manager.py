@@ -186,29 +186,30 @@ class TorrentManager:
             raise TorrentFileError("Only a supported video file can be selected")
         if not self._safe_relative_path(selected.name):
             raise TorrentFileError("The selected torrent file has an unsafe path")
-        preserved_prefetch_ids = []
-        if task.selected_file_id is not None:
-            preserved_prefetch_ids = [
+        previous_id = task.selected_file_id
+        keep_ids = {file_id}
+        if previous_id is not None:
+            # Keep background videos enabled when switching episodes.
+            # A forward switch retires the previous playback file.
+            keep_ids.update(
                 index
                 for index, item in enumerate(files)
-                if index > file_id
+                if (index != previous_id or index > file_id)
                 and int(item.get("priority") or 0) > 0
                 and self._to_file(index, item).is_video
-            ]
-        await self._client.set_file_priority(
-            task.torrent_hash,
-            list(range(len(files))),
-            0,
-        )
+            )
         # qBittorrent 5.x can abandon sequential piece ordering when the only
         # selected file has maximal priority. Normal priority keeps skipped
         # files disabled while allowing the sequential picker to start at the
         # beginning of the selected video.
-        await self._client.set_file_priority(
-            task.torrent_hash,
-            sorted({file_id, *preserved_prefetch_ids}),
-            1,
-        )
+        if selected.priority != 1:
+            await self._client.set_file_priority(task.torrent_hash, [file_id], 1)
+        disable_ids = [
+            index for index, item in enumerate(files)
+            if index not in keep_ids and int(item.get("priority") or 0) > 0
+        ]
+        if disable_ids:
+            await self._client.set_file_priority(task.torrent_hash, disable_ids, 0)
         await self._repository.select_file(task, file_id, selected.name)
         if season_number is not None and episode_number is not None:
             if task.media_kind != "series":
@@ -306,6 +307,37 @@ class TorrentManager:
         if task.selected_file_id is None:
             raise TorrentFileError("Select a video file before starting the download")
         if await self._ensure_start_allowed(task):
+            await self._client.start(task.torrent_hash)
+        return await self.status(task_id)
+
+    async def queue_files(self, task_id: str, file_id: int | None) -> TorrentStatus:
+        """Enable additional videos without resetting any existing priority."""
+        task = await self._task(task_id)
+        if task.selected_file_id is None:
+            raise TorrentFileError("Select a video file before queuing additional downloads")
+        files = await self._client.files(task.torrent_hash)
+        if file_id is not None and not 0 <= file_id < len(files):
+            raise TorrentFileError("The selected torrent file does not exist")
+        candidates = (
+            [self._to_file(file_id, files[file_id])]
+            if file_id is not None
+            else [self._to_file(index, item) for index, item in enumerate(files)]
+        )
+        videos = [
+            file for file in candidates
+            if file.is_video and self._safe_relative_path(file.name)
+        ]
+        if file_id is not None and not videos:
+            raise TorrentFileError("Only supported video files with safe paths can be queued")
+
+        incomplete = [file for file in videos if file.progress < 1]
+        if not incomplete:
+            return await self.status(task_id)
+        start_required = await self._ensure_start_allowed(task)
+        new_ids = [file.id for file in incomplete if file.priority == 0]
+        if new_ids:
+            await self._client.set_file_priority(task.torrent_hash, new_ids, 1)
+        if start_required:
             await self._client.start(task.torrent_hash)
         return await self.status(task_id)
 

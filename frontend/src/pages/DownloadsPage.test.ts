@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import * as api from '../services/api'
@@ -10,6 +10,7 @@ vi.mock('../services/api', async (importOriginal) => ({
   deleteTorrentFile: vi.fn(),
   getTorrentFiles: vi.fn(),
   getTorrents: vi.fn(),
+  queueTorrentFiles: vi.fn(),
   startTorrent: vi.fn(),
   stopTorrent: vi.fn(),
 }))
@@ -108,4 +109,38 @@ test('requires explicit confirmation before deleting a whole download', async ()
   await fireEvent.click(screen.getByRole('button', { name: /Подтвердить удаление/ }))
   await waitFor(() => expect(api.deleteTorrent).toHaveBeenCalledWith('task-id'))
   expect(screen.queryByText('Series S01 1080p')).toBeNull()
+})
+
+test('queues one skipped episode and then the remaining videos', async () => {
+  const episode = {
+    size_bytes: 1000,
+    priority: 0,
+    is_video: true,
+    duration_seconds: null,
+  }
+  const next = { ...episode, id: 2, name: 'Series.S01E02.mkv', progress: 0.18 }
+  const last = { ...episode, id: 3, name: 'Series.S01E03.mkv', progress: 0 }
+  const extra = { ...episode, id: 4, name: 'readme.txt', is_video: false, progress: 0 }
+  vi.mocked(api.getTorrentFiles)
+    .mockResolvedValueOnce([next, last, extra])
+    .mockResolvedValueOnce([{ ...next, priority: 1 }, last, extra])
+    .mockResolvedValueOnce([{ ...next, priority: 1 }, { ...last, priority: 1 }, extra])
+  vi.mocked(api.queueTorrentFiles).mockResolvedValue(task)
+
+  render(DownloadsPage, {
+    global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+  })
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'Показать файлы' }))
+  const file = await screen.findByText(next.name)
+  const row = within(file.closest('li')!)
+  expect(row.getByText(/18%/)).toBeTruthy()
+  await fireEvent.click(row.getByRole('button', { name: 'Добавить в загрузку' }))
+  expect(api.queueTorrentFiles).toHaveBeenCalledWith(task.id, 2)
+  expect(await row.findByText(/18% · В загрузке/)).toBeTruthy()
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Скачать оставшиеся видео' }))
+  expect(api.queueTorrentFiles).toHaveBeenLastCalledWith(task.id, undefined)
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Добавить в загрузку' })).toBeNull())
+  expect(screen.queryByRole('button', { name: 'Скачать оставшиеся видео' })).toBeNull()
 })

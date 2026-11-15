@@ -41,7 +41,8 @@ keyboard and TV remotes. Combined files are never presented as having an exact
 episode seek point unless future stored time boundaries make that possible.
 The final D2 UI increment moves torrent progress, pause/resume controls, file
 inspection, completed-file deletion, and confirmed whole-download removal to a
-dedicated **Downloads** page.
+dedicated **Downloads** page. Its file list can add a skipped video or all
+remaining videos from an existing release to the download queue.
 Film and series pages retain only playback, source choice, and a link to that
 technical workspace. The legacy `SourcesPanel` source remains in the tree for
 live-playback rollback until Debian acceptance is complete.

@@ -345,6 +345,13 @@ export function startTorrent(taskId: string): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}/start`, { method: 'POST' })
 }
 
+export function queueTorrentFiles(taskId: string, fileId?: number): Promise<TorrentStatus> {
+  return request<TorrentStatus>(`/api/v1/torrents/${encodeURIComponent(taskId)}/files/queue`, {
+    method: 'POST',
+    body: JSON.stringify({ file_id: fileId }),
+  })
+}
+
 export function stopTorrent(taskId: string): Promise<TorrentStatus> {
   return request<TorrentStatus>(`/api/v1/torrents/${taskId}/stop`, { method: 'POST' })
 }

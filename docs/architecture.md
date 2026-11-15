@@ -117,8 +117,8 @@ Substage D1 places series ordering in `EpisodeNavigationService`. It reads
 TMDB season episode lists, crosses to the first catalog episode of the next
 regular season, and asks the existing Playback Resolver to reuse a confirmed
 variant with the current torrent task preferred. A separate opportunistic
-path calls Torrent Manager prefetch with exactly one next file; it preserves
-the active selection and never queues a whole season. `NextEpisodeOverlay`
+path adds exactly one next file to the existing download queue and preserves
+the active selection. `NextEpisodeOverlay`
 owns only presentation, countdown, and the local autoplay preference. It does
 not calculate episode identity. A shared physical file bound to consecutive
 logical episodes is marked as combined and is not treated as a precise seek

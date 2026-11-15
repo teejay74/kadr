@@ -320,6 +320,7 @@ does not expose torrent hashes, source URIs, credentials, or filesystem paths.
 | `DELETE /torrents/{task_id}` | Delete one KADR torrent task and all of its qBittorrent data |
 | `PUT /torrents/{task_id}/selection` | Prioritize one supported video and optionally bind an episode |
 | `PUT /torrents/{task_id}/prefetch` | Replace the background episode prefetch queue |
+| `POST /torrents/{task_id}/files/queue` | Add one unfinished video or all unfinished videos to the download |
 | `POST /torrents/{task_id}/start` | Start after selection and safety checks |
 | `POST /torrents/{task_id}/stop` | Stop without deleting data |
 
@@ -383,6 +384,12 @@ all queued files except the episode currently selected for playback. Responses i
 state, progress, byte counts, speeds, peers/seeds, ETA, selected file, and
 allowed actions. Source URIs, hashes, credentials, and raw qBittorrent data are
 not public API fields.
+
+For a task with a selected playback file, send `{"file_id":2}` to enable an
+individual video or `{}` to enable all unfinished supported videos in the
+release. The operation keeps existing priorities and the playback selection.
+KADR applies its normal storage and active download checks before starting
+the task. The next-episode prefetch also adds to the existing queue.
 
 Torrent errors use `torrent_not_configured` (503), `torrent_unavailable` (502),
 `torrent_not_found` (404), `torrent_limit_reached` (409),

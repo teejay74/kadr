@@ -114,9 +114,9 @@ class EpisodeNavigationService:
                 message="Следующий эпизод уже находится в текущем объединённом файле.",
             )
         try:
-            await self._torrents.configure_prefetch(
+            await self._torrents.queue_files(
                 request.current_task_id,
-                [variant.file_id],
+                variant.file_id,
             )
         except (
             TorrentFileError,

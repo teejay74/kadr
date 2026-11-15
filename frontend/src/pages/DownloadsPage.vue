@@ -8,6 +8,7 @@ import {
   friendlyApiError,
   getTorrentFiles,
   getTorrents,
+  queueTorrentFiles,
   startTorrent,
   stopTorrent,
 } from '../services/api'
@@ -42,6 +43,11 @@ function stateLabel(state: string): string {
   return state
 }
 
+function canQueue(task: TorrentStatus, file: TorrentFile): boolean {
+  return task.state !== 'unavailable' && task.selected_file_id !== null
+    && file.is_video && file.progress < 1 && file.priority === 0
+}
+
 function scheduleRefresh(): void {
   if (refreshTimer) clearTimeout(refreshTimer)
   if (activeCount.value > 0) refreshTimer = setTimeout(() => void load(false), 10_000)
@@ -61,7 +67,7 @@ async function load(showLoader = true): Promise<void> {
 }
 
 async function loadFiles(taskId: string): Promise<void> {
-  if (files.value[taskId] || fileLoadingTaskId.value) return
+  if (fileLoadingTaskId.value || busyTaskId.value) return
   fileLoadingTaskId.value = taskId
   error.value = ''
   try {
@@ -74,6 +80,7 @@ async function loadFiles(taskId: string): Promise<void> {
 }
 
 async function applyAction(task: TorrentStatus, action: 'start' | 'stop'): Promise<void> {
+  if (busyTaskId.value) return
   busyTaskId.value = task.id
   error.value = ''
   try {
@@ -87,7 +94,25 @@ async function applyAction(task: TorrentStatus, action: 'start' | 'stop'): Promi
   }
 }
 
+async function queueFiles(taskId: string, fileId?: number): Promise<void> {
+  if (busyTaskId.value || fileLoadingTaskId.value) return
+  busyTaskId.value = taskId
+  error.value = ''
+  if (refreshTimer) clearTimeout(refreshTimer)
+  try {
+    const updated = await queueTorrentFiles(taskId, fileId)
+    tasks.value = tasks.value.map((item) => item.id === updated.id ? updated : item)
+    files.value = { ...files.value, [taskId]: await getTorrentFiles(taskId) }
+  } catch (caught) {
+    error.value = friendlyApiError(caught)
+  } finally {
+    busyTaskId.value = null
+    scheduleRefresh()
+  }
+}
+
 async function removeFile(taskId: string, file: TorrentFile): Promise<void> {
+  if (busyTaskId.value) return
   if (deleteCandidate.value?.taskId !== taskId || deleteCandidate.value.fileId !== file.id) {
     deleteCandidate.value = { taskId, fileId: file.id }
     return
@@ -110,6 +135,7 @@ async function removeFile(taskId: string, file: TorrentFile): Promise<void> {
 }
 
 async function removeTask(task: TorrentStatus): Promise<void> {
+  if (busyTaskId.value) return
   if (taskDeleteCandidateId.value !== task.id) {
     taskDeleteCandidateId.value = task.id
     deleteCandidate.value = null
@@ -195,10 +221,19 @@ onBeforeUnmount(() => {
           <button
             class="button secondary focus-ring"
             type="button"
-            :disabled="fileLoadingTaskId !== null || task.state === 'unavailable'"
+            :disabled="fileLoadingTaskId !== null || busyTaskId !== null || task.state === 'unavailable'"
             @click="loadFiles(task.id)"
           >
-            {{ files[task.id] ? 'Файлы загружены' : 'Показать файлы' }}
+            {{ files[task.id] ? 'Обновить файлы' : 'Показать файлы' }}
+          </button>
+          <button
+            v-if="files[task.id]?.some((file) => canQueue(task, file))"
+            class="button primary focus-ring"
+            type="button"
+            :disabled="busyTaskId !== null || fileLoadingTaskId !== null"
+            @click="queueFiles(task.id)"
+          >
+            Скачать оставшиеся видео
           </button>
           <button
             class="button danger focus-ring"
@@ -219,8 +254,20 @@ onBeforeUnmount(() => {
           <li v-for="file in files[task.id]" :key="file.id">
             <div>
               <strong>{{ file.name }}</strong>
-              <small>{{ formatBytes(file.size_bytes) }} · {{ Math.round(file.progress * 100) }}%</small>
+              <small>
+                {{ formatBytes(file.size_bytes) }} · {{ Math.round(file.progress * 100) }}%
+                <template v-if="task.state !== 'unavailable' && file.is_video && file.progress < 1 && file.priority > 0"> · В загрузке</template>
+              </small>
             </div>
+            <button
+              v-if="canQueue(task, file)"
+              class="button secondary focus-ring"
+              type="button"
+              :disabled="busyTaskId !== null || fileLoadingTaskId !== null"
+              @click="queueFiles(task.id, file.id)"
+            >
+              Добавить в загрузку
+            </button>
             <button
               v-if="file.is_video && file.progress >= 1"
               class="button danger focus-ring"

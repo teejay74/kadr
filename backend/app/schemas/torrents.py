@@ -45,6 +45,10 @@ class PrefetchTorrentFilesRequest(BaseModel):
     file_ids: list[int] = Field(default_factory=list, max_length=100)
 
 
+class QueueTorrentFilesRequest(BaseModel):
+    file_id: int | None = Field(default=None, ge=0)
+
+
 class TorrentFile(BaseModel):
     id: int = Field(ge=0)
     name: str

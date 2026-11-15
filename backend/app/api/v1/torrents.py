@@ -25,6 +25,7 @@ from app.schemas.torrents import (
     AddTorrentRequest,
     EpisodeFileBindingResponse,
     PrefetchTorrentFilesRequest,
+    QueueTorrentFilesRequest,
     SelectTorrentFileRequest,
     TorrentFile,
     TorrentStatus,
@@ -203,6 +204,15 @@ async def prefetch_torrent_files(
     body: PrefetchTorrentFilesRequest,
 ) -> TorrentStatus:
     return await manager.configure_prefetch(task_id, body.file_ids)
+
+
+@router.post("/torrents/{task_id}/files/queue", response_model=TorrentStatus)
+async def queue_torrent_files(
+    manager: TorrentManagerDependency,
+    task_id: str,
+    body: QueueTorrentFilesRequest,
+) -> TorrentStatus:
+    return await manager.queue_files(task_id, body.file_id)
 
 
 @router.post("/torrents/{task_id}/start", response_model=TorrentStatus)
