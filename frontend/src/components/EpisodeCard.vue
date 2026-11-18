@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PosterImage from './PosterImage.vue'
 import type { EpisodeSummary } from '../types/media'
 import MediaStatus, { type MediaAvailabilityStatus } from './MediaStatus.vue'
 import PlaybackProgress from './PlaybackProgress.vue'
@@ -31,8 +32,7 @@ defineEmits<{
       @click="$emit('select')"
     >
       <div class="episode-image">
-        <img v-if="episode.still_url" :src="episode.still_url" :alt="`Кадр: ${episode.name}`" loading="lazy" />
-        <div v-else class="episode-placeholder" aria-hidden="true">{{ episode.number }}</div>
+        <PosterImage :placeholder="String(episode.number)" placeholder-class="episode-placeholder" :src="episode.still_url" :alt="`Кадр: ${episode.name}`" loading="lazy" />
         <PlaybackProgress
           :position-seconds="positionSeconds"
           :duration-seconds="durationSeconds || (episode.runtime_minutes ?? 0) * 60"

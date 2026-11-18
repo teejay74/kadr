@@ -249,3 +249,10 @@ permissions, port availability, and `.env` before deploying to Debian.
 - [Audio/subtitle D3.5 report](docs/ui-redesign-d3-5-report.md)
 - [FlareSolverr deployment report](docs/stage-6-flaresolverr-report.md)
 
+
+## Постеры через KADR
+
+Постеры, фоны и кадры TMDB выдаются через `/api/v1/posters/{size}/{filename}`.
+Браузеру и Android TV не нужен доступ к CDN TMDB или смена DNS. Сервер использует
+настраиваемый DoH только для изображений и постоянный ограниченный кэш.
+См. `docs/poster-proxy-report.md`, `docs/deployment.md` и `docs/api.md`.

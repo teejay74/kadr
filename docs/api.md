@@ -588,3 +588,15 @@ unwatched also clears its accumulated playback ranges. Existing resume
 positions remain available and playback coverage starts with the first
 report containing ranges. Movie history uses the existing completion rules.
 
+
+## Poster images
+
+`GET /api/v1/posters/{size}/{filename}` returns JPEG, PNG or WebP with
+`Cache-Control: public, max-age=2592000` (configurable) and `nosniff`. Sizes:
+`w92`, `w154`, `w185`, `w300`, `w342`, `w500`, `w780`, `w1280`, `original`.
+Filenames contain 1–128 ASCII letters, digits, `_` or `-`, followed by
+`.jpg`, `.jpeg`, `.png` or `.webp`. No URL, query parameters or redirects are
+accepted. Invalid arguments return 422 with `invalid_poster`; upstream failures
+return 502 with `metadata_unavailable`, using the standard code/message shape.
+Only successful responses with matching image MIME and binary signature are
+cached. Metadata endpoints return relative KADR URLs for TMDB images.

@@ -168,3 +168,23 @@ indexers that require Cloudflare handling. FlareSolverr starts a browser per
 request, so keep concurrency low and retain the configured memory, shared-memory,
 and tmpfs limits unless target-host measurements justify a change.
 
+
+## TMDB poster resolver and cache
+
+`KADR_POSTER_DOH_URL` defaults to `https://dns.google/resolve`;
+`KADR_POSTER_DOH_BOOTSTRAP_IP=8.8.8.8` bypasses local DNS for the resolver
+while preserving its hostname for TLS verification. Set bootstrap empty when
+using normal DNS for a different DoH endpoint. Configure both values together
+for another DNS-JSON provider. CDN IPs are obtained dynamically and never pinned.
+
+The image client ignores environment proxies and never follows redirects.
+Defaults: total fetch timeout 12 s, 4 concurrent fetches, 5 MiB per response,
+128 MiB disk cache, 30-day cache TTL. All limits and `/data/posters` come from
+`KADR_POSTER_*` settings in `.env.example`. The directory persists on the existing
+KADR `/data` volume; no new port, volume, or migration is needed. Use a dedicated
+poster-cache directory owned by the API UID. Run one API worker per cache root.
+
+After deployment, request a real catalogue poster twice and verify `image/*`,
+`Cache-Control`, the persistent `.img` file, healthy API/web, and logs. For
+browser acceptance retain the current default DNS settings; Network requests
+for TMDB images must target KADR. Existing Kinopoisk image URLs are unaffected.

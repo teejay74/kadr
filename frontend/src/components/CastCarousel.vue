@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PosterImage from './PosterImage.vue'
 import type { CastMember } from '../types/media'
 
 defineProps<{ cast: CastMember[] }>()
@@ -9,8 +10,7 @@ defineProps<{ cast: CastMember[] }>()
     <h2 id="cast-title">В ролях</h2>
     <div class="cast-grid">
       <article v-for="person in cast" :key="person.id" class="cast-card">
-        <img v-if="person.profile_url" :src="person.profile_url" :alt="person.name" loading="lazy" />
-        <div v-else class="avatar-placeholder" aria-hidden="true">{{ person.name.slice(0, 1) }}</div>
+        <PosterImage :src="person.profile_url" :placeholder="person.name.slice(0, 1)" placeholder-class="avatar-placeholder" :alt="person.name" loading="lazy" />
         <strong>{{ person.name }}</strong>
         <span>{{ person.character }}</span>
       </article>

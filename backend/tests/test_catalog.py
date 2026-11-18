@@ -160,8 +160,8 @@ async def test_movies_endpoint_uses_catalog_service_and_normalizes_tmdb(
         "overview": "A long time ago.",
         "release_date": "1977-05-25",
         "year": 1977,
-        "poster_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
-        "backdrop_url": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+        "poster_url": "/api/v1/posters/w500/poster.jpg",
+        "backdrop_url": "/api/v1/posters/w1280/backdrop.jpg",
         "rating": 8.2,
         "popularity": 99.5,
         "genre_ids": [12, 878],
@@ -534,7 +534,7 @@ async def test_series_season_endpoint_normalizes_and_caches_episodes(
         "name": "Сезон 2",
         "overview": "Продолжение истории.",
         "air_date": "2025-01-10",
-        "poster_url": "https://image.tmdb.org/t/p/w342/season.jpg",
+        "poster_url": "/api/v1/posters/w342/season.jpg",
         "episodes": [
             {
                 "id": 601,
@@ -544,7 +544,7 @@ async def test_series_season_endpoint_normalizes_and_caches_episodes(
                 "overview": "Первая серия сезона.",
                 "air_date": "2025-01-10",
                 "runtime_minutes": 52,
-                "still_url": "https://image.tmdb.org/t/p/w500/episode.jpg",
+                "still_url": "/api/v1/posters/w500/episode.jpg",
                 "rating": 8.4,
             }
         ],

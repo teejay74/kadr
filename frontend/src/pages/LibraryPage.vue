@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PosterImage from '../components/PosterImage.vue'
 import { onMounted, ref } from 'vue'
 
 import StatePanel from '../components/StatePanel.vue'
@@ -52,7 +53,7 @@ onMounted(load)
     <StatePanel v-else-if="error" title="Библиотека недоступна" :message="error" show-retry @retry="load" />
     <section v-else-if="library.length" class="saved-grid">
       <article v-for="item in library" :key="item.id" class="saved-card">
-        <img v-if="item.poster_url" :src="item.poster_url" :alt="item.title" />
+        <PosterImage :src="item.poster_url" :alt="item.title" />
         <div class="saved-copy">
           <p class="eyebrow">{{ item.media_kind === 'movie' ? 'Фильм' : 'Сериал' }}</p>
           <h2>{{ item.title }}</h2>
@@ -87,7 +88,7 @@ onMounted(load)
       <h2>Избранное</h2>
       <div class="favorite-grid">
         <RouterLink v-for="item in favorites" :key="item.id" class="favorite-card" :to="`/${item.media_kind === 'movie' ? 'movies' : 'series'}/${item.media_id}`">
-          <img v-if="item.poster_url" :src="item.poster_url" :alt="item.title" />
+          <PosterImage :src="item.poster_url" :alt="item.title" />
           <strong>{{ item.title }}</strong>
         </RouterLink>
       </div>

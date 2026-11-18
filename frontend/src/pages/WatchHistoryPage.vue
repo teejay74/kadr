@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PosterImage from '../components/PosterImage.vue'
 import { computed, onMounted, ref } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 
@@ -99,7 +100,7 @@ onMounted(load)
       <ol v-else class="history-list">
         <li v-for="item in visibleItems" :key="item.id" class="history-entry">
           <div class="history-poster">
-            <img v-if="item.poster_url" :src="item.poster_url" alt="" loading="lazy" />
+            <PosterImage :src="item.poster_url" alt="" loading="lazy" />
           </div>
           <div class="history-copy">
             <h2><RouterLink class="focus-ring" :to="detailsLink(item)">{{ item.title }}</RouterLink></h2>

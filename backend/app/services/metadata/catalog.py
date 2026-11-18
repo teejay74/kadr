@@ -27,6 +27,7 @@ from app.services.metadata.exceptions import (
     MetadataNotFoundError,
     MetadataUnavailableError,
 )
+from app.services.posters.manager import poster_path
 
 logger = logging.getLogger(__name__)
 SortMode = Literal["popular", "rating", "newest"]
@@ -834,7 +835,7 @@ class CatalogService:
     def _image(self, path: object, size: str) -> str | None:
         if not isinstance(path, str):
             return None
-        return f"{self._settings.tmdb_image_base_url}/{size}{path}"
+        return poster_path(size, path.removeprefix("/"))
 
     @staticmethod
     def _optional_text(value: object) -> str | None:

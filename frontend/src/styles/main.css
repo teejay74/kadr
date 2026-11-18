@@ -331,7 +331,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .download-file-list small { color: var(--text-secondary); }
 .saved-grid { display: grid; gap: 1.2rem; }
 .saved-card { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1.4rem; padding: 1.2rem; border: 1px solid var(--border-color); border-radius: 1rem; background: rgb(32 34 43 / .65); }
-.saved-card > img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .8rem; }
+.saved-card > img, .saved-card > .poster-placeholder { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .8rem; }
 .saved-copy { min-width: 0; }
 .saved-copy h2 { margin-bottom: .35rem; }
 .saved-copy > p:not(.eyebrow) { color: var(--text-secondary); }
@@ -339,7 +339,7 @@ h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -.025em;
 .favorites-section { width: 100%; }
 .favorite-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 1rem; }
 .favorite-card { display: grid; gap: .6rem; }
-.favorite-card img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .8rem; }
+.favorite-card img, .favorite-card .poster-placeholder { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .8rem; }
 .history-heading h1 { font-size: clamp(2rem, 5vw, 3.6rem); }
 .history-heading p, .history-copy p, .history-copy time { color: var(--text-secondary); }
 .history-filters { margin: 1.5rem 0 1rem; }
@@ -475,7 +475,7 @@ html[data-tv="true"] .video-frame video { min-height: min(68vh, 48rem); }
   .source-selector-item { grid-template-columns: 1fr; }
   .source-selector-item > .button { width: 100%; }
   .saved-card { grid-template-columns: 1fr; }
-  .saved-card > img { width: 7rem; }
+  .saved-card > img, .saved-card > .poster-placeholder { width: 7rem; }
   .download-management-link, .download-task-card > header, .download-file-list li { align-items: stretch; flex-direction: column; }
   .download-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

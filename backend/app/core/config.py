@@ -12,7 +12,14 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=list)
     tmdb_access_token: SecretStr | None = None
     tmdb_base_url: str = "https://api.themoviedb.org/3"
-    tmdb_image_base_url: str = "https://image.tmdb.org/t/p"
+    poster_doh_url: str = "https://dns.google/resolve"
+    poster_doh_bootstrap_ip: str = "8.8.8.8"
+    poster_timeout_seconds: float = Field(default=12, gt=0, le=60)
+    poster_max_response_bytes: int = Field(default=5_242_880, ge=1024, le=20_971_520)
+    poster_cache_root: str = "./data/posters"
+    poster_cache_ttl_seconds: int = Field(default=2_592_000, ge=60, le=31_536_000)
+    poster_cache_max_bytes: int = Field(default=134_217_728, ge=1024)
+    poster_concurrency: int = Field(default=4, ge=1, le=8)
     tmdb_language: str = "ru-RU"
     tmdb_region: str = "RU"
     tmdb_timeout_seconds: float = Field(default=8, gt=0, le=30)

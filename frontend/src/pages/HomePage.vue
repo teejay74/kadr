@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import MediaRail from '../components/MediaRail.vue'
 import StatePanel from '../components/StatePanel.vue'
 import { friendlyApiError, getMediaPage } from '../services/api'
+import { imageUrl } from '../services/images'
 import type { MediaCardData } from '../types/media'
 
 const popularMovies = ref<MediaCardData[]>([])
@@ -43,7 +44,7 @@ onMounted(loadHome)
   <div v-else-if="hero" class="home-page">
     <section
       class="featured-hero"
-      :style="hero.backdrop_url ? { backgroundImage: `linear-gradient(90deg, rgba(16,17,22,.98) 8%, rgba(16,17,22,.58) 55%, rgba(16,17,22,.82)), url(${hero.backdrop_url})` } : {}"
+      :style="imageUrl(hero.backdrop_url) ? { backgroundImage: `linear-gradient(90deg, rgba(16,17,22,.98) 8%, rgba(16,17,22,.58) 55%, rgba(16,17,22,.82)), url(${imageUrl(hero.backdrop_url)})` } : {}"
     >
       <div class="hero-content">
         <p class="eyebrow">Сейчас в центре внимания</p>

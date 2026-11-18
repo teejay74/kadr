@@ -34,6 +34,13 @@ object ServerAddress {
         if (candidate.startsWith('/')) return resolve(baseUrl, candidate)
         val image = runCatching { URI(candidate) }.getOrNull() ?: return null
         if (image.userInfo != null || image.host.isNullOrBlank()) return null
+        if (image.host.equals("image.tmdb.org", ignoreCase = true)) {
+            if (image.scheme != "https" && image.scheme != "http") return null
+            val match = Regex("^/t/p/(w92|w154|w185|w300|w342|w500|w780|w1280|original)/([A-Za-z0-9_-]{1,128}\\.(?:jpg|jpeg|png|webp))$").matchEntire(image.path)
+                ?: return null
+            if (image.query != null || image.fragment != null || image.port != -1) return null
+            return resolve(baseUrl, "/api/v1/posters/${match.groupValues[1]}/${match.groupValues[2]}")
+        }
         if (image.scheme == "https") return image.toString()
         if (image.scheme != "http") return null
         val server = URI(normalize(baseUrl))

@@ -196,3 +196,9 @@ browser/device.
 | `KADR_TRANSCODE_MAX_WIDTH/HEIGHT` | `1920` / `1080` | Maximum output dimensions |
 | `KADR_TRANSCODE_AUDIO_BITRATE` | `192k` | AAC output bitrate |
 
+
+## Image requests
+
+Poster, backdrop and still-image loading uses the separate `/api/v1/posters`
+service and bounded image cache. It does not allocate streaming sessions,
+change playback DNS, or invoke FFmpeg.

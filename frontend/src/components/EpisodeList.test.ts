@@ -13,7 +13,7 @@ const episode = {
   overview: 'Первая серия сезона.',
   air_date: '2025-01-10',
   runtime_minutes: 52,
-  still_url: 'https://image.tmdb.org/episode.jpg',
+  still_url: 'https://image.tmdb.org/t/p/w500/episode.jpg',
   rating: 8.4,
 }
 

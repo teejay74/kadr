@@ -329,3 +329,13 @@ Stages 1-6 provide the shell, catalogue, source discovery, qBittorrent control,
 Direct Play, compatible playback, library, history, favorites, and guarded
 cache lifecycle. TV, remote-access, and stabilization work follow those layers.
 
+
+## Server-side TMDB images
+
+CatalogService emits relative `/api/v1/posters/{size}/{filename}` links for
+posters, backdrops, seasons and stills. PosterManager validates fixed-host TMDB
+paths, resolves the CDN through a dedicated configurable DoH client, and retains
+HTTPS hostname verification using Host and TLS SNI. Other integrations keep their
+existing DNS behavior. PosterCacheRepository provides persistent, bounded disk
+cache I/O through worker threads, independently of media and SQLite. Web
+PosterImage and Android ServerAddress also rewrite legacy persisted TMDB links.

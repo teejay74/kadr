@@ -369,3 +369,14 @@ Cleanup removes only stopped, unsaved KADR tasks older than
 `KADR_CACHE_TTL_HOURS`. Active playback, active downloading, and tasks tied to
 a saved library record are protected.
 
+
+## Missing TMDB posters with normal browser DNS
+
+Inspect Network: TMDB images should use `/api/v1/posters/...` on KADR. A 502
+means the server could not resolve or download a validated image; the web
+client displays the poster placeholder. Check API `Poster fetch failed` logs,
+container access to the configured DoH endpoint over HTTPS, resolver/bootstrap
+configuration, timeouts, and write permissions on `KADR_POSTER_CACHE_ROOT`.
+Do not disable TLS verification or hard-code CDN addresses. Router and browser
+DNS changes are unnecessary. A cached image remains available until its TTL,
+even if TMDB is temporarily unavailable; failed responses are not cached.

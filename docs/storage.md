@@ -84,3 +84,13 @@ credentials. It is excluded from Git, must not be copied into logs or reports,
 and needs the same restricted backup handling as other secrets. Prowlarr has no
 media-directory mount and cannot access Photodom or future KADR media paths.
 
+
+## Poster cache
+
+`KADR_POSTER_CACHE_ROOT` (`/data/posters` in Compose) is separate from media
+and stored on the existing persistent KADR data mount. The default limit is
+128 MiB and TTL is 30 days. On insertion, the repository evicts expired images
+and then oldest images until the new image fits. It only evicts its own hashed
+`.img` files, skips symlinks and does not touch media, saved files or SQLite.
+Cache read/write errors are logged; a valid upstream image can still be shown.
+Cache files are disposable and need not be included in database backups.

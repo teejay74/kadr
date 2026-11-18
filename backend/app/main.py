@@ -43,6 +43,7 @@ from app.services.playback.exceptions import (
 from app.services.playback.manager import CompatibilityManager
 from app.services.playback.subtitles import SubtitleManager
 from app.services.playback.tracks import PlaybackTrackProbe
+from app.services.posters.manager import PosterManager
 from app.services.sources.exceptions import (
     IndexerNotConfiguredError,
     IndexerUnavailableError,
@@ -110,10 +111,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.playback_track_probe = PlaybackTrackProbe(settings)
     application.state.subtitle_manager = SubtitleManager(settings)
     async with httpx.AsyncClient(
+        timeout=settings.poster_timeout_seconds,
+        follow_redirects=False,
+        trust_env=False,
+        limits=httpx.Limits(max_connections=settings.poster_concurrency),
+    ) as poster_http_client, httpx.AsyncClient(
         base_url=settings.tmdb_base_url,
         timeout=settings.tmdb_timeout_seconds,
         headers={"Accept": "application/json"},
     ) as metadata_http_client:
+        application.state.poster_manager = PosterManager(poster_http_client, settings)
         async with httpx.AsyncClient(
             base_url=settings.kinopoisk_base_url,
             timeout=settings.kinopoisk_timeout_seconds,

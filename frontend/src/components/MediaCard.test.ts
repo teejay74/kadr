@@ -14,7 +14,7 @@ test('renders real media metadata and accessible poster text', () => {
         overview: '',
         release_date: '1977-05-25',
         year: 1977,
-        poster_url: 'https://image.tmdb.org/poster.jpg',
+        poster_url: 'https://image.tmdb.org/t/p/w500/poster.jpg',
         backdrop_url: null,
         rating: 8.2,
         popularity: 10,

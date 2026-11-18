@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PosterImage from './PosterImage.vue'
+import { imageUrl } from '../services/images'
 import type { MediaDetails } from '../types/media'
 
 defineProps<{ media: MediaDetails }>()
@@ -8,14 +10,13 @@ defineProps<{ media: MediaDetails }>()
   <section class="media-hero">
     <div
       class="details-backdrop"
-      :style="media.backdrop_url
-        ? { backgroundImage: `linear-gradient(0deg, #101116 0%, rgba(16,17,22,.35) 65%, rgba(16,17,22,.65)), url(${media.backdrop_url})` }
+      :style="imageUrl(media.backdrop_url)
+        ? { backgroundImage: `linear-gradient(0deg, #101116 0%, rgba(16,17,22,.35) 65%, rgba(16,17,22,.65)), url(${imageUrl(media.backdrop_url)})` }
         : {}"
     />
     <div class="details-content">
       <div class="details-poster">
-        <img v-if="media.poster_url" :src="media.poster_url" :alt="`Постер: ${media.title}`" />
-        <div v-else class="poster-placeholder" aria-hidden="true">K</div>
+        <PosterImage :src="media.poster_url" :alt="`Постер: ${media.title}`" />
       </div>
       <div class="details-copy">
         <p class="eyebrow">{{ media.kind === 'movie' ? 'Фильм' : 'Сериал' }}</p>
