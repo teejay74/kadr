@@ -358,3 +358,30 @@ async def test_search_accepts_cached_partial_metadata_during_tmdb_outage() -> No
     result = await service.search(693134, "movie", "seeders", "desc")
     assert result.total > 0
     assert provider.calls
+
+
+async def test_source_search_deadline_cancels_slow_provider() -> None:
+    import asyncio
+
+    from app.services.sources.exceptions import IndexerUnavailableError
+
+    class SlowProvider(FakeIndexerProvider):
+        cancelled = False
+
+        async def search(
+            self,
+            query: str,
+            media_kind: str,
+            indexer_id: int | None = None,
+        ) -> list[dict[str, Any]]:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.cancelled = True
+            return []
+
+    provider = SlowProvider()
+    service = SourceSearchService(FakeCatalog(), provider, timeout_seconds=0.01)
+    with pytest.raises(IndexerUnavailableError, match="deadline exceeded"):
+        await service.search(247718, "series", "seeders", "desc", 2)
+    assert provider.cancelled

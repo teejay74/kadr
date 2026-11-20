@@ -53,6 +53,7 @@ def get_source_search_service(
     return SourceSearchService(
         catalog,
         ProwlarrClient(request.app.state.indexer_http_client, settings),
+        timeout_seconds=settings.source_search_timeout_seconds,
     )
 
 

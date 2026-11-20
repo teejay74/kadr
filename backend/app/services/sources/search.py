@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -12,6 +14,7 @@ from app.schemas.sources import (
     SourceResults,
     SourceSort,
 )
+from app.services.sources.exceptions import IndexerUnavailableError
 from app.services.sources.release_parser import parse_release_seasons, parse_release_title
 
 
@@ -48,9 +51,11 @@ class SourceSearchService:
         self,
         catalog: MediaCatalog,
         provider: IndexerProvider,
+        timeout_seconds: float = 25,
     ) -> None:
         self._catalog = catalog
         self._provider = provider
+        self._timeout_seconds = timeout_seconds
 
     async def search(
         self,
@@ -112,6 +117,31 @@ class SourceSearchService:
         return None
 
     async def _search_raw(
+        self,
+        media_id: int,
+        media_kind: MediaKind,
+        season_number: int | None = None,
+        indexer_id: int | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                return await self._search_within_deadline(
+                    media_id,
+                    media_kind,
+                    season_number,
+                    indexer_id,
+                )
+        except TimeoutError as exc:
+            logging.getLogger(__name__).warning(
+                "Source search deadline exceeded: media_id=%s kind=%s season=%s indexer=%s",
+                media_id,
+                media_kind,
+                season_number,
+                indexer_id,
+            )
+            raise IndexerUnavailableError("Source search deadline exceeded") from exc
+
+    async def _search_within_deadline(
         self,
         media_id: int,
         media_kind: MediaKind,

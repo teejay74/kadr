@@ -506,7 +506,16 @@ export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError && error.code === 'indexer_not_configured') {
     return 'Prowlarr ещё не настроен. Добавьте индексатор и API-ключ.'
   }
+  if (error instanceof ApiError && error.status === 504) {
+    return 'Сервер не дождался ответа. Повторите запрос позже.'
+  }
+  if (error instanceof ApiError && error.code === 'request_failed' && [502, 503].includes(error.status)) {
+    return 'Сервер временно недоступен. Повторите запрос позже.'
+  }
   if (error instanceof ApiError && error.code === 'indexer_unavailable') {
+    if (error.message === 'Source search deadline exceeded') {
+      return 'Поиск не завершился вовремя: Prowlarr или трекеры отвечают слишком долго. Повторите поиск позже.'
+    }
     return 'Prowlarr или один из индексаторов сейчас недоступен.'
   }
   if (error instanceof ApiError && error.code === 'torrent_not_configured') {

@@ -4,6 +4,7 @@ import {
   addTorrent,
   analyzeEpisodeMatches,
   ApiError,
+  friendlyApiError,
   cancelCompatiblePlayback,
   configureTorrentPrefetch,
   confirmEpisodeMatches,
@@ -496,4 +497,14 @@ test('prepares one explicit subtitle track for a library item', async () => {
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(path).toBe('/api/v1/library/library%2Fid/tracks/s%20opaque/subtitle')
   expect(init.method).toBe('POST')
+})
+
+
+test('distinguishes source deadline and gateway failures from catalogue errors', () => {
+  expect(friendlyApiError(new ApiError(502, 'indexer_unavailable', 'Source search deadline exceeded')))
+    .toContain('Поиск не завершился вовремя')
+  expect(friendlyApiError(new ApiError(504, 'request_failed', 'Request failed')))
+    .toContain('Сервер не дождался ответа')
+  expect(friendlyApiError(new ApiError(502, 'request_failed', 'Request failed')))
+    .not.toContain('Каталог')
 })

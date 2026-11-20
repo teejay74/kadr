@@ -604,3 +604,9 @@ cached. Metadata endpoints return relative KADR URLs for TMDB images.
 Source search (`GET /api/v1/media/{media_id}/sources`) can use cached catalogue
 metadata when TMDB is unavailable. Response format and media identity are
 unchanged. No cached title means the existing metadata-unavailable error.
+
+Source search and source resolution have a total configurable deadline (25 s by
+default). Expiry returns HTTP 502 with code `indexer_unavailable` and message
+`Source search deadline exceeded`; the web client explains that the search
+provider/trackers responded too slowly. Gateway 504/502 failures have separate
+messages rather than being labelled as a catalogue outage.

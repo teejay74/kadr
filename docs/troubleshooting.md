@@ -392,3 +392,10 @@ outage. If neither API nor usable cache is available, it returns the existing
 controlled metadata error. Poster warning logs include a validation reason
 (e.g. no DNS addresses, non-public address, invalid signature, excessive size);
 transport failures log their class without authentication headers or tokens.
+
+If the source modal says the catalogue is unavailable but metadata loads, inspect
+the actual HTTP status. Before the source-deadline fix, nginx could return 504
+while Prowlarr was still being awaited; the generic UI error incorrectly blamed
+the catalogue. Current source requests expire within their configured total
+budget and report `indexer_unavailable`. A persistent tracker connectivity
+failure still needs a working authorised network route, not a longer timeout.

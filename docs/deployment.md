@@ -207,3 +207,9 @@ container, then inspect health and logs. No database migration is required.
 If the primary provider fails or returns a non-public address, the resolver
 tries this independent provider within the existing request timeout. Both
 providers retain TLS verification; failed primary answers are never cached.
+
+`KADR_SOURCE_SEARCH_TIMEOUT_SECONDS` defaults to 25 and must not exceed 25.
+This bounds the entire source operation (metadata and all title/season query
+variants), leaving time for a structured API response before nginx's existing
+30-second read timeout. Cancellation stops in-flight indexer HTTP requests.
+It does not provide connectivity to trackers unavailable from the server.
