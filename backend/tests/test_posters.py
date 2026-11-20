@@ -84,8 +84,8 @@ async def test_rejects_invalid_or_oversized_and_never_caches(
 ) -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: response)) as client:
         manager = PosterManager(client, settings(tmp_path, poster_max_response_bytes=1024))
-        manager.addresses = ["1.1.1.1"]
-        manager.dns_expires = float("inf")
+        manager.resolver.addresses = ["1.1.1.1"]
+        manager.resolver.dns_expires = float("inf")
         with pytest.raises(MetadataUnavailableError):
             await manager.get("w500", "poster.jpg")
         assert not list(tmp_path.rglob("*.img"))

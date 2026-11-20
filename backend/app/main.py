@@ -32,6 +32,7 @@ from app.services.metadata.exceptions import (
     MetadataNotFoundError,
     MetadataUnavailableError,
 )
+from app.services.network.tmdb import TMDBResolver, TMDBTransport
 from app.services.playback.exceptions import (
     PlaybackArtifactNotReadyError,
     PlaybackPreparationError,
@@ -117,6 +118,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         limits=httpx.Limits(max_connections=settings.poster_concurrency),
     ) as poster_http_client, httpx.AsyncClient(
         base_url=settings.tmdb_base_url,
+        transport=TMDBTransport(TMDBResolver(poster_http_client, settings, "api.themoviedb.org")),
+        trust_env=False,
         timeout=settings.tmdb_timeout_seconds,
         headers={"Accept": "application/json"},
     ) as metadata_http_client:

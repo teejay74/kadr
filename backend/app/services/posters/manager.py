@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
-import json
 import logging
 import re
-import time
 
 import httpx
 
 from app.core.config import Settings
 from app.repositories.poster_cache import PosterCacheRepository
 from app.services.metadata.exceptions import MetadataUnavailableError
+from app.services.network.tmdb import TMDBResolver
 
 logger = logging.getLogger(__name__)
 SIZES = frozenset({"w92", "w154", "w185", "w300", "w342", "w500", "w780", "w1280", "original"})
@@ -43,61 +41,10 @@ class PosterManager:
         self.cache = PosterCacheRepository(settings)
         self.slots = asyncio.Semaphore(settings.poster_concurrency)
         self.locks = [asyncio.Lock() for _ in range(32)]
-        self.dns_lock = asyncio.Lock()
-        self.addresses: list[str] = []
-        self.dns_expires = 0.0
+        self.resolver = TMDBResolver(client, settings, "image.tmdb.org")
 
     async def _addresses(self) -> list[str]:
-        async with self.dns_lock:
-            if self.addresses and self.dns_expires > time.monotonic():
-                return self.addresses
-            url = httpx.URL(self.settings.poster_doh_url)
-            if url.scheme != "https" or not url.host or url.userinfo:
-                raise MetadataUnavailableError("Invalid poster resolver configuration")
-            headers = {
-                "Accept": "application/dns-json",
-                "Host": url.netloc.decode(),
-                "Accept-Encoding": "identity",
-            }
-            extensions = {"sni_hostname": url.host}
-            if self.settings.poster_doh_bootstrap_ip:
-                address = str(ipaddress.ip_address(self.settings.poster_doh_bootstrap_ip))
-                url = url.copy_with(host=address)
-            async with self.client.stream(
-                "GET",
-                url,
-                params={"name": "image.tmdb.org", "type": "A"},
-                headers=headers,
-                extensions=extensions,
-            ) as response:
-                response.raise_for_status()
-                if response.headers.get("content-encoding", "identity") != "identity":
-                    raise ValueError("Encoded DNS response")
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > 65536:
-                        raise ValueError("Oversized DNS response")
-            payload = json.loads(body)
-            if not isinstance(payload, dict) or payload.get("Status") != 0:
-                raise ValueError("DNS lookup failed")
-            addresses: list[str] = []
-            ttls: list[int] = []
-            for answer in payload.get("Answer", []):
-                if not isinstance(answer, dict):
-                    raise ValueError("Invalid DNS answer")
-                if answer.get("type") != 1:
-                    continue
-                address = ipaddress.ip_address(answer["data"])
-                if not address.is_global or address.version != 4:
-                    raise ValueError("Non-public CDN address")
-                addresses.append(str(address))
-                ttls.append(int(answer.get("TTL", 60)))
-            if not addresses:
-                raise ValueError("No CDN addresses")
-            self.addresses = addresses[:8]
-            self.dns_expires = time.monotonic() + max(1, min(300, *ttls))
-            return self.addresses
+        return await self.resolver.resolve()
 
     async def get(self, size: str, filename: str) -> tuple[bytes, str]:
         key = poster_path(size, filename)
@@ -114,10 +61,11 @@ class PosterManager:
                 return data, mime
             except (httpx.HTTPError, TimeoutError, ValueError, KeyError, TypeError) as exc:
                 logger.warning(
-                    "Poster fetch failed: size=%s file=%s error=%s",
+                    "Poster fetch failed: size=%s file=%s error=%s reason=%s",
                     size,
                     filename,
                     type(exc).__name__,
+                    str(exc) if isinstance(exc, ValueError) else type(exc).__name__,
                 )
                 raise MetadataUnavailableError("Poster temporarily unavailable") from exc
 
@@ -155,6 +103,6 @@ class PosterManager:
                     return data, mime
             except httpx.TransportError:
                 if index == len(addresses) - 1:
-                    self.dns_expires = 0
+                    self.resolver.dns_expires = 0
                     raise
         raise ValueError("No CDN addresses")

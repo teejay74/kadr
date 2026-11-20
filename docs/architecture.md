@@ -339,3 +339,12 @@ HTTPS hostname verification using Host and TLS SNI. Other integrations keep thei
 existing DNS behavior. PosterCacheRepository provides persistent, bounded disk
 cache I/O through worker threads, independently of media and SQLite. Web
 PosterImage and Android ServerAddress also rewrite legacy persisted TMDB links.
+
+## TMDB DNS isolation and source-search fallback
+
+TMDBResolver is shared implementation for `image.tmdb.org` and
+`api.themoviedb.org`, with independent TTL caches for each host. Metadata uses
+TMDBTransport, preserving Host and TLS SNI while connecting to dynamic public
+DoH addresses. Only these fixed HTTPS origins are permitted. Search permits
+partial cached catalogue details, preserving the original media ID and kind;
+it never fabricates titles or switches providers for this fallback.

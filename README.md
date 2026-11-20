@@ -256,3 +256,7 @@ permissions, port availability, and `.env` before deploying to Debian.
 Браузеру и Android TV не нужен доступ к CDN TMDB или смена DNS. Сервер использует
 настраиваемый DoH только для изображений и постоянный ограниченный кэш.
 См. `docs/poster-proxy-report.md`, `docs/deployment.md` и `docs/api.md`.
+
+TMDB metadata requests now use the same dedicated DoH mechanism as posters.
+Source search can use cached catalogue metadata during a TMDB outage. See
+`docs/tmdb-network-recovery-report.md`.

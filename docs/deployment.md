@@ -188,3 +188,15 @@ After deployment, request a real catalogue poster twice and verify `image/*`,
 `Cache-Control`, the persistent `.img` file, healthy API/web, and logs. For
 browser acceptance retain the current default DNS settings; Network requests
 for TMDB images must target KADR. Existing Kinopoisk image URLs are unaffected.
+
+## TMDB API DNS recovery
+
+The existing `KADR_POSTER_DOH_URL` and `KADR_POSTER_DOH_BOOTSTRAP_IP` settings
+now configure resolution for both TMDB images and metadata API. Names are kept
+for compatibility with existing deployments. `KADR_TMDB_TIMEOUT_SECONDS` bounds
+metadata connection and DNS acquisition; HTTP read timeouts remain enabled.
+The metadata transport supports only `https://api.themoviedb.org`; custom
+`KADR_TMDB_BASE_URL` values must retain this origin. No container-wide DNS,
+router, browser or other integration settings are changed. After updating API,
+verify movie 299534 source search and an uncached poster from inside the API
+container, then inspect health and logs. No database migration is required.

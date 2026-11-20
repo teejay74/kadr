@@ -600,3 +600,7 @@ accepted. Invalid arguments return 422 with `invalid_poster`; upstream failures
 return 502 with `metadata_unavailable`, using the standard code/message shape.
 Only successful responses with matching image MIME and binary signature are
 cached. Metadata endpoints return relative KADR URLs for TMDB images.
+
+Source search (`GET /api/v1/media/{media_id}/sources`) can use cached catalogue
+metadata when TMDB is unavailable. Response format and media identity are
+unchanged. No cached title means the existing metadata-unavailable error.

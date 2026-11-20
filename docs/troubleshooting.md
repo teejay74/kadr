@@ -380,3 +380,15 @@ configuration, timeouts, and write permissions on `KADR_POSTER_CACHE_ROOT`.
 Do not disable TLS verification or hard-code CDN addresses. Router and browser
 DNS changes are unnecessary. A cached image remains available until its TTL,
 even if TMDB is temporarily unavailable; failed responses are not cached.
+
+## Search fails although Prowlarr is healthy
+
+`metadata_unavailable: TMDB request failed` may occur before any Prowlarr
+search. In the confirmed incident, system DNS returned `127.0.0.1` and `::1`
+for `api.themoviedb.org`. Dedicated DoH now covers both TMDB hosts; local and
+non-public addresses are rejected, and HTTPS verification remains active.
+Source search also accepts existing cached catalogue title/year during an API
+outage. If neither API nor usable cache is available, it returns the existing
+controlled metadata error. Poster warning logs include a validation reason
+(e.g. no DNS addresses, non-public address, invalid signature, excessive size);
+transport failures log their class without authentication headers or tokens.

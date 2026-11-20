@@ -17,7 +17,9 @@ from app.services.sources.search import SourceSearchService
 
 
 class FakeCatalog:
-    async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+    async def details(
+        self, kind: MediaKind, media_id: int, *, allow_partial: bool = False
+    ) -> MediaDetails:
         return MediaDetails(
             id=media_id,
             kind=kind,
@@ -274,7 +276,9 @@ async def test_sources_endpoint_accepts_a_season_number(client: AsyncClient) -> 
 
 async def test_season_search_falls_back_to_broad_title_and_filters_other_seasons() -> None:
     class MobLandCatalog(FakeCatalog):
-        async def details(self, kind: MediaKind, media_id: int) -> MediaDetails:
+        async def details(
+            self, kind: MediaKind, media_id: int, *, allow_partial: bool = False
+        ) -> MediaDetails:
             media = await super().details(kind, media_id)
             return media.model_copy(
                 update={
@@ -334,3 +338,23 @@ async def test_season_search_falls_back_to_broad_title_and_filters_other_seasons
     assert result.total == 1
     assert result.items[0].indexer == "RuTracker.org"
     assert result.items[0].season_numbers == [2]
+
+
+async def test_search_accepts_cached_partial_metadata_during_tmdb_outage() -> None:
+    class PartialCatalog(FakeCatalog):
+        async def details(
+            self,
+            kind: MediaKind,
+            media_id: int,
+            *,
+            allow_partial: bool = False,
+        ) -> MediaDetails:
+            assert allow_partial, "Source search must permit cached catalogue metadata"
+            media = await super().details(kind, media_id)
+            return media.model_copy(update={"metadata_partial": True})
+
+    provider = FakeIndexerProvider()
+    service = SourceSearchService(PartialCatalog(), provider)
+    result = await service.search(693134, "movie", "seeders", "desc")
+    assert result.total > 0
+    assert provider.calls

@@ -16,7 +16,13 @@ from app.services.sources.release_parser import parse_release_seasons, parse_rel
 
 
 class MediaCatalog(Protocol):
-    async def details(self, kind: MediaKind, media_id: int) -> MediaDetails: ...
+    async def details(
+        self,
+        kind: MediaKind,
+        media_id: int,
+        *,
+        allow_partial: bool = False,
+    ) -> MediaDetails: ...
 
 
 class IndexerProvider(Protocol):
@@ -112,7 +118,7 @@ class SourceSearchService:
         season_number: int | None = None,
         indexer_id: int | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
-        media = await self._catalog.details(media_kind, media_id)
+        media = await self._catalog.details(media_kind, media_id, allow_partial=True)
         title = media.title or media.original_title
         titles = [title]
         if media.original_title and media.original_title != title:
