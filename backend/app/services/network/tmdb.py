@@ -31,54 +31,72 @@ class TMDBResolver:
         async with self.dns_lock:
             if self.addresses and self.dns_expires > time.monotonic():
                 return self.addresses
-            url = httpx.URL(self.settings.poster_doh_url)
-            if url.scheme != "https" or not url.host or url.userinfo:
-                raise MetadataUnavailableError("Invalid TMDB resolver configuration")
-            headers = {
-                "Accept": "application/dns-json",
-                "Host": url.netloc.decode(),
-                "Accept-Encoding": "identity",
-            }
-            extensions = {"sni_hostname": url.host}
-            if self.settings.poster_doh_bootstrap_ip:
-                address = str(ipaddress.ip_address(self.settings.poster_doh_bootstrap_ip))
-                url = url.copy_with(host=address)
-            async with self.client.stream(
-                "GET",
-                url,
-                params={"name": self.hostname, "type": "A"},
-                headers=headers,
-                extensions=extensions,
-            ) as response:
-                response.raise_for_status()
-                if response.headers.get("content-encoding", "identity") != "identity":
-                    raise ValueError("Encoded DNS response")
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > 65536:
-                        raise ValueError("Oversized DNS response")
-            payload = json.loads(body)
-            if not isinstance(payload, dict) or payload.get("Status") != 0:
-                raise ValueError("DNS lookup failed")
-            addresses: list[str] = []
-            ttls: list[int] = []
-            for answer in payload.get("Answer", []):
-                if not isinstance(answer, dict):
-                    raise ValueError("Invalid DNS answer")
-                if answer.get("type") != 1:
-                    continue
-                address = ipaddress.ip_address(answer["data"])
-                if not address.is_global or address.version != 4:
-                    raise ValueError("Non-public TMDB address")
-                addresses.append(str(address))
-                ttls.append(int(answer.get("TTL", 60)))
-            if not addresses:
-                raise ValueError("No TMDB addresses")
-            self.addresses = addresses[:8]
-            self.dns_expires = time.monotonic() + max(1, min(300, *ttls))
-            return self.addresses
+            providers = [(self.settings.poster_doh_url, self.settings.poster_doh_bootstrap_ip)]
+            if self.settings.tmdb_doh_fallback_url:
+                providers.append((self.settings.tmdb_doh_fallback_url,
+                                  self.settings.tmdb_doh_fallback_bootstrap_ip))
+            for index, (url, bootstrap) in enumerate(providers):
+                try:
+                    return await self._lookup(url, bootstrap)
+                except (httpx.HTTPError, ValueError, TypeError, KeyError,
+                        MetadataUnavailableError) as exc:
+                    logger.warning(
+                        "TMDB DNS provider rejected: host=%s provider=%s reason=%s",
+                        self.hostname, index,
+                        str(exc) if isinstance(exc, ValueError) else type(exc).__name__,
+                    )
+                    if index == len(providers) - 1:
+                        raise
+            raise ValueError("No TMDB DNS providers")
 
+    async def _lookup(self, resolver_url: str, bootstrap_ip: str) -> list[str]:
+        url = httpx.URL(resolver_url)
+        if url.scheme != "https" or not url.host or url.userinfo:
+            raise MetadataUnavailableError("Invalid TMDB resolver configuration")
+        headers = {
+            "Accept": "application/dns-json",
+            "Host": url.netloc.decode(),
+            "Accept-Encoding": "identity",
+        }
+        extensions = {"sni_hostname": url.host}
+        if bootstrap_ip:
+            address = str(ipaddress.ip_address(bootstrap_ip))
+            url = url.copy_with(host=address)
+        async with self.client.stream(
+            "GET",
+            url,
+            params={"name": self.hostname, "type": "A"},
+            headers=headers,
+            extensions=extensions,
+        ) as response:
+            response.raise_for_status()
+            if response.headers.get("content-encoding", "identity") != "identity":
+                raise ValueError("Encoded DNS response")
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > 65536:
+                    raise ValueError("Oversized DNS response")
+        payload = json.loads(body)
+        if not isinstance(payload, dict) or payload.get("Status") != 0:
+            raise ValueError("DNS lookup failed")
+        addresses: list[str] = []
+        ttls: list[int] = []
+        for answer in payload.get("Answer", []):
+            if not isinstance(answer, dict):
+                raise ValueError("Invalid DNS answer")
+            if answer.get("type") != 1:
+                continue
+            address = ipaddress.ip_address(answer["data"])
+            if not address.is_global or address.version != 4:
+                raise ValueError("Non-public TMDB address")
+            addresses.append(str(address))
+            ttls.append(int(answer.get("TTL", 60)))
+        if not addresses:
+            raise ValueError("No TMDB addresses")
+        self.addresses = addresses[:8]
+        self.dns_expires = time.monotonic() + max(1, min(300, *ttls))
+        return self.addresses
 
 class TMDBTransport(httpx.AsyncBaseTransport):
     """Connect to resolved addresses while retaining the original Host and TLS SNI."""

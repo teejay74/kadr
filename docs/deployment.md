@@ -200,3 +200,10 @@ The metadata transport supports only `https://api.themoviedb.org`; custom
 router, browser or other integration settings are changed. After updating API,
 verify movie 299534 source search and an uncached poster from inside the API
 container, then inspect health and logs. No database migration is required.
+
+`KADR_TMDB_DOH_FALLBACK_URL` defaults to Cloudflare DNS-JSON at
+`https://cloudflare-dns.com/dns-query`, with bootstrap `1.1.1.1` configured by
+`KADR_TMDB_DOH_FALLBACK_BOOTSTRAP_IP`. An empty fallback URL disables fallback.
+If the primary provider fails or returns a non-public address, the resolver
+tries this independent provider within the existing request timeout. Both
+providers retain TLS verification; failed primary answers are never cached.

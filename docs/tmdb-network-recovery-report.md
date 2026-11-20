@@ -26,7 +26,7 @@ reason; metadata transport logs omit authentication headers and tokens.
 
 ## Checks and results
 
-- Backend: 192 tests passed; Ruff passed. No frontend or Android code changed.
+- Backend: 193 tests passed; Ruff passed. No frontend or Android code changed.
 - Tests cover metadata DoH routing, Host/SNI preservation, TTL reuse, rejection
   of local IPs and unexpected origins, controlled DoH HTTP errors, and source
   search using partial cached metadata. Existing image/cache safety tests pass.
@@ -41,6 +41,15 @@ reason; metadata transport logs omit authentication headers and tokens.
 
 The exact cause of earlier poster ValueError events cannot be reconstructed
 from the old logs. This change records explicit validation reasons for future
-incidents. An outage affecting the configured DoH provider can still prevent
+incidents. An outage affecting both configured DoH providers can still prevent
 uncached requests. Cached metadata/images mitigate outages but do not invent
 missing data. Retain the existing backup and inspect health/logs after rollout.
+
+## Additional finding before deployment
+
+The real container check reproduced a Google DoH DNS response containing
+`127.0.0.1` for the TMDB API, while independent Cloudflare DoH returned public
+addresses. The resolver now tries a configurable independent Cloudflare
+fallback when the primary lookup fails validation or network I/O. Public-IP
+validation applies to both providers. A regression test covers primary loopback
+answers, successful fallback and reuse of the validated DNS cache.

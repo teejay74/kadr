@@ -85,3 +85,20 @@ async def test_doh_http_failure_is_a_controlled_metadata_error() -> None:
         ) as client:
             with pytest.raises(MetadataUnavailableError, match="TMDB request failed"):
                 await TMDBClient(client, settings).get("/movie/299534", {})
+
+
+async def test_falls_back_when_google_returns_loopback() -> None:
+    calls = []
+
+    def dns(request: httpx.Request) -> httpx.Response:
+        calls.append(request.headers['Host'])
+        address = '127.0.0.1' if request.headers['Host'] == 'dns.google' else '1.1.1.1'
+        return httpx.Response(200, json={'Status': 0, 'Answer': [
+            {'type': 1, 'data': address, 'TTL': 60},
+        ]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(dns)) as client:
+        resolver = TMDBResolver(client, Settings(), 'api.themoviedb.org')
+        assert await resolver.resolve() == ['1.1.1.1']
+        assert await resolver.resolve() == ['1.1.1.1']
+        assert calls == ['dns.google', 'cloudflare-dns.com']

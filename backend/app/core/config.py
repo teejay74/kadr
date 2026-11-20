@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     tmdb_base_url: str = "https://api.themoviedb.org/3"
     poster_doh_url: str = "https://dns.google/resolve"
     poster_doh_bootstrap_ip: str = "8.8.8.8"
+    tmdb_doh_fallback_url: str = "https://cloudflare-dns.com/dns-query"
+    tmdb_doh_fallback_bootstrap_ip: str = "1.1.1.1"
     poster_timeout_seconds: float = Field(default=12, gt=0, le=60)
     poster_max_response_bytes: int = Field(default=5_242_880, ge=1024, le=20_971_520)
     poster_cache_root: str = "./data/posters"
