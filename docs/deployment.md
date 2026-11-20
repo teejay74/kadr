@@ -213,3 +213,23 @@ This bounds the entire source operation (metadata and all title/season query
 variants), leaving time for a structured API response before nginx's existing
 30-second read timeout. Cancellation stops in-flight indexer HTTP requests.
 It does not provide connectivity to trackers unavailable from the server.
+
+## Router DNS for tracker domain routing
+
+When the router already routes tracker domains through its VPN policy, enable
+`docker-compose.router-dns.yml` for Prowlarr and FlareSolverr only. Set these in
+the private deployment `.env`:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:docker-compose.router-dns.yml
+KADR_ROUTER_DNS=192.168.1.1
+```
+
+Use the actual router DNS address. Verify `docker compose config --quiet`, then
+`docker compose up -d --no-deps prowlarr flaresolverr`. The setting applies only
+to external DNS lookups for those containers; Docker service-name lookup remains
+available. Debian/Tailscale DNS and other services are not changed. Keep
+COMPOSE_FILE in the deployment environment so future Compose updates retain the
+override. Check Docker DNS settings, tracker HTTPS, Prowlarr tests and real KADR
+searches after rollout. Rollback: restore the saved `.env`, then recreate only
+these two services with the original base Compose configuration.

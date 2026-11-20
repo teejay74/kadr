@@ -1,0 +1,9 @@
+# Optional: route tracker DNS through the user's existing router policy.
+# Enable explicitly together with the base Compose file.
+services:
+  prowlarr:
+    dns:
+      - ${KADR_ROUTER_DNS:?Set KADR_ROUTER_DNS to the router DNS address}
+  flaresolverr:
+    dns:
+      - ${KADR_ROUTER_DNS:?Set KADR_ROUTER_DNS to the router DNS address}
