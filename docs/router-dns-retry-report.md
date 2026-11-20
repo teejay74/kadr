@@ -70,13 +70,28 @@ Primary reports of similar symptoms on earlier KeeneticOS 5.2 builds are at
 [Keenetic Community](https://forum.keenetic.ru/topic/30978-52-a11-dnsrouteeventsink-%E2%80%94-%D1%80%D0%BE%D1%81%D1%82-timeoutshangs-%D0%B8-poll-timer-too-long-delay/).
 Those reports are observations, not a confirmed vendor diagnosis or fix.
 
-## Known issues and next actions
+## Approved router reboot verification
 
-Stable search remains unresolved. A single router reboot, if separately approved,
-would test whether accumulated router state contributes: repeat direct DNS
-lookups and at least five selected-RuTor KADR searches after connectivity returns,
-then inspect router and Prowlarr logs. A short successful trial would not prove a
-permanent repair. Reboot interrupts connectivity for all clients, including the
-shared server, and is not authorized by the prior container-specific approvals.
-Any router intervention requires separate explicit approval. Keep the rollback
-backups and do not claim stability from one successful indexer test.
+The user explicitly approved one router reboot, performed through Keenetic's
+normal reboot control around 19:05 local time on 2026-11-20. The user confirmed
+completion. SSH access to Debian returned; all five KADR containers remained
+healthy without recreation. No configuration or firmware was changed.
+
+After reboot, ten direct router DNS lookups from the API container (five A and
+five AAAA for rutor.is) completed without timeout: A returned one answer in
+0–0.25 s; AAAA returned NOERROR with zero answers in 0.30–0.45 s. RuTor's
+Prowlarr indexer test returned HTTP 200. Five consecutive searches through the
+actual web entry point, for series 247718 season 2 with indexer_id=1, all returned
+HTTP 200 with two sources, in 1.35, 1.32, 1.99, 2.07 and 1.87 seconds.
+
+The immediate verification passes, whereas the same trial failed before reboot.
+This supports accumulated router state as a contributing factor but does not
+establish the precise cause or durable recovery. Router authentication expired
+after reboot, so the native post-reboot system journal was not read.
+
+## Remaining limitations
+
+Long-term stability remains unverified. If the error returns, capture the router
+DNS mirroring log and Prowlarr errors before another intervention. Router changes
+beyond the completed single reboot require separate approval. Keep the rollback
+backups; do not treat this short successful trial as a permanent firmware fix.
