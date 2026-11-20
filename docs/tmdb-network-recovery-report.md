@@ -53,3 +53,28 @@ addresses. The resolver now tries a configurable independent Cloudflare
 fallback when the primary lookup fails validation or network I/O. Public-IP
 validation applies to both providers. A regression test covers primary loopback
 answers, successful fallback and reuse of the validated DNS cache.
+
+## Deployment and live verification
+
+- Deployed `709b6c7` after the successful 193-test run. Verified SQLite online
+  backup: `/srv/kadr/backups/kadr-pre-tmdb-doh-20261120-085137.db`.
+- Docker Hub initially reset the image-token connection; retry built the normal
+  API image successfully. Recreated only API, validated nginx configuration and
+  reloaded web workers to resolve the API address. API health/database returned ok.
+- From the deployed container, Google returned non-public answers for both TMDB
+  origins. Independent fallback succeeded: authenticated movie 299534 metadata
+  returned HTTP 200 (`Avengers: Endgame`); actual CDN download returned a
+  98,234-byte WebP. Two same-origin poster requests both returned HTTP 200.
+- Live source-search acceptance did NOT pass. Metadata now succeeds, but Prowlarr
+  tracker requests time out. Specific RuTor/NoNaMe searches returned controlled
+  502 errors after 30 seconds; the all-indexer web request hit nginx's existing
+  30-second timeout. Prowlarr subsequently marked all five indexers unavailable.
+- Prowlarr system DNS returned `78.29.1.40` for three unrelated tracker domains.
+  Independent Cloudflare lookup returned `193.46.255.26` for `rutor.is`, but a
+  direct HTTPS request using that address and the correct Host/TLS SNI still
+  timed out during the TLS handshake. Changing DNS alone is insufficient for
+  this independently observed tracker connectivity failure.
+- No tracker proxy, VPN, router, firewall or host DNS configuration was modified.
+  Full search recovery requires a working authorised network route to trackers;
+  the deployed TMDB fix does not claim to provide that route. The exact cause
+  of the tracker connection timeout (remote, ISP, routing) remains unverified.
