@@ -95,3 +95,16 @@ Long-term stability remains unverified. If the error returns, capture the router
 DNS mirroring log and Prowlarr errors before another intervention. Router changes
 beyond the completed single reboot require separate approval. Keep the rollback
 backups; do not treat this short successful trial as a permanent firmware fix.
+
+## All-indexer result after reboot
+
+A subsequent live KADR search for series 247718, season 2, with no indexer
+selection returned HTTP 200 and two releases, both from RuTor. Prowlarr listed
+five configured, enabled indexers, but its status endpoint showed temporary
+failure backoff for Kinozal (M), NoNaMe Club, RuTracker.org, and BigFANGroup.
+Thus the two releases are not evidence of a complete search across five
+indexers. When their backoff ends, they can be retried; another upstream failure
+can disable them again. Also, the current KADR season search returns on the
+first title/query variant that yields matching results, which can limit the
+release set independently of indexer availability. Further repair and repeated
+all-indexer verification remain open.
