@@ -2,8 +2,16 @@
 # Enable explicitly together with the base Compose file.
 services:
   prowlarr:
+    environment:
+      DOTNET_SYSTEM_NET_DISABLEIPV6: ${KADR_PROWLARR_DISABLE_IPV6:-0}
     dns:
       - ${KADR_ROUTER_DNS:?Set KADR_ROUTER_DNS to the router DNS address}
+    dns_opt:
+      - timeout:${KADR_ROUTER_DNS_TIMEOUT_SECONDS:-2}
+      - attempts:${KADR_ROUTER_DNS_ATTEMPTS:-5}
   flaresolverr:
     dns:
       - ${KADR_ROUTER_DNS:?Set KADR_ROUTER_DNS to the router DNS address}
+    dns_opt:
+      - timeout:${KADR_ROUTER_DNS_TIMEOUT_SECONDS:-2}
+      - attempts:${KADR_ROUTER_DNS_ATTEMPTS:-5}

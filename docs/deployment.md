@@ -233,3 +233,14 @@ COMPOSE_FILE in the deployment environment so future Compose updates retain the
 override. Check Docker DNS settings, tracker HTTPS, Prowlarr tests and real KADR
 searches after rollout. Rollback: restore the saved `.env`, then recreate only
 these two services with the original base Compose configuration.
+
+For intermittent router DNS timeouts, the tracker override also supports
+`KADR_ROUTER_DNS_TIMEOUT_SECONDS` (default 2) and `KADR_ROUTER_DNS_ATTEMPTS`
+(default 5). These resolver options apply only to Prowlarr and FlareSolverr.
+`KADR_PROWLARR_DISABLE_IPV6=1` sets the documented .NET
+`DOTNET_SYSTEM_NET_DISABLEIPV6` switch for the Prowlarr process only; the default
+is 0. It does not disable IPv6 on Debian, the Docker network, or FlareSolverr.
+After explicit approval, recreate the two tracker containers and verify repeated
+RuTor searches and new Prowlarr DNS errors, rather than relying on a single
+successful request. Restore the saved `.env` and previous override revision to
+roll back this tuning. Router DNS itself must still be available.
