@@ -43,13 +43,40 @@ returned an address, successful AAAA lookups returned NOERROR with no answers.
 A separate TCP A lookup succeeded while TCP AAAA timed out. Short diagnostic
 timeouts establish variability, not a definitive internal router failure cause.
 
-The existing browser AWG Manager DNS information page showed upstream DoT
-servers 1.1.1.1 and 8.8.8.8. Settings were only read. The primary Keenetic web
-configuration page requires sign-in, so deeper router configuration inspection
-remains pending. No settings were saved or toggled on either router interface.
+After the user signed in, read-only inspection confirmed AWG Manager 2.19.2,
+HydraRoute Neo running, and KeeneticOS 5.02.B.3.0-2 on Hopper KN-3810. Routing
+is managed through AWG Manager / HR Neo; the server's default access policy
+alone does not establish missing VPN routing. Do not move the entire shared
+server onto a VPN policy.
+
+Router DNS uses encrypted upstreams 1.1.1.1 and 8.8.8.8 alongside configured
+plain DNS entries. DNS timeouts also reproduced directly on Debian outside
+Docker. Direct TLS connections from Debian to both encrypted upstreams worked;
+this does not establish the health of the router's own upstream connections.
+
+The native Keenetic system log showed repeated messages around 18:49:
+
+- `ndnproxy: FQDN mirroring failed "Resource temporarily unavailable".`
+- `ndnproxy: FQDN reply mirroring failed "Resource temporarily unavailable".`
+- `Core::Executive::EventLoop: "Dns::Route::EventSink::default": poll timer: too long delay.`
+
+These establish router-side DNS mirroring errors, but do not prove HR Neo,
+upstream DNS, or firmware as the root cause. The AWG Manager journal also
+recorded two earlier temporary failed monitoring probes for the reserve tunnel;
+no causal connection to the failed search was established. No router network
+settings were changed, services restarted, or firmware updated.
+
+Primary reports of similar symptoms on earlier KeeneticOS 5.2 builds are at
+[Keenetic Community](https://forum.keenetic.ru/topic/30978-52-a11-dnsrouteeventsink-%E2%80%94-%D1%80%D0%BE%D1%81%D1%82-timeoutshangs-%D0%B8-poll-timer-too-long-delay/).
+Those reports are observations, not a confirmed vendor diagnosis or fix.
 
 ## Known issues and next actions
 
-Stable search remains unresolved. Further router DNS diagnostics are needed;
-any router configuration change requires separate explicit approval. Keep the
-rollback backups and do not claim stability from one successful indexer test.
+Stable search remains unresolved. A single router reboot, if separately approved,
+would test whether accumulated router state contributes: repeat direct DNS
+lookups and at least five selected-RuTor KADR searches after connectivity returns,
+then inspect router and Prowlarr logs. A short successful trial would not prove a
+permanent repair. Reboot interrupts connectivity for all clients, including the
+shared server, and is not authorized by the prior container-specific approvals.
+Any router intervention requires separate explicit approval. Keep the rollback
+backups and do not claim stability from one successful indexer test.
