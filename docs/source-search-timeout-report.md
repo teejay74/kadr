@@ -31,3 +31,15 @@ claim to restore access to unreachable trackers. Previous diagnostics found
 tracker DNS redirection and a TLS timeout even with independent DNS. A usable
 network route/proxy for Prowlarr remains necessary; user input about an existing
 connection has been requested. No fake source results or progress were added.
+
+## Deployment result
+
+Deployed `9d4ea75` after the successful tests, with verified database backup
+`/srv/kadr/backups/kadr-pre-search-deadline-20261120-100441.db`. Rebuilt and
+recreated only KADR API and web. All five services were healthy afterwards;
+no API traceback appeared in the checked startup logs. The exact season-2
+request through the web proxy returned HTTP 200 JSON in 0.15 seconds with
+zero items. This is not a claim that tracker connectivity recovered: Prowlarr
+returned an empty result and the separate connectivity blocker remains. The
+slow-provider cancellation and deadline error path are verified by regression
+tests, without injecting fake results into production.
